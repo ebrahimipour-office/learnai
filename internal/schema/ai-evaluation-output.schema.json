@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://learninghub.local/schemas/ai-evaluation-output-1.json",
+  "title": "AIEvaluationOutput",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "exercise_id",
+    "criteria_scores",
+    "score",
+    "errors",
+    "strengths",
+    "corrected_answer",
+    "teaching_notes_markdown"
+  ],
+  "properties": {
+    "exercise_id": { "type": "string", "pattern": "^q[0-9]{2,3}$" },
+    "criteria_scores": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["criterion_id", "awarded", "comment"],
+        "properties": {
+          "criterion_id": { "type": "string" },
+          "awarded": { "type": "integer", "minimum": 0 },
+          "comment": { "type": "string" }
+        }
+      }
+    },
+    "score": { "type": "integer", "minimum": 0, "maximum": 100 },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["category", "severity", "description"],
+        "properties": {
+          "category": { "enum": ["conceptual", "logical", "technical", "style", "omission"] },
+          "severity": { "enum": ["minor", "major", "critical"] },
+          "description": { "type": "string" },
+          "location": { "type": "string" }
+        }
+      }
+    },
+    "strengths": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "corrected_answer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "content"],
+      "properties": {
+        "format": { "enum": ["code", "text"] },
+        "language": { "type": "string" },
+        "content": { "type": "string" }
+      }
+    },
+    "teaching_notes_markdown": { "type": "string" }
+  }
+}

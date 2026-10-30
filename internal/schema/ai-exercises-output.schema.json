@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://learninghub.local/schemas/ai-exercises-output-1.json",
+  "title": "AIExercisesOutput",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["exercises", "suggestions"],
+  "properties": {
+    "exercises": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 30,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "title",
+          "type",
+          "difficulty",
+          "weight",
+          "statement_markdown",
+          "answer",
+          "rubric"
+        ],
+        "properties": {
+          "title": { "type": "string", "minLength": 1 },
+          "type": { "enum": ["coding", "conceptual", "code_analysis", "problem_solving"] },
+          "difficulty": { "enum": ["easy", "medium", "hard"] },
+          "weight": { "type": "number", "exclusiveMinimum": 0 },
+          "statement_markdown": { "type": "string", "minLength": 1 },
+          "answer": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["slug", "ext", "language"],
+            "properties": {
+              "slug": { "type": "string" },
+              "ext": { "type": "string" },
+              "language": { "type": "string" },
+              "starter": { "type": "string", "maxLength": 1000 }
+            }
+          },
+          "external_knowledge": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["topic", "note"],
+              "properties": {
+                "topic": { "type": "string" },
+                "note": { "type": "string" }
+              }
+            }
+          },
+          "rubric": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["reference_answer", "criteria"],
+            "properties": {
+              "reference_answer": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["format", "content"],
+                "properties": {
+                  "format": { "enum": ["code", "text"] },
+                  "language": { "type": "string" },
+                  "content": { "type": "string" }
+                }
+              },
+              "criteria": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["id", "description", "max_points", "category"],
+                  "properties": {
+                    "id": { "type": "string" },
+                    "description": { "type": "string" },
+                    "max_points": { "type": "integer", "minimum": 1, "maximum": 100 },
+                    "category": {
+                      "enum": [
+                        "correctness",
+                        "completeness",
+                        "concept",
+                        "code_quality",
+                        "reasoning"
+                      ]
+                    }
+                  }
+                }
+              },
+              "common_errors": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["type", "description"],
+                  "properties": {
+                    "type": {
+                      "enum": ["conceptual", "logical", "technical", "style", "omission"]
+                    },
+                    "description": { "type": "string" }
+                  }
+                }
+              },
+              "out_of_scope_knowledge": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["topic", "handling"],
+                  "properties": {
+                    "topic": { "type": "string" },
+                    "handling": { "const": "do_not_penalize" }
+                  }
+                }
+              },
+              "grading_notes": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "suggested_dir_slug": { "type": "string" },
+    "suggestions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "title", "reason"],
+        "properties": {
+          "kind": { "enum": ["prerequisite", "supplementary"] },
+          "title": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      }
+    }
+  }
+}

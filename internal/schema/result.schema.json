@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://learninghub.local/schemas/result-1.json",
+  "title": "AttemptResult",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "topic",
+    "set_version",
+    "attempt_no",
+    "mode",
+    "rubric_version",
+    "started_at",
+    "finished_at",
+    "evaluator",
+    "items",
+    "aggregate"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "topic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stable_key", "title"],
+      "properties": {
+        "stable_key": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
+        "title": { "type": "string" }
+      }
+    },
+    "set_version": { "type": "integer", "minimum": 1 },
+    "attempt_no": { "type": "integer", "minimum": 1 },
+    "mode": { "enum": ["full", "incremental"] },
+    "rubric_version": { "type": "integer", "minimum": 1 },
+    "started_at": { "type": "string" },
+    "finished_at": { "type": "string" },
+    "job_id": { "type": "integer" },
+    "evaluator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adapter", "skill", "skill_version"],
+      "properties": {
+        "adapter": { "type": "string" },
+        "model": { "type": "string" },
+        "skill": { "type": "string" },
+        "skill_version": { "type": "string" },
+        "job_id": { "type": "integer" }
+      }
+    },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["exercise_id", "weight", "status", "score"],
+        "properties": {
+          "exercise_id": { "type": "string", "pattern": "^q[0-9]{2,3}$" },
+          "weight": { "type": "number", "exclusiveMinimum": 0 },
+          "status": { "enum": ["evaluated", "carried_over", "unanswered"] },
+          "score": { "type": "integer", "minimum": 0, "maximum": 100 },
+          "answer_sha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+          "report_file": { "type": ["string", "null"] },
+          "carried_from_attempt": { "type": ["integer", "null"], "minimum": 1 },
+          "criteria_scores": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["criterion_id", "awarded", "max"],
+              "properties": {
+                "criterion_id": { "type": "string" },
+                "awarded": { "type": "integer", "minimum": 0 },
+                "max": { "type": "integer", "minimum": 1 }
+              }
+            }
+          },
+          "error_types": {
+            "type": "array",
+            "items": { "enum": ["conceptual", "logical", "technical", "style", "omission"] }
+          }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "status": { "const": "evaluated" } } },
+            "then": { "required": ["answer_sha256", "report_file", "criteria_scores"] }
+          },
+          {
+            "if": { "properties": { "status": { "const": "carried_over" } } },
+            "then": { "required": ["answer_sha256", "carried_from_attempt"] }
+          },
+          {
+            "if": { "properties": { "status": { "const": "unanswered" } } },
+            "then": { "properties": { "score": { "const": 0 } } }
+          }
+        ]
+      }
+    },
+    "aggregate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "weighted_score",
+        "answered_count",
+        "total_count",
+        "partial",
+        "formula",
+        "computed_by"
+      ],
+      "properties": {
+        "weighted_score": { "type": "number", "minimum": 0, "maximum": 100 },
+        "answered_count": { "type": "integer", "minimum": 0 },
+        "total_count": { "type": "integer", "minimum": 1 },
+        "partial": { "type": "boolean" },
+        "formula": { "const": "sum(weight_i*score_i)/sum(weight_i); unanswered=0" },
+        "computed_by": { "const": "app" }
+      }
+    }
+  }
+}

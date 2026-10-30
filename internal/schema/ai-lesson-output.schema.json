@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://learninghub.local/schemas/ai-lesson-output-1.json",
+  "title": "AILessonOutput",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["lesson_markdown", "keywords", "suggestions"],
+  "properties": {
+    "lesson_markdown": { "type": "string", "minLength": 10 },
+    "keywords": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["term"],
+        "properties": {
+          "term": { "type": "string" },
+          "gloss": { "type": "string" }
+        }
+      }
+    },
+    "suggestions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "title", "reason"],
+        "properties": {
+          "kind": { "enum": ["prerequisite", "supplementary"] },
+          "title": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      }
+    }
+  }
+}

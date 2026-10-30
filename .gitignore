@@ -1,0 +1,41 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+dist/
+
+# Test binary, coverage, and cache
+*.test
+*.out
+coverage.html
+
+# Go workspace
+go.work
+go.work.sum
+
+# SQLite databases & WAL files
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# LearningHub internal runtime directories
+.app/
+**/.internal/
+
+# IDE & Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+desktop.ini
