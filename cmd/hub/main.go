@@ -16,6 +16,7 @@ import (
 
 	"learninghub/internal/config"
 	"learninghub/internal/httpserver"
+	"learninghub/internal/services/roadmaps"
 	"learninghub/internal/store"
 
 	"github.com/gofrs/flock"
@@ -189,7 +190,14 @@ func runServe(args []string) {
 		slog.Error("Failed to initialize security manager", "error", err)
 		return
 	}
-	srv := httpserver.NewServer(cfg.Listen, sm)
+	drafts := roadmaps.NewService(db)
+	if n, err := drafts.PurgeExpired(ctx); err != nil {
+		slog.Error("Failed to purge expired import drafts", "error", err)
+	} else if n > 0 {
+		slog.Info("Purged expired import drafts", "count", n)
+	}
+	// shortcut: expired drafts are purged at startup and on each upload, not on a timer; T6.5 maintenance can add one.
+	srv := httpserver.NewServer(cfg.Listen, sm, drafts)
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.ListenAndServe() }()

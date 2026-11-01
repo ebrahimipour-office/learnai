@@ -1,0 +1,15 @@
+:root { color-scheme: light dark; --fg: #1d1d1f; --bg: #fafafa; --muted: #6b6b70; --line: #d8d8dc; --err: #b3261e; }
+@media (prefers-color-scheme: dark) { :root { --fg: #ececf0; --bg: #17171a; --muted: #a0a0a8; --line: #3a3a40; --err: #f2b8b5; } }
+body { margin: 0; font: 16px/1.7 Vazirmatn, Tahoma, system-ui, sans-serif; color: var(--fg); background: var(--bg); }
+header { padding: .75rem 1rem; border-bottom: 1px solid var(--line); }
+header a { color: inherit; font-weight: 600; text-decoration: none; }
+main { max-width: 52rem; margin: 0 auto; padding: 1rem; }
+label { display: block; margin: .75rem 0; }
+select, input[type=file], button { font: inherit; margin-inline-start: .5rem; }
+.error { color: var(--err); }
+.note, .hint, .count { color: var(--muted); }
+.tree, .tree ul { list-style: none; padding-inline-start: 1.25rem; }
+.tree { padding: 0; }
+.group-title { font-weight: 600; }
+.topic label { margin: .25rem 0; }
+pre { overflow-x: auto; padding: .5rem; border: 1px solid var(--line); }

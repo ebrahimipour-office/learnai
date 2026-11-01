@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -55,7 +56,8 @@ func (sm *SecurityManager) SecurityMiddleware(next http.Handler) http.Handler {
 		// 2. Set strict response security headers
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("Referrer-Policy", "no-referrer")
+		// same-origin, not no-referrer: under no-referrer browsers send "Origin: null" on same-origin POSTs, which step 4B rejects.
+		w.Header().Set("Referrer-Policy", "same-origin")
 		w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
 		w.Header().Set("Cache-Control", "no-store")
 
@@ -63,7 +65,7 @@ func (sm *SecurityManager) SecurityMiddleware(next http.Handler) http.Handler {
 		// Must run before the CSRF check: r.FormValue reads the body.
 		maxBytes := int64(64 * 1024)
 		if strings.HasPrefix(r.URL.Path, "/roadmaps/drafts") {
-			maxBytes = 1048576 // 1MB
+			maxBytes = 1<<20 + 64<<10 // 1MB file plus multipart overhead; the service enforces the exact 1MB
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 
@@ -109,6 +111,14 @@ func (sm *SecurityManager) SecurityMiddleware(next http.Handler) http.Handler {
 			// Check X-CSRF-Token header first (htmx), then fallback to form field
 			submittedToken := r.Header.Get("X-CSRF-Token")
 			if submittedToken == "" {
+				// Parse explicitly: FormValue hides an oversized body, which would surface as a bogus CSRF 403.
+				if err := r.ParseMultipartForm(1 << 20); err != nil {
+					var tooBig *http.MaxBytesError
+					if errors.As(err, &tooBig) {
+						http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+						return
+					}
+				}
 				submittedToken = r.FormValue("csrf_token")
 			}
 

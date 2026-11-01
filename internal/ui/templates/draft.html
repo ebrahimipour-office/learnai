@@ -1,0 +1,32 @@
+{{define "content"}}
+<h1>پیش‌نمایش ورود: <bdi>{{.Draft.SourceName}}</bdi></h1>
+<p class="note">تا پیش از تأیید هیچ موضوع، گروه یا فایلی ثبت نمی‌شود. این پیش‌نویس تا <bdi>{{.Expires}}</bdi> نگه داشته می‌شود.</p>
+{{template "draft-form" .}}
+{{end}}
+
+{{define "draft-form"}}
+<form id="draft-form" method="post" action="/roadmaps/drafts/{{.Draft.ID}}/selection"
+      hx-post="/roadmaps/drafts/{{.Draft.ID}}/selection" hx-trigger="change" hx-target="this" hx-swap="outerHTML">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <input type="hidden" name="shown_rule" value="{{.RuleValue}}">
+  <label>قاعده انتخاب موضوع
+    <select name="rule">
+      {{range .Rules}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}
+    </select>
+  </label>
+  <noscript><button type="submit">اعمال</button></noscript>
+  {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+  <p class="count" aria-live="polite"><strong>{{.Included}}</strong> موضوع انتخاب‌شده از {{.Total}}</p>
+  {{if .SuggestItems}}<p class="hint">با این قاعده هیچ موضوعی پیدا نشد. قاعده «آیتم‌های لیست» را امتحان کنید.</p>{{end}}
+  <ul class="tree">{{range .Items}}{{template "node" .}}{{end}}</ul>
+</form>
+{{end}}
+
+{{define "node"}}{{if .IsGroup}}
+<li class="group"><span class="group-title"><bdi>{{.Title}}</bdi></span>
+  <ul>{{range .Items}}{{template "node" .}}{{end}}</ul>
+</li>{{else}}
+<li class="topic">
+  <label><input type="checkbox" name="include" value="{{.Key}}"{{if .Included}} checked{{end}}> <bdi>{{.Title}}</bdi></label>
+  {{with .Outline}}<details><summary>زیرموارد</summary><pre dir="auto">{{.}}</pre></details>{{end}}
+</li>{{end}}{{end}}

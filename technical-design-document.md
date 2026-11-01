@@ -1261,7 +1261,7 @@ Enqueue ──▶ جدول jobs (queued) ──▶ Dispatcher goroutine ──�
 | **Fetch Metadata** | اگر `Sec-Fetch-Site` وجود دارد و مقدارش `cross-site` یا `same-site` است، درخواست تغییردهنده رد می‌شود (دفاع در عمق). |
 | **توکن CSRF** | یک توکن تصادفی ۲۵۶ بیتی در هر بار اجرا؛ در `<meta name="csrf">` صفحه قرار می‌گیرد و htmx آن را در هدر `X-CSRF-Token` می‌فرستد (فرم‌های عادی: فیلد hidden). مقایسه با `subtle.ConstantTimeCompare`. چون مرورگر دامنه‌ی دیگر نمی‌تواند پاسخ صفحه را بخواند، توکن را نمی‌بیند. |
 | **کوکی** | در صورت استفاده برای نشست: `HttpOnly; SameSite=Strict; Path=/`. (طرح پایه به کوکی وابسته نیست.) |
-| **هدرهای پاسخ** | `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`، `X-Content-Type-Options: nosniff`، `Referrer-Policy: no-referrer`، `Cross-Origin-Opener-Policy: same-origin`، `Cache-Control: no-store` برای صفحات داینامیک. بدون `unsafe-inline` (htmx و JS محلی‌اند و هیچ اسکریپت درون‌خطی نداریم). |
+| **هدرهای پاسخ** | `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`، `X-Content-Type-Options: nosniff`، `Referrer-Policy: same-origin` (نه `no-referrer`: با آن مرورگر در POST هم‌مبدأ `Origin: null` می‌فرستد که رد می‌شود)، `Cross-Origin-Opener-Policy: same-origin`، `Cache-Control: no-store` برای صفحات داینامیک. بدون `unsafe-inline` (htmx و JS محلی‌اند و هیچ اسکریپت درون‌خطی نداریم). |
 | **سقف‌ها** | `http.MaxBytesReader` (آپلود Roadmap ۱ مگابایت، سایر ۶۴ کیلوبایت)، `ReadHeaderTimeout`، `IdleTimeout`. |
 | **CORS** | هیچ هدر CORS ارسال نمی‌شود. |
 
