@@ -45,6 +45,7 @@ func GenerateAnswerTemplate(stableKey string, setVersion int, exID string, title
 
 	comment := func(line string) string {
 		if style.Suffix != "" {
+			line = strings.ReplaceAll(line, strings.TrimSpace(style.Suffix), "") // a title must not close the comment early
 			return fmt.Sprintf("%s%s%s\n", style.Prefix, line, style.Suffix)
 		}
 		return fmt.Sprintf("%s%s\n", style.Prefix, line)
@@ -59,6 +60,9 @@ func GenerateAnswerTemplate(stableKey string, setVersion int, exID string, title
 	sb.WriteString(comment(AnswerMarker))
 	sb.WriteString("\n")
 
+	// AI starter text may carry a BOM or CRLF; answer files are always UTF-8 without BOM and "\n" only.
+	starterCode = strings.TrimPrefix(starterCode, "\uFEFF")
+	starterCode = strings.ReplaceAll(strings.ReplaceAll(starterCode, "\r\n", "\n"), "\r", "\n")
 	if strings.TrimSpace(starterCode) != "" {
 		sb.WriteString(starterCode)
 		if !strings.HasSuffix(starterCode, "\n") {

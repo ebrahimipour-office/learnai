@@ -237,3 +237,23 @@ func TestRoot_PathTraversalBlocked(t *testing.T) {
 		t.Fatalf("Expected error when attempting path traversal, got nil")
 	}
 }
+
+func TestAnswerTemplate_EncodingAndCommentStyle(t *testing.T) {
+	want := map[string]string{".go": "// ", ".py": "# ", ".sql": "-- ", ".md": "<!-- ", ".sh": "# "}
+	for _, ext := range fsx.DefaultAllowedExtensions {
+		tpl := fsx.GenerateAnswerTemplate("k", 1, "q01", "t --> x", ext, "\uFEFFa\r\nb\rc")
+		s := string(tpl)
+		if strings.HasPrefix(s, "\uFEFF") || strings.Contains(s, "\uFEFF") || strings.Contains(s, "\r") {
+			t.Errorf("%s: BOM or CR in template %q", ext, s)
+		}
+		if !strings.HasSuffix(s, "a\nb\nc\n") {
+			t.Errorf("%s: starter not normalized: %q", ext, s)
+		}
+		if p, ok := want[ext]; ok && !strings.HasPrefix(s, p+"@hub:topic=k,set=v1,ex=q01") {
+			t.Errorf("%s: header %q", ext, strings.SplitN(s, "\n", 2)[0])
+		}
+		if ext == ".md" && strings.Count(s, "-->") != 4 {
+			t.Errorf(".md: title closed the comment early: %q", s)
+		}
+	}
+}
