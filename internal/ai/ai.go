@@ -114,3 +114,19 @@ func Code(err error) string {
 		return "tool_error"
 	}
 }
+
+// Message is the actionable Persian text shown for an error_code (TDD §6.1); "" when the
+// code is not an adapter error (the job's own error_message is shown instead).
+func Message(code string) string {
+	return messages[code]
+}
+
+var messages = map[string]string{
+	"auth_required":   "ابتدا یک‌بار در ترمینال `agy` را اجرا و وارد شوید؛ سپس در صفحه تنظیمات بررسی را دوباره اجرا کنید.",
+	"adapter_missing": "فایل `agy` پیدا نشد؛ آن را نصب کنید یا مسیرش را در `adapter.binary` فایل config.toml اصلاح کنید.",
+	"timeout":         "زمان اجرا از سقف مجاز گذشت.",
+	"stalled":         "ابزار AI مدتی پاسخ نداد.",
+	"rate_limited":    "سهمیه یا محدودیت نرخ؛ بعداً دوباره تلاش کنید.",
+	"tool_error":      "ابزار AI با خطا پایان یافت (جزئیات در لاگ).",
+	"invalid_output":  "خروجی AI معتبر نبود.",
+}

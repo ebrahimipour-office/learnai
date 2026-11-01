@@ -23,14 +23,19 @@ const (
 
 type Adapter struct {
 	Scenario string
-	Output   json.RawMessage // returned by OK and Slow
-	Delay    time.Duration   // Slow: total run time
-	Tick     time.Duration   // Slow: event interval; 0 means 10ms
+	Output   json.RawMessage  // returned by OK and Slow
+	Delay    time.Duration    // Slow: total run time
+	Tick     time.Duration    // Slow: event interval; 0 means 10ms
+	Caps     *ai.Capabilities // returned by Probe when set
+	ProbeErr error            // returned by Probe when set
 }
 
 func (a *Adapter) Name() string { return "fake" }
 
 func (a *Adapter) Probe(context.Context) (ai.Capabilities, error) {
+	if a.ProbeErr != nil || a.Caps != nil {
+		return *cmp.Or(a.Caps, &ai.Capabilities{}), a.ProbeErr
+	}
 	return ai.Capabilities{Version: "fake", Authenticated: true, HeadlessJSON: true, StructuredOutput: true}, nil
 }
 

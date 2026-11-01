@@ -95,10 +95,10 @@ func (a *Adapter) Probe(ctx context.Context) (ai.Capabilities, error) {
 		return caps, nil
 	}
 	caps.Authenticated = true
-	// shortcut: `agy models` output format unseen (location-blocked); one model per line assumed.
+	// `agy models` (1.4.12) prints "<id>\t<label>" per line; the id is what --model takes.
 	for _, l := range strings.Split(m, "\n") {
-		if l = strings.TrimSpace(l); l != "" && !strings.HasSuffix(l, "...") {
-			caps.Models = append(caps.Models, l)
+		if id, _, _ := strings.Cut(strings.TrimSpace(l), "\t"); id != "" && !strings.HasSuffix(id, "...") {
+			caps.Models = append(caps.Models, id)
 		}
 	}
 	return caps, nil

@@ -1,0 +1,42 @@
+{{define "content"}}
+<h1>تنظیمات</h1>
+{{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
+
+<section>
+<h2>حریم خصوصی</h2>
+<p>{{.Privacy}}</p>
+{{if .PrivacyAck}}<p class="note">تأییدشده در <bdi>{{.PrivacyAck}}</bdi></p>
+{{else}}
+<form method="post" action="/settings/privacy">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <label><input type="checkbox" name="ack" value="1" required> متن بالا را خواندم و می‌پذیرم</label>
+  <button type="submit">تأیید</button>
+</form>
+{{end}}
+</section>
+
+<section>
+<h2>ابزار هوش مصنوعی (doctor)</h2>
+{{with .Doctor}}
+{{if .Hint}}<p class="error" role="alert">{{.Hint}}</p>{{else}}<p>آماده است.</p>{{end}}
+{{with .ModelWarn}}<p class="error" role="alert">{{.}}</p>{{end}}
+<dl>
+  <dt>Adapter</dt><dd><bdi>{{$.Adapter}}</bdi></dd>
+  <dt>نسخه</dt><dd><bdi>{{or .Caps.Version "—"}}</bdi></dd>
+  <dt>احراز هویت</dt><dd>{{if .Caps.Authenticated}}بله{{else}}خیر{{end}}</dd>
+  <dt>خروجی JSON بدون رابط</dt><dd>{{if .Caps.HeadlessJSON}}بله{{else}}خیر{{end}}</dd>
+  <dt>خروجی ساختاریافته (<code>--json-schema</code>)</dt><dd>{{if .Caps.StructuredOutput}}بله{{else}}خیر{{end}}</dd>
+  <dt>مدل پیکربندی‌شده</dt><dd><bdi>{{or $.Model "پیش‌فرض ابزار"}}</bdi></dd>
+  <dt>مدل‌های در دسترس</dt><dd>{{range .Caps.Models}}<code>{{.}}</code> {{else}}—{{end}}</dd>
+</dl>
+{{if or .Err .Caps.Notes}}<details><summary>جزئیات فنی</summary>
+  {{with .Err}}<pre>{{.}}</pre>{{end}}{{range .Caps.Notes}}<pre>{{.}}</pre>{{end}}
+</details>{{end}}
+<p class="note">آخرین بررسی: <bdi>{{.At.Format "2006-01-02 15:04:05"}}</bdi></p>
+{{end}}
+<form method="post" action="/settings/doctor">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <button type="submit">بررسی دوباره</button>
+</form>
+</section>
+{{end}}

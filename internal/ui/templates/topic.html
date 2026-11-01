@@ -44,7 +44,9 @@
     {{if .Active}}{{with .Phase}}<span>مرحله: {{jobPhase .}}</span>{{end}}{{end}}
     {{if .Total}}<progress value="{{.Done}}" max="{{.Total}}">{{.Done}}/{{.Total}}</progress>{{end}}
     {{if .Duration}}<span class="note">مدت: <bdi>{{.Duration}}</bdi></span>{{end}}
-    {{if eq .Status "failed"}}<p class="error"><bdi>{{.ErrorMessage}}</bdi>{{with .ErrorCode}} <code>{{.}}</code>{{end}}</p>
+    {{if eq .Status "failed"}}{{$msg := aiMessage .ErrorCode}}<p class="error">{{if $msg}}{{$msg}}{{else}}<bdi>{{.ErrorMessage}}</bdi>{{end}}
+      {{if or (eq .ErrorCode "auth_required") (eq .ErrorCode "adapter_missing")}}<a href="/settings">تنظیمات</a>{{end}}</p>
+    {{if $msg}}<details><summary>جزئیات فنی</summary><pre>{{.ErrorMessage}}</pre> <code>{{.ErrorCode}}</code></details>{{end}}
     <form method="post" action="/jobs/{{.ID}}/retry" hx-post="/jobs/{{.ID}}/retry" hx-target="#job-area" hx-swap="outerHTML">
       <input type="hidden" name="csrf_token" value="{{$.CSRF}}"><button type="submit">تلاش مجدد</button>
     </form>{{end}}

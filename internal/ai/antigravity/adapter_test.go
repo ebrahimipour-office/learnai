@@ -47,7 +47,7 @@ func fakeAgy(sc string, args []string) int {
 				fmt.Fprintln(out, "Error: Eligibility check failed: not currently available in your location.")
 				return 1
 			}
-			fmt.Fprintln(out, "gemini-3.8-flash-medium\ngemini-3.8-pro-high")
+			fmt.Fprintln(out, "gemini-3.8-flash-medium\tGemini 3.8 Flash (Medium)\ngemini-3.8-pro-high\tGemini 3.8 Pro (High)") // real 1.4.12 format
 			return 0
 		}
 	}

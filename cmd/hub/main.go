@@ -2,11 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
@@ -67,38 +67,56 @@ func runVersion() {
 	fmt.Printf("LearningHub CLI version %s (%s, %s/%s)\n", Version, BuildDate, runtime.GOOS, runtime.GOARCH)
 }
 
+// runDoctor checks the environment and the AI tool (R7.3); --json prints the same as one object.
 func runDoctor(args []string) {
-	fmt.Println("=== LearningHub System Doctor (T1.1) ===")
-	fmt.Printf("OS: %s/%s\n", runtime.GOOS, runtime.GOARCH)
-	fmt.Printf("Go Runtime: %s\n", runtime.Version())
+	fs := flag.NewFlagSet("doctor", flag.ExitOnError)
+	configPath := fs.String("config", "", "Path to config.toml")
+	asJSON := fs.Bool("json", false, "Print JSON")
+	_ = fs.Parse(args)
 
-	// Check Antigravity CLI
-	agyPath, err := exec.LookPath("agy")
-	if err != nil {
-		fmt.Printf("[FAIL] Antigravity CLI (agy): Not found in PATH. Please install or configure binary path.\n")
-	} else {
-		out, err := exec.Command(agyPath, "--version").CombinedOutput()
-		if err != nil {
-			fmt.Printf("[WARN] Antigravity CLI found at %s, but failed to run --version: %v\n", agyPath, err)
-		} else {
-			fmt.Printf("[OK] Antigravity CLI found: %s (%s)\n", agyPath, strings.TrimSpace(string(out)))
-		}
-	}
-
-	// Check current working directory
 	cwd, _ := os.Getwd()
-	fmt.Printf("[OK] Current Base Directory: %s\n", cwd)
-
-	// Check writable permissions
-	testFile := filepath.Join(cwd, ".doctor_test")
-	if err := os.WriteFile(testFile, []byte("ok"), 0644); err != nil {
-		fmt.Printf("[FAIL] Directory write test failed: %v\n", err)
+	cfg, err := config.Load(*configPath, cwd)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+		os.Exit(1)
+	}
+	writeErr := ""
+	testFile := filepath.Join(cfg.BaseDir, ".doctor_test")
+	if err := os.WriteFile(testFile, []byte("ok"), 0o600); err != nil {
+		writeErr = err.Error()
 	} else {
 		_ = os.Remove(testFile)
-		fmt.Printf("[OK] Directory write permission verified\n")
 	}
+	adapter := antigravity.New(antigravity.Config{Binary: cfg.Adapter.Binary, Model: cfg.Adapter.Model})
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer cancel()
+	d := httpserver.ProbeAdapter(ctx, httpserver.Settings{Adapter: adapter, Model: cfg.Adapter.Model})
+	ok := writeErr == "" && d.Ready()
 
-	fmt.Println("Doctor checks completed successfully.")
+	if *asJSON {
+		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{
+			"ok": ok, "version": Version, "os": runtime.GOOS + "/" + runtime.GOARCH, "base_dir": cfg.BaseDir,
+			"base_dir_writable": writeErr == "", "base_dir_error": writeErr, "adapter": d,
+		})
+	} else {
+		fmt.Printf("LearningHub %s (%s/%s)\n", Version, runtime.GOOS, runtime.GOARCH)
+		fmt.Printf("Base directory: %s\n", cfg.BaseDir)
+		if writeErr != "" {
+			fmt.Printf("[FAIL] base directory not writable: %s\n", writeErr)
+		}
+		c := d.Caps
+		fmt.Printf("AI tool: version=%q authenticated=%t stream-json=%t json-schema=%t models=%v\n",
+			c.Version, c.Authenticated, c.HeadlessJSON, c.StructuredOutput, c.Models)
+		for _, s := range append([]string{d.Err, d.Hint, d.ModelWarn}, c.Notes...) {
+			if s != "" {
+				fmt.Println("  " + s)
+			}
+		}
+		fmt.Println(map[bool]string{true: "[OK] ready", false: "[FAIL] not ready"}[ok])
+	}
+	if !ok {
+		os.Exit(1)
+	}
 }
 
 func runMigrate(args []string) {
@@ -227,7 +245,8 @@ func runServe(args []string) {
 		DB: db, Root: root, Adapter: adapter, Model: cfg.Adapter.Model, Language: cfg.Language,
 		Timeout: cfg.Jobs.TimeoutLesson, Stall: cfg.Jobs.StallTimeout,
 	}).Handle)
-	srv := httpserver.NewServer(cfg.Listen, sm, drafts, topics.NewService(db), runner, root)
+	srv := httpserver.NewServer(cfg.Listen, sm, drafts, topics.NewService(db), runner, root,
+		httpserver.Settings{DB: db, Adapter: adapter, Model: cfg.Adapter.Model})
 	runnerDone := make(chan struct{})
 	go func() {
 		defer close(runnerDone)

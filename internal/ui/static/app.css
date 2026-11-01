@@ -33,3 +33,4 @@ summary.group-title { cursor: pointer; }
 .badge.busy { border-style: dotted; }
 .md table { border-collapse: collapse; }
 .md th, .md td { padding: .25rem .5rem; border: 1px solid var(--line); }
+header .nav { font-weight: normal; margin-inline-start: 1rem; }
