@@ -9,8 +9,8 @@
 | مشخصه | وضعیت |
 |---|---|
 | **فاز فعال کنونی** | **فاز ۲ — ورود نقشه راه و مدیریت موضوعات (Phase 2: Roadmap Ingestion)** |
-| **کار بعدی برای اجرا** | **Task T2.4 — پیش‌نمایش ورود (UI + `import_drafts`)** — پیش‌نیاز: تکمیل `hub serve` (راه‌اندازی `http.Server` و اتصال میان‌افزار امنیتی، باقی‌مانده از T1.5) |
-| **آخرین کامیت Git** | `feat(roadmap): T2.3 stable topic and group keys` |
+| **کار بعدی برای اجرا** | **Task T2.4 — پیش‌نمایش ورود (UI + `import_drafts`)** — جدول `import_drafts` در `0001_init.sql` موجود است |
+| **آخرین کامیت Git** | `feat(serve): start HTTP server behind security middleware` |
 | **⚠️ مسدودکننده فاز ۳** | آزمایش واقعی `agy` (نسخه 1.4.7، ۲۰۲۶-۱۱-۰۱) شکست خورد: `Eligibility check failed: ... not currently available in your location` — در سطح حساب، برای همه مدل‌ها. پیش از فاز ۳ باید درباره Adapter تصمیم گرفته شود. یافته‌های قالب پاکت: کلید `event` (نه `type`)، فیلدها داخل `result` (`status`, `error`, `response`, `finished_reason`). |
 | **وضعیت آزمون‌های خودکار** | **۱۰۰٪ سبز و موفق** (`go test ./...` روی همه پکیج‌ها) |
 | **مسیر دایرکتوری پایه** | `C:\Users\Asus\Desktop\Leaning-appication\prj` |
@@ -36,7 +36,7 @@
 - [x] **T1.2**: الگوی اصلی `skills/AGENTS.md.tmpl` با اصول هشت‌گانه رفتار مدل
 - [x] **T1.3**: الگوی پروفایل یادگیرنده در `skills/profile.md.tmpl`
 - [x] **T1.4**: مهارت‌های سه‌گانه پایه در `skills/` (`lesson-generator`, `exercise-generator`, `answer-evaluator`)
-- [x] **T1.5**: اسکلت CLI (`cmd/hub/main.go`) با زیرفرمان‌های `version`, `doctor`, `migrate`, `serve` و قفل تک‌نمونه با `flock` — ⚠️ توجه: `serve` هنوز `http.Server` راه نمی‌اندازد و میان‌افزار امنیتی به آن وصل نیست؛ باید پیش از T2.4 تکمیل شود
+- [x] **T1.5**: اسکلت CLI (`cmd/hub/main.go`) با زیرفرمان‌های `version`, `doctor`, `migrate`, `serve` و قفل تک‌نمونه با `flock` — `serve` اکنون `http.Server` را (`internal/httpserver/server.go`، مسیر `/healthz`) پشت میان‌افزار امنیتی با `ReadHeaderTimeout`/`IdleTimeout` و خاموشی آرام اجرا می‌کند
 - [x] **T1.6**: پکیج سیستم‌فایل امن `internal/fsx` با پوشش `os.Root`، `WriteNew`، `safename` و ۸ تست امنیتی سبز
 - [x] **T1.7**: میان‌افزارهای امنیتی HTTP در `internal/httpserver` (بررسی Host/Origin/CSRF/CSP) با ۷ تست امنیتی سبز
 - [x] **T1.8**: راه‌اندازی دیتابیس SQLite بدون CGO در `internal/store`، حالت WAL، و اسکریپت `0001_init.sql` با تست ایندکس‌های یکتا

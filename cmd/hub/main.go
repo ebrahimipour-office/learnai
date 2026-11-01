@@ -12,8 +12,10 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+	"time"
 
 	"learninghub/internal/config"
+	"learninghub/internal/httpserver"
 	"learninghub/internal/store"
 
 	"github.com/gofrs/flock"
@@ -182,6 +184,28 @@ func runServe(args []string) {
 
 	slog.Info("Database initialized successfully", "path", dbPath)
 
-	<-ctx.Done()
+	sm, err := httpserver.NewSecurityManager(cfg.Listen)
+	if err != nil {
+		slog.Error("Failed to initialize security manager", "error", err)
+		return
+	}
+	srv := httpserver.NewServer(cfg.Listen, sm)
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- srv.ListenAndServe() }()
+	slog.Info("Listening", "url", "http://"+cfg.Listen)
+
+	select {
+	case err := <-errCh:
+		slog.Error("HTTP server failed", "error", err)
+		return // return (not os.Exit) so deferred DB close and unlock run
+	case <-ctx.Done():
+	}
+
 	slog.Info("Shutting down LearningHub gracefully...")
+	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelShutdown()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		slog.Error("Graceful shutdown failed", "error", err)
+	}
 }
