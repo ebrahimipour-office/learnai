@@ -14,13 +14,17 @@ import (
 	"syscall"
 	"time"
 
+	"learninghub/internal/ai/antigravity"
 	"learninghub/internal/config"
+	"learninghub/internal/domain"
 	"learninghub/internal/fsx"
 	"learninghub/internal/httpserver"
 	"learninghub/internal/jobs"
+	"learninghub/internal/services/lessons"
 	"learninghub/internal/services/roadmaps"
 	"learninghub/internal/services/topics"
 	"learninghub/internal/store"
+	"learninghub/skills"
 
 	"github.com/gofrs/flock"
 )
@@ -208,9 +212,22 @@ func runServe(args []string) {
 	// shortcut: expired drafts are purged at startup and on each upload, not on a timer; T6.5 maintenance can add one.
 	srv := httpserver.NewServer(cfg.Listen, sm, drafts, topics.NewService(db))
 
-	// shortcut: no handlers registered yet; T3.6 registers the lesson handler.
+	if n, err := skills.Install(root); err != nil {
+		slog.Error("Failed to install default skills", "error", err)
+		return
+	} else if n > 0 {
+		slog.Info("Installed default AGENTS.md, profile and skills", "files", n)
+	}
+	adapter := antigravity.New(antigravity.Config{
+		Binary: cfg.Adapter.Binary, Model: cfg.Adapter.Model, Effort: cfg.Adapter.Effort,
+		Sandbox: cfg.Adapter.Sandbox, ExtraArgs: cfg.Adapter.ExtraArgs, Logs: root,
+	})
 	runner := jobs.New(db, cfg.Jobs.MaxConcurrent)
 	runner.Files = root
+	runner.Register(domain.JobKindLesson, (&lessons.Service{
+		DB: db, Root: root, Adapter: adapter, Model: cfg.Adapter.Model, Language: cfg.Language,
+		Timeout: cfg.Jobs.TimeoutLesson, Stall: cfg.Jobs.StallTimeout,
+	}).Handle)
 	runnerDone := make(chan struct{})
 	go func() {
 		defer close(runnerDone)
