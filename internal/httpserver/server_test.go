@@ -2,6 +2,7 @@ package httpserver_test
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"mime/multipart"
 	"net/http"
@@ -14,19 +15,27 @@ import (
 	"testing"
 	"time"
 
+	"learninghub/internal/ai/fake"
+	"learninghub/internal/domain"
 	"learninghub/internal/fsx"
 	"learninghub/internal/httpserver"
+	"learninghub/internal/jobs"
+	"learninghub/internal/services/lessons"
 	"learninghub/internal/services/roadmaps"
 	"learninghub/internal/services/topics"
 	"learninghub/internal/store"
+	"learninghub/skills"
 )
 
 type env struct {
-	t    *testing.T
-	h    http.Handler
-	sm   *httpserver.SecurityManager
-	db   *store.DB
-	base string
+	t      *testing.T
+	h      http.Handler
+	sm     *httpserver.SecurityManager
+	db     *store.DB
+	base   string
+	root   *fsx.Root
+	runner *jobs.Runner
+	ad     *fake.Adapter
 }
 
 func newEnv(t *testing.T) *env {
@@ -46,11 +55,23 @@ func newEnv(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { root.Close() })
-	srv := httpserver.NewServer("127.0.0.1:8787", sm, roadmaps.NewService(db, root), topics.NewService(db))
+	if _, err := skills.Install(root); err != nil {
+		t.Fatal(err)
+	}
+	ad := &fake.Adapter{Scenario: fake.OK}
+	runner := jobs.New(db, 2)
+	runner.Poll, runner.Heartbeat, runner.Files = 20*time.Millisecond, time.Hour, root
+	runner.Register(domain.JobKindLesson, (&lessons.Service{DB: db, Root: root, Adapter: ad, Model: "m1",
+		Language: "fa", Timeout: time.Minute, Stall: time.Minute}).Handle)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { defer close(done); runner.Run(ctx) }()
+	t.Cleanup(func() { cancel(); <-done })
+	srv := httpserver.NewServer("127.0.0.1:8787", sm, roadmaps.NewService(db, root), topics.NewService(db), runner, root)
 	if srv.ReadHeaderTimeout == 0 || srv.IdleTimeout == 0 {
 		t.Error("server timeouts must be set (Section 8)")
 	}
-	return &env{t: t, h: srv.Handler, sm: sm, db: db, base: base}
+	return &env{t: t, h: srv.Handler, sm: sm, db: db, base: base, root: root, runner: runner, ad: ad}
 }
 
 func (e *env) do(req *http.Request) *httptest.ResponseRecorder {

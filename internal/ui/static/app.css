@@ -18,8 +18,18 @@ pre, code { direction: ltr; unicode-bidi: plaintext; }
 .badge.warn { color: var(--err); border-color: currentColor; }
 .badge.suggested { border-style: dashed; }
 .score { font-weight: 600; }
-.archived > bdi { color: var(--muted); text-decoration: line-through; }
+.archived > a > bdi { color: var(--muted); text-decoration: line-through; }
 summary.group-title { cursor: pointer; }
 .diff table { width: 100%; border-collapse: collapse; }
 .diff th, .diff td { text-align: start; padding: .25rem .5rem; border-bottom: 1px solid var(--line); }
 .diff-gone bdi { color: var(--muted); text-decoration: line-through; }
+.tabs { border-bottom: 1px solid var(--line); margin: 1rem 0; }
+.tabs a { display: inline-block; padding: .25rem .75rem; color: inherit; text-decoration: none; }
+.tabs a[aria-current] { border-bottom: 2px solid currentColor; font-weight: 600; }
+#job-area { margin: 1rem 0; }
+#job-area form { display: inline-block; margin: 0; }
+.job-card { margin-top: .5rem; padding: .5rem .75rem; border: 1px solid var(--line); border-radius: .4em; }
+.job-card > * { margin-inline-end: .5rem; }
+.badge.busy { border-style: dotted; }
+.md table { border-collapse: collapse; }
+.md th, .md td { padding: .25rem .5rem; border: 1px solid var(--line); }

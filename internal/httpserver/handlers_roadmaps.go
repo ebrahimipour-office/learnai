@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 
+	"learninghub/internal/fsx"
+	"learninghub/internal/jobs"
 	"learninghub/internal/roadmap"
 	"learninghub/internal/services/roadmaps"
 	"learninghub/internal/services/topics"
@@ -21,6 +23,8 @@ type app struct {
 	sm     *SecurityManager
 	drafts *roadmaps.Service
 	topics *topics.Service
+	runner *jobs.Runner
+	root   *fsx.Root
 	pages  map[string]*template.Template
 }
 
@@ -43,6 +47,12 @@ type pageData struct {
 	Statuses            []ruleOption
 	Topics              []*topics.Node
 	Matched, TopicTotal int
+
+	Panel   *topics.Panel
+	Viewing *topics.LessonVersion // lesson version shown; nil = none
+	Lesson  template.HTML         // sanitized by render.Markdown
+	Job     *jobs.Info            // latest job of the topic; nil = none
+	Notice  string                // job action feedback inside the job area
 }
 
 type ruleOption struct {
@@ -60,10 +70,15 @@ type treeNode struct {
 	Items    []*treeNode
 }
 
-func newApp(sm *SecurityManager, drafts *roadmaps.Service, topicList *topics.Service) *app {
-	a := &app{sm: sm, drafts: drafts, topics: topicList, pages: map[string]*template.Template{}}
-	funcs := template.FuncMap{"statusLabel": func(s string) string { return statusLabels[s] }}
-	for _, p := range []string{"new", "draft", "topics"} {
+func newApp(sm *SecurityManager, drafts *roadmaps.Service, topicList *topics.Service, runner *jobs.Runner, root *fsx.Root) *app {
+	a := &app{sm: sm, drafts: drafts, topics: topicList, runner: runner, root: root, pages: map[string]*template.Template{}}
+	funcs := template.FuncMap{
+		"statusLabel": func(s string) string { return statusLabels[s] },
+		"jobStatus":   func(s string) string { return jobStatusLabels[s] },
+		"jobPhase":    func(s string) string { return jobPhaseLabels[s] },
+		"jobKind":     func(s string) string { return jobKindLabels[s] },
+	}
+	for _, p := range []string{"new", "draft", "topics", "topic"} {
 		a.pages[p] = template.Must(template.New(p).Funcs(funcs).ParseFS(ui.FS, "templates/layout.html", "templates/"+p+".html"))
 	}
 	return a

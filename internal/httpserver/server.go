@@ -6,14 +6,16 @@ import (
 	"net/http"
 	"time"
 
+	"learninghub/internal/fsx"
+	"learninghub/internal/jobs"
 	"learninghub/internal/services/roadmaps"
 	"learninghub/internal/services/topics"
 	"learninghub/internal/ui"
 )
 
 // NewServer builds the HTTP server with every route behind SecurityMiddleware (Section 8).
-func NewServer(addr string, sm *SecurityManager, drafts *roadmaps.Service, topicList *topics.Service) *http.Server {
-	a := newApp(sm, drafts, topicList)
+func NewServer(addr string, sm *SecurityManager, drafts *roadmaps.Service, topicList *topics.Service, runner *jobs.Runner, root *fsx.Root) *http.Server {
+	a := newApp(sm, drafts, topicList, runner, root)
 	static, err := fs.Sub(ui.FS, "static")
 	if err != nil {
 		panic(err) // embedded at build time; cannot fail at runtime
@@ -27,6 +29,12 @@ func NewServer(addr string, sm *SecurityManager, drafts *roadmaps.Service, topic
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(static)))
 	mux.Handle("GET /{$}", http.RedirectHandler("/topics", http.StatusSeeOther))
 	mux.HandleFunc("GET /topics", a.listTopics)
+	mux.HandleFunc("GET /topics/{id}", a.showTopic)
+	mux.HandleFunc("GET /topics/{id}/lesson", a.showTopic)
+	mux.HandleFunc("POST /topics/{id}/jobs/lesson", a.generateLesson)
+	mux.HandleFunc("GET /jobs/{id}/card", a.jobCard)
+	mux.HandleFunc("POST /jobs/{id}/cancel", a.cancelJob)
+	mux.HandleFunc("POST /jobs/{id}/retry", a.retryJob)
 	mux.HandleFunc("GET /roadmaps/new", a.newRoadmap)
 	mux.HandleFunc("POST /roadmaps/drafts", a.createDraft)
 	mux.HandleFunc("GET /roadmaps/drafts/{id}", a.showDraft)

@@ -210,7 +210,6 @@ func runServe(args []string) {
 		slog.Info("Purged expired import drafts", "count", n)
 	}
 	// shortcut: expired drafts are purged at startup and on each upload, not on a timer; T6.5 maintenance can add one.
-	srv := httpserver.NewServer(cfg.Listen, sm, drafts, topics.NewService(db))
 
 	if n, err := skills.Install(root); err != nil {
 		slog.Error("Failed to install default skills", "error", err)
@@ -228,6 +227,7 @@ func runServe(args []string) {
 		DB: db, Root: root, Adapter: adapter, Model: cfg.Adapter.Model, Language: cfg.Language,
 		Timeout: cfg.Jobs.TimeoutLesson, Stall: cfg.Jobs.StallTimeout,
 	}).Handle)
+	srv := httpserver.NewServer(cfg.Listen, sm, drafts, topics.NewService(db), runner, root)
 	runnerDone := make(chan struct{})
 	go func() {
 		defer close(runnerDone)

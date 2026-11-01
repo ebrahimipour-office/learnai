@@ -1,0 +1,58 @@
+{{define "content"}}
+<p><a href="/topics">بازگشت به موضوعات</a></p>
+<h1><bdi>{{.Panel.Title}}</bdi></h1>
+<p class="note"><bdi>{{.Panel.Roadmap}}</bdi>{{with .Panel.Group}} › <bdi>{{.}}</bdi>{{end}}
+  <span class="badge">{{statusLabel .Panel.Status}}</span>
+  {{if eq .Panel.State "archived"}}<span class="badge">بایگانی‌شده</span>{{end}}</p>
+<nav class="tabs"><a href="/topics/{{.Panel.ID}}/lesson" aria-current="page">درس</a></nav>
+{{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
+{{template "job-area" .}}
+<section class="lesson">
+{{if .Panel.Lessons}}
+  <details class="versions"><summary>نسخه‌ها ({{len .Panel.Lessons}})</summary>
+    <ul>{{range .Panel.Lessons}}
+      <li><a href="/topics/{{$.Panel.ID}}/lesson?v={{.Version}}"{{if and $.Viewing (eq $.Viewing.Version .Version)}} aria-current="true"{{end}}>نسخه {{.Version}}</a>
+        {{if .Current}}<span class="badge">جاری</span>{{end}}
+        <span class="note"><bdi>{{.CreatedAt}}</bdi>{{with .Model}} · <bdi>{{.}}</bdi>{{end}}</span></li>{{end}}
+    </ul>
+  </details>
+  {{with .Viewing}}{{if not .Current}}<p class="note">در حال مشاهده نسخه قدیمی {{.Version}}. <a href="/topics/{{$.Panel.ID}}/lesson">نسخه جاری</a></p>{{end}}{{end}}
+  <article class="md" dir="auto">{{.Lesson}}</article>
+{{else}}
+  <p class="note">هنوز درسی برای این موضوع ساخته نشده است.</p>
+{{end}}
+</section>
+{{end}}
+
+{{define "job-area"}}
+<div id="job-area" aria-live="polite"{{if and .Job .Job.Active}} hx-get="/jobs/{{.Job.ID}}/card?poll=1" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
+  {{with .Notice}}<p class="error" role="alert">{{.}}</p>{{end}}
+  {{$busy := and .Job .Job.Active}}
+  <form method="post" action="/topics/{{.Panel.ID}}/jobs/lesson" hx-post="/topics/{{.Panel.ID}}/jobs/lesson" hx-target="#job-area" hx-swap="outerHTML">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    {{if .Panel.Lessons}}
+    <label><input type="checkbox" name="confirm_regenerate" value="1" required{{if $busy}} disabled{{end}}>
+      درس فعلی در تاریخچه نگه داشته و نسخه جدید ساخته شود</label>
+    <button type="submit"{{if $busy}} disabled{{end}}>بازتولید درس</button>
+    {{else}}
+    <button type="submit"{{if $busy}} disabled{{end}}>تولید درس</button>
+    {{end}}
+  </form>
+  {{with .Job}}
+  <div class="job-card job-{{.Status}}">
+    <strong>{{jobKind .Kind}}</strong> <span class="badge">{{jobStatus .Status}}</span>
+    {{if .Active}}{{with .Phase}}<span>مرحله: {{jobPhase .}}</span>{{end}}{{end}}
+    {{if .Total}}<progress value="{{.Done}}" max="{{.Total}}">{{.Done}}/{{.Total}}</progress>{{end}}
+    {{if .Duration}}<span class="note">مدت: <bdi>{{.Duration}}</bdi></span>{{end}}
+    {{if eq .Status "failed"}}<p class="error"><bdi>{{.ErrorMessage}}</bdi>{{with .ErrorCode}} <code>{{.}}</code>{{end}}</p>
+    <form method="post" action="/jobs/{{.ID}}/retry" hx-post="/jobs/{{.ID}}/retry" hx-target="#job-area" hx-swap="outerHTML">
+      <input type="hidden" name="csrf_token" value="{{$.CSRF}}"><button type="submit">تلاش مجدد</button>
+    </form>{{end}}
+    {{if .Active}}
+    <form method="post" action="/jobs/{{.ID}}/cancel" hx-post="/jobs/{{.ID}}/cancel" hx-target="#job-area" hx-swap="outerHTML">
+      <input type="hidden" name="csrf_token" value="{{$.CSRF}}"><button type="submit"{{if .CancelRequested}} disabled{{end}}>{{if .CancelRequested}}در حال لغو…{{else}}لغو{{end}}</button>
+    </form>{{end}}
+  </div>
+  {{end}}
+</div>
+{{end}}
