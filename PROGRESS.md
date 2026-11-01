@@ -9,8 +9,8 @@
 | مشخصه | وضعیت |
 |---|---|
 | **فاز فعال کنونی** | **فاز ۴ — تولید تمرین، مانیفست و تمپلیت پاسخ (Phase 4)** — فاز ۳ کامل شد ✅ |
-| **کار بعدی برای اجرا** | **Task T4.4 — نسخه‌بندی تمرین‌ها (`vN+1`) با حفظ فایل‌های قبلی و ثبت در `audit_log`** |
-| **آخرین کامیت Git** | `fix(fsx): T4.3 answer templates are BOM-free LF-only; titles cannot close comments` |
+| **کار بعدی برای اجرا** | **Task T4.5 — رابط کاربری تب تمرین‌ها و فایل‌های پاسخ (کپی مسیر، وضعیت از روی hash)** |
+| **آخرین کامیت Git** | `feat(exercises): T4.4 new exercise set version is audited; old files kept` |
 | **✅ بسته‌شده از T3.1** | **۲۰۲۶-۱۱-۰۱:** اجرای واقعی دستی با `agy` 1.4.12 (`gemini-3.8-flash-high`، `--json-schema`، `--sandbox`) موفق بود. تأیید شد: خروجی ساختاریافته در `result.structured_output` است؛ `response` متن آزاد + JSON است (fallback فقط برای JSON خالص)؛ رویدادهای میانی `init` و `step_update` درست‌اند. خط واقعی در `TestRealSuccessEnvelope` ثبت شد. |
 | **وضعیت آزمون‌های خودکار** | **۱۰۰٪ سبز و موفق** (`go test ./...` روی همه پکیج‌ها) |
 | **مسیر دایرکتوری پایه** | `C:\Users\Asus\Desktop\Leaning-appication\prj` |
@@ -88,7 +88,7 @@
   - ⏭️ `count` در params فقط از API (UI در T4.5)؛ `audit_log` برای مجموعه جدید با T4.4؛ پر کردن خودکار `out_of_scope_knowledge` از `external_knowledge` با T4.6 (اکنون ناهماهنگی ⇒ retry)؛ بازیابی `commit_journal` پس از crash مثل درس هنوز نیست
 - [x] **T4.2**: قواعد بین‌فیلدی — `crosscheck_test.go`: نمونه‌های §5.1/§5.2 قبول؛ برای هر قاعده fixture شکست‌دهنده با `errors.Is` (۱: id تکراری، شکاف/شروع order؛ ۳: پسوند غیرمجاز `ErrExtNotAllowed`، `file_name` ساختگی `ErrFileNameMismatch`؛ ۴: کم/زیاد؛ ۵: جمع وزن صفر؛ ۶: rubric ناقص/id بیگانه/id تکراری؛ rubric: جمع <۱۰۰، >۱۰۰، بدون معیار، معیار تکراری؛ `external_knowledge` بدون `out_of_scope_knowledge`) — قاعده ۲: `CheckHeadings` حالا عنوان سرفصل را هم با manifest مقایسه می‌کند (CRLF مجاز)؛ تست: گم‌شده، تکراری، جابه‌جا، عنوان نادرست، بدون فاصله
 - [x] **T4.3**: ساخت فایل‌های پاسخ با کامنت‌های متناسب زبان و رد تراکنش در صورت وجود فایل قبلی — بیشتر در T4.1 انجام شده بود (`WriteNew`، رد کل commit با فایل پاسخ موجود، `template_sha256`، رد پسوند غیرمجاز)؛ اکنون `GenerateAnswerTemplate` کد آغازین AI را نرمال می‌کند (حذف BOM، `\r\n`/`\r` ⇒ `\n`) و عنوانِ دارای `-->` کامنت `.md`/`.html` را زودتر نمی‌بندد — تست: برای همه `DefaultAllowedExtensions` بدون BOM/CR، سربرگ `@hub` با پیشوند کامنت درست
-- [ ] **T4.4**: نسخه‌بندی تمرین‌ها (`vN+1`) با حفظ تمام فایل‌های قبلی
+- [x] **T4.4**: نسخه‌بندی تمرین‌ها (`vN+1`) با حفظ تمام فایل‌های قبلی — بیشتر در T4.1 بود (`confirm_new_version`، `vN+1`، فقط یک `is_current`)؛ اکنون جایگزینی مجموعه جاری در همان تراکنش commit یک ردیف `audit_log` (`new_exercise_set`، `target=exercise_set`، detail با `previous_version`/`previous_set_id`/`job_id`) می‌نویسد؛ تست: hash همه فایل‌های v1 (درس، exercises.md، manifest، rubric، پاسخ‌ها) پس از v2 ثابت، ردیف v1 با `is_current=0` باقی، بدون تأیید ⇒ شکست و بدون ردیف audit
 - [ ] **T4.5**: رابط کاربری تب تمرین‌ها و پاسخ‌ها با امکان کپی آسان مسیر فایل
 - [ ] **T4.6**: مدیریت وابستگی‌های دانشی خارج از سرفصل (`out_of_scope_knowledge`)
 

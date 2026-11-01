@@ -286,6 +286,14 @@ func (s *Service) commit(ctx context.Context, j jobs.Job, t topic, curID int64, 
 		if _, err := tx.ExecContext(ctx, `UPDATE files SET owner_id = ? WHERE id IN (?, ?, ?)`, setID, ids[0], ids[1], ids[2]); err != nil {
 			return err
 		}
+		if curID != 0 { // a replaced set means the user confirmed confirm_new_version (R3.2)
+			if _, err := tx.ExecContext(ctx, `INSERT INTO audit_log (action, target_type, target_id, detail)
+				SELECT 'new_exercise_set', 'exercise_set', ?, json_object('topic_id', ?, 'job_id', ?, 'version', ?,
+					'previous_set_id', id, 'previous_version', version) FROM exercise_sets WHERE id = ?`,
+				setID, t.ID, j.ID, v, curID); err != nil {
+				return err
+			}
+		}
 		for i, ex := range set.Manifest.Exercises {
 			fileID, content := ids[3+i], set.Answers[i].Content
 			deps, _ := json.Marshal(ex.ExternalKnowledge)

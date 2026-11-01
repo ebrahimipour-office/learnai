@@ -260,19 +260,46 @@ func TestNewVersionKeepsOld(t *testing.T) {
 	if st, code := e.run(2, good(), `{}`); st != "succeeded" {
 		t.Fatalf("v1: %s (%s)", st, code)
 	}
-	v1 := fsx.HashBytes(e.read("topics/02-http/answers/v1/q01-hello-handler.go"))
+	rows, err := e.db.Writer().Query(`SELECT rel_path FROM files WHERE topic_id = 2`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v1 := map[string]string{} // lesson + every v1 file: exercises.md, manifest, rubric, answers
+	for rows.Next() {
+		var rel string
+		if err := rows.Scan(&rel); err != nil {
+			t.Fatal(err)
+		}
+		v1[rel] = fsx.HashBytes(e.read(rel))
+	}
+	if err := rows.Close(); err != nil || len(v1) < 6 {
+		t.Fatalf("v1 files: %d (%v)", len(v1), err)
+	}
 	if st, _ := e.run(2, good(), `{}`); st != "failed" {
 		t.Fatalf("second set without confirm: %s", st)
+	}
+	if n := e.count(`SELECT COUNT(*) FROM audit_log`); n != 0 {
+		t.Errorf("audit rows before confirm: %d", n)
 	}
 	if st, code := e.run(2, good(), `{"confirm_new_version":true}`); st != "succeeded" {
 		t.Fatalf("v2: %s (%s)", st, code)
 	}
-	if fsx.HashBytes(e.read("topics/02-http/answers/v1/q01-hello-handler.go")) != v1 {
-		t.Error("v1 answer changed")
+	for rel, h := range v1 {
+		if fsx.HashBytes(e.read(rel)) != h {
+			t.Errorf("%s changed", rel)
+		}
 	}
 	e.read("topics/02-http/answers/v2/q01-hello-handler.go")
 	if n := e.count(`SELECT COUNT(*) FROM exercise_sets WHERE topic_id = 2 AND is_current = 1 AND version = 2`); n != 1 {
 		t.Error("v2 not current")
+	}
+	if n := e.count(`SELECT COUNT(*) FROM exercise_sets WHERE topic_id = 2 AND is_current = 0 AND version = 1`); n != 1 {
+		t.Error("v1 row not kept as history")
+	}
+	if n := e.count(`SELECT COUNT(*) FROM audit_log a JOIN exercise_sets s ON s.id = a.target_id
+		WHERE a.action = 'new_exercise_set' AND a.target_type = 'exercise_set' AND s.version = 2
+		AND json_extract(a.detail, '$.previous_version') = 1`); n != 1 {
+		t.Error("no audit_log row for confirmed v2")
 	}
 }
 
