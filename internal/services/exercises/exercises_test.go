@@ -310,3 +310,23 @@ func TestBuildRejectsSmuggledHeading(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// Rule 2 of TDD §5.1: each manifest id appears exactly once, in order, as "## [qNN] <title>".
+func TestCheckHeadings(t *testing.T) {
+	m := &schema.Manifest{Exercises: []schema.ManifestExercise{{ID: "q01", Title: "A b"}, {ID: "q02", Title: "C"}}}
+	cases := map[string]string{
+		"ok":        "# T\n\n## [q01] A b\n\nx\n\n## [q02] C\n\ny\n",
+		"ok crlf":   "# T\r\n\r\n## [q01] A b\r\n\r\nx\r\n\r\n## [q02] C\r\n",
+		"missing":   "# T\n\n## [q01] A b\n\nx\n",
+		"duplicate": "## [q01] A b\n\n## [q01] A b\n\n## [q02] C\n",
+		"swapped":   "## [q02] C\n\n## [q01] A b\n",
+		"title":     "## [q01] A\n\n## [q02] C\n",
+		"no space":  "## [q01]A b\n\n## [q02] C\n",
+	}
+	for name, md := range cases {
+		err := exercises.CheckHeadings([]byte(md), m)
+		if wantOK := strings.HasPrefix(name, "ok"); (err == nil) != wantOK {
+			t.Errorf("%s: err = %v", name, err)
+		}
+	}
+}

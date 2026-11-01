@@ -18,6 +18,8 @@ var (
 	ErrMissingOutOfScope    = errors.New("external knowledge in exercise lacks corresponding out_of_scope_knowledge in rubric")
 	ErrScoreMismatch        = errors.New("aggregated weighted score does not match calculated value")
 	ErrPartialMismatch      = errors.New("partial flag mismatch: must be true if answered_count < total_count")
+	ErrExtNotAllowed        = errors.New("answer extension not in allowed_answer_exts")
+	ErrFileNameMismatch     = errors.New("answer file_name must be <id>-<slug><ext>")
 )
 
 // CrossCheckManifest validates inter-field rules for manifest.json (Section 5.1).
@@ -51,13 +53,13 @@ func CrossCheckManifest(m *Manifest, allowedExts []string, minEx, maxEx int) err
 				}
 			}
 			if !extAllowed {
-				return fmt.Errorf("extension %s for %s is not in allowed extensions list", ex.Answer.Ext, ex.ID)
+				return fmt.Errorf("%w: %s for %s", ErrExtNotAllowed, ex.Answer.Ext, ex.ID)
 			}
 		}
 
 		expectedFileName := fmt.Sprintf("%s-%s%s", ex.ID, ex.Answer.Slug, ex.Answer.Ext)
 		if ex.Answer.FileName != expectedFileName {
-			return fmt.Errorf("file_name mismatch for %s: got %s, want %s", ex.ID, ex.Answer.FileName, expectedFileName)
+			return fmt.Errorf("%w: %s got %s, want %s", ErrFileNameMismatch, ex.ID, ex.Answer.FileName, expectedFileName)
 		}
 
 		totalWeight += ex.Weight

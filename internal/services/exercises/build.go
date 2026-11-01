@@ -143,18 +143,22 @@ func Build(raw json.RawMessage, m Meta) (*Set, error) {
 	return set, nil
 }
 
-var headingRe = regexp.MustCompile(`(?m)^## \[(q[0-9]{2,3})\] `)
+var headingRe = regexp.MustCompile(`(?m)^## \[(q[0-9]{2,3})\] (.*)$`)
 
-// CheckHeadings re-parses the built exercises.md: every manifest id exactly once, in order
-// (a statement that smuggles in its own "## [qNN]" heading fails here).
+// CheckHeadings re-parses the built exercises.md: every manifest id exactly once, in order,
+// as "## [qNN] <title>" (a statement that smuggles in its own "## [qNN]" heading fails here).
 func CheckHeadings(md []byte, m *schema.Manifest) error {
 	found := headingRe.FindAllSubmatch(md, -1)
 	if len(found) != len(m.Exercises) {
 		return fmt.Errorf("exercises.md has %d exercise headings, manifest has %d", len(found), len(m.Exercises))
 	}
 	for i, f := range found {
-		if got := string(f[1]); got != m.Exercises[i].ID {
-			return fmt.Errorf("exercises.md heading %d is %s, want %s", i+1, got, m.Exercises[i].ID)
+		ex := m.Exercises[i]
+		if got := string(f[1]); got != ex.ID {
+			return fmt.Errorf("exercises.md heading %d is %s, want %s", i+1, got, ex.ID)
+		}
+		if got := strings.TrimRight(string(f[2]), "\r"); got != ex.Title {
+			return fmt.Errorf("exercises.md heading %s title is %q, want %q", ex.ID, got, ex.Title)
 		}
 	}
 	return nil
