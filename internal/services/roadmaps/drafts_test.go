@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"learninghub/internal/fsx"
 	"learninghub/internal/roadmap"
 	"learninghub/internal/services/roadmaps"
 	"learninghub/internal/store"
@@ -16,13 +17,23 @@ import (
 const sample = "# Go\n## Basics\n### Types\n### Loops\n## Concurrency\n### Goroutines\n"
 
 func newService(t *testing.T) (*roadmaps.Service, *store.DB) {
+	s, db, _ := newServiceIn(t, t.TempDir())
+	return s, db
+}
+
+func newServiceIn(t *testing.T, base string) (*roadmaps.Service, *store.DB, *fsx.Root) {
 	t.Helper()
-	db, err := store.Open(filepath.Join(t.TempDir(), "app.db"))
+	db, err := store.Open(filepath.Join(base, "app.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	return roadmaps.NewService(db), db
+	root, err := fsx.OpenRoot(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { root.Close() })
+	return roadmaps.NewService(db, root), db, root
 }
 
 func count(t *testing.T, db *store.DB, table string) int {

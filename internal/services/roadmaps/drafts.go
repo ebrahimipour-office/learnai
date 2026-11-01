@@ -1,4 +1,4 @@
-// Package roadmaps holds roadmap import: drafts and preview (T2.4), later confirm and diff.
+// Package roadmaps holds roadmap import: drafts and preview (T2.4), confirm (T2.5), later diff.
 package roadmaps
 
 import (
@@ -52,12 +52,13 @@ func (d *Draft) Preview(c Choice) (*roadmap.Selection, error) {
 }
 
 type Service struct {
-	db  *store.DB
-	Now func() time.Time // replaceable in tests
+	db   *store.DB
+	root *fsx.Root
+	Now  func() time.Time // replaceable in tests
 }
 
-func NewService(db *store.DB) *Service {
-	return &Service{db: db, Now: time.Now}
+func NewService(db *store.DB, root *fsx.Root) *Service {
+	return &Service{db: db, root: root, Now: time.Now}
 }
 
 func (s *Service) ts(t time.Time) string { return t.UTC().Format(tsFormat) }

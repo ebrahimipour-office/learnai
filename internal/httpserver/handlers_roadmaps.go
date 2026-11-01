@@ -24,7 +24,7 @@ type app struct {
 
 // pageData is shared by all pages; each template uses the fields it needs.
 type pageData struct {
-	Title, CSRF, Error string
+	Title, CSRF, Error, Notice string
 
 	Draft           *roadmaps.Draft
 	Expires         string
@@ -176,6 +176,33 @@ func (a *app) updateSelection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.renderDraft(w, r, http.StatusOK, d, "")
+}
+
+func (a *app) confirmDraft(w http.ResponseWriter, r *http.Request) {
+	d := a.loadDraft(w, r)
+	if d == nil {
+		return
+	}
+	// Section 7: sensitive actions need the explicit confirm parameter on the server too.
+	if r.FormValue("confirm") != "1" {
+		a.renderDraft(w, r, http.StatusConflict, d, "برای ثبت، تأیید لازم است.")
+		return
+	}
+	_, n, err := a.drafts.Confirm(r.Context(), d.ID)
+	switch {
+	case errors.Is(err, roadmaps.ErrNothingSelected):
+		a.renderDraft(w, r, http.StatusUnprocessableEntity, d, "هیچ موضوعی انتخاب نشده است.")
+	case errors.Is(err, roadmaps.ErrDraftNotFound):
+		a.render(w, http.StatusNotFound, "new", "layout", &pageData{Title: "ورود نقشه راه",
+			Error: "پیش‌نویس پیدا نشد، منقضی شده یا قبلاً ثبت شده است."})
+	case err != nil:
+		slog.Error("confirming draft", "error", err)
+		a.renderDraft(w, r, http.StatusInternalServerError, d, "ثبت ناموفق بود؛ هیچ تغییری ذخیره نشد.")
+	default:
+		// shortcut: shows a notice on the import page; T2.6 should 303 to /topics once it exists.
+		a.render(w, http.StatusOK, "new", "layout", &pageData{Title: "ورود نقشه راه",
+			Notice: fmt.Sprintf("نقشه راه ثبت شد: %d موضوع.", n)})
+	}
 }
 
 // renderDraft serves the full page, or only the form fragment for htmx requests.

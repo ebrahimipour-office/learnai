@@ -2,6 +2,11 @@
 <h1>پیش‌نمایش ورود: <bdi>{{.Draft.SourceName}}</bdi></h1>
 <p class="note">تا پیش از تأیید هیچ موضوع، گروه یا فایلی ثبت نمی‌شود. این پیش‌نویس تا <bdi>{{.Expires}}</bdi> نگه داشته می‌شود.</p>
 {{template "draft-form" .}}
+<form method="post" action="/roadmaps/drafts/{{.Draft.ID}}/confirm">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <input type="hidden" name="confirm" value="1">
+  <button type="submit">تأیید و ثبت موضوعات انتخاب‌شده</button>
+</form>
 {{end}}
 
 {{define "draft-form"}}

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"learninghub/internal/config"
+	"learninghub/internal/fsx"
 	"learninghub/internal/httpserver"
 	"learninghub/internal/services/roadmaps"
 	"learninghub/internal/store"
@@ -190,7 +191,13 @@ func runServe(args []string) {
 		slog.Error("Failed to initialize security manager", "error", err)
 		return
 	}
-	drafts := roadmaps.NewService(db)
+	root, err := fsx.OpenRoot(cfg.BaseDir)
+	if err != nil {
+		slog.Error("Failed to open base directory", "path", cfg.BaseDir, "error", err)
+		return
+	}
+	defer root.Close()
+	drafts := roadmaps.NewService(db, root)
 	if n, err := drafts.PurgeExpired(ctx); err != nil {
 		slog.Error("Failed to purge expired import drafts", "error", err)
 	} else if n > 0 {

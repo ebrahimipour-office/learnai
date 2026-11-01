@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"learninghub/internal/fsx"
 	"learninghub/internal/httpserver"
 	"learninghub/internal/services/roadmaps"
 	"learninghub/internal/store"
@@ -36,7 +37,12 @@ func newEnv(t *testing.T) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := httpserver.NewServer("127.0.0.1:8787", sm, roadmaps.NewService(db))
+	root, err := fsx.OpenRoot(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { root.Close() })
+	srv := httpserver.NewServer("127.0.0.1:8787", sm, roadmaps.NewService(db, root))
 	if srv.ReadHeaderTimeout == 0 || srv.IdleTimeout == 0 {
 		t.Error("server timeouts must be set (Section 8)")
 	}
@@ -200,3 +206,40 @@ func extractValues(s, prefix string) []string {
 	}
 }
 
+func (e *env) confirm(draftURL string, form url.Values) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, draftURL+"/confirm", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Origin", "http://127.0.0.1:8787")
+	return e.do(req)
+}
+
+func TestConfirmImport(t *testing.T) {
+	e := newEnv(t)
+	draftURL := e.upload("go.md", []byte("# Go\n## Basics\n### Types\n### Loops\n")).Header().Get("Location")
+	page := e.do(httptest.NewRequest(http.MethodGet, draftURL, nil)).Body.String()
+	if !strings.Contains(page, `action="`+draftURL+`/confirm"`) {
+		t.Fatalf("preview must offer a confirm form:\n%s", page)
+	}
+	csrf := e.sm.CSRFToken()
+
+	if rec := e.confirm(draftURL, url.Values{"csrf_token": {""}, "confirm": {"1"}}); rec.Code != http.StatusForbidden {
+		t.Errorf("confirm without CSRF: want 403, got %d", rec.Code)
+	}
+	if rec := e.confirm(draftURL, url.Values{"csrf_token": {csrf}}); rec.Code != http.StatusConflict {
+		t.Errorf("confirm without confirm=1: want 409, got %d", rec.Code)
+	}
+	rec := e.confirm(draftURL, url.Values{"csrf_token": {csrf}, "confirm": {"1"}})
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "ثبت شد: 2 موضوع") {
+		t.Fatalf("confirm: want 200 with notice, got %d\n%s", rec.Code, rec.Body.String())
+	}
+	var n int
+	if err := e.db.Writer().QueryRow("SELECT COUNT(*) FROM topics").Scan(&n); err != nil || n != 2 {
+		t.Errorf("topics: want 2, got %d (%v)", n, err)
+	}
+	if _, err := os.Stat(filepath.Join(e.base, "roadmaps", "go", "rev-001.md")); err != nil {
+		t.Errorf("rev-001.md: %v", err)
+	}
+	if rec := e.confirm(draftURL, url.Values{"csrf_token": {csrf}, "confirm": {"1"}}); rec.Code != http.StatusNotFound {
+		t.Errorf("repeat confirm: want 404, got %d", rec.Code)
+	}
+}
