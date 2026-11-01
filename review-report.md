@@ -1,45 +1,43 @@
 # Review Report: Work Completed So Far
 
 **Date:** 2026-11-01
-**Scope:** everything up to `8d91bf4`. That is Phase 1 (T1.1–T1.9), T2.1–T2.3, plus two commits new since the last review:
-- `f1caabc`: `hub serve` now starts the HTTP server.
-- `8d91bf4`: T2.4, the import draft preview, including a `Referrer-Policy` fix.
+**Scope:** everything up to `09a10b4`. That is Phase 1 (T1.1–T1.9) and T2.1–T2.4, plus two commits new since the last review:
+- `b293fdb`: T2.5, transactional import confirm.
+- `09a10b4`: T2.6, the topic list with Persian search.
 
-**Earlier reports:** this replaces the review up to `9cd42c8` (commit `25a314f`). Full details of older findings are in `git show 25a314f:review-report.md`. No code under `store`, `roadmap`, `config`, `fsx` or `schema` has changed since then (`git diff 9cd42c8 8d91bf4` on those directories is empty), so every earlier finding in them is still open as described.
+**Earlier reports:** this replaces the review up to `8d91bf4` (commit `397815e`). Full details of older findings are in `git show 397815e:review-report.md` (S-series, M/L/N/H series) and `git show 25a314f:review-report.md` (older detail). Only `services/roadmaps`, `httpserver`, `ui`, `cmd/hub` and the new `services/topics` changed since then. Every earlier finding in other packages is still open as described.
 
 **Method:**
-- `go vet ./...`; `go test -race -count=1 ./...`; `CGO_ENABLED=0 GOOS=windows go build ./...`; `CGO_ENABLED=0 go test ./...`; `gofmt -l`.
-- A separate reviewer who didn't write `f1caabc`/`8d91bf4` read them against the design doc (T2.4 row, §7 routes, §8 security). It confirmed findings with throwaway probe tests (since deleted) and a 3000-document property fuzz of the preview tree.
-- I re-ran the most serious new finding (S1) myself.
-- A manual browser run of T2.4 (Playwright/Chromium) was done during implementation. It is how the `Origin: null` bug was found.
+- `go vet ./...`, `go test -race -count=1 ./...`, `CGO_ENABLED=0 GOOS=windows go build ./...`, `CGO_ENABLED=0 go test -count=1 ./...`, `gofmt -l`. All pass, except the 6 older files flagged by `gofmt` (L9).
+- A separate reviewer who didn't write `b293fdb` or `09a10b4` read them against the design doc. That covered the T2.5/T2.6 rows, the `/topics` page and the confirm route in §7, §3.4 (`dir_name` never changes) and §8. It confirmed findings with throwaway probe tests (since deleted), including a seeded run of 500 topics, 1500 exercise sets and 15000 attempts.
+- I re-checked the most serious new finding (R1) against the vendored htmx 2.0.4 source. R3 and R4 can be read directly in `confirm.go`. I also re-checked H2 and ran the 500-topic timing test under `-race`.
+- During implementation, a smoke run on the real `hub serve` binary did upload → confirm → `303 /topics` → Persian search. It found `rev-001.md` on disk.
 
 ---
 
 ## 1. Verdict
 
-**The new work is functionally correct.**
-- Upload, preview, rule switching and ticks all work in a real browser.
-- Nothing is written to `roadmaps`/`groups`/`topics` or the `roadmaps/` folder before confirm. A test checks this, and the real database from the browser run confirmed it.
-- All checks pass, including the race detector and the Windows build without CGO.
-- The `Referrer-Policy` fix was independently confirmed against the Fetch spec. Before it, every POST from a real browser was rejected.
+**The main flows are correct.**
+- Confirm is all-or-nothing. A failure mid-way leaves no rows and no file, and a double confirm imports exactly once.
+- The topic list shows the right tree, score, filter and search results. It renders 500 topics with a p95 of about 17ms (164ms under `-race`) against a 300ms budget.
 
-**The weaknesses are in error paths, not the main flow:**
-- `hub serve` exits with code 0 when it can't start (S1).
-- Under htmx, error responses are silently dropped (S2).
-- Keyboard focus is lost after every tick (S3).
+**But T2.5 was built before its stated prerequisites.**
+- The last report said N1/N2 (stable keys, dropped content) **must be fixed before T2.5**, because T2.5 stores keys permanently. That warning was not acted on (P1).
+- Stable keys, `title_norm` and outlines are now persisted. Fixing N1/N2/N3 later now means a data migration if real imports exist. For now, nothing real has been imported, so the cost is still low.
+- **Do this before importing a real roadmap.**
 
-**Still blocking the roadmap:**
-1. **N1 and N2 (stable keys / dropped content) must be fixed before T2.5.** T2.4 only stores keys in temporary drafts, so it was safe to build. T2.5 writes them permanently.
-2. **H1 (database deadlock) will hit T2.5 directly:** T2.5 is the first code that reads inside `WithTx`.
-3. **B1 (no working AI backend) still blocks Phase 3.**
+**New defects worth fixing soon:**
+- **R1:** the Back button can break the `/topics` page.
+- **R3:** a topic folder name can collide with a folder already on disk.
+- **R4:** a topic unticked just before Confirm can still be imported, permanently.
 
 | Severity | Earlier, still open | New in this round |
 |---|---|---|
 | Blocker | 1 (B1) | 0 |
-| High | 3 (H1, H2, N1) | 0 |
-| Medium | 5 (M2, M3, M4, N2, N3) | 3 (S1–S3) |
-| Low | 12 (L1–L6, L8–L10, N4–N6) | 7 (S4–S10) |
-| Fixed since last report | M1 (`serve`), L7 for form uploads | — |
+| High | 3 (H1, H2, N1). N1 is now harder to fix. | 0 |
+| Medium | 8 (M2–M4, N2, N3, S1–S3) | 3 (R1, R3, R4) |
+| Low | 19 (L1–L6, L8–L10, N4–N6, S4–S10) | 13 (R2, R5–R13, R15, R16) + process note P1 |
+| Fixed since last report | none | — |
 
 ---
 
@@ -48,84 +46,111 @@
 | Task | Claimed | Actual |
 |---|---|---|
 | **T1.1** agy feasibility | ✅ | ❌ Not done (B1). Unchanged. |
-| **T1.5** CLI skeleton | ✅ (now says `serve` is complete) | ⚠️ `serve` works, but the config is still never loaded (H2), and a failed start exits 0 (S1). |
-| **T1.8** SQLite store | ✅ | ⚠️ The reader pool is missing (H1). Unchanged. |
-| **T2.1** parser | ✅ | ✅ |
-| **T2.2 / T2.3** | ✅ | ⚠️ N1/N2/N3 are still open. |
-| **T2.4** import preview | ✅ | ⚠️ Every acceptance criterion is met. Two spec gaps remain: §7.1 htmx error fragments (S2) and the 200-character title check that the last report asked T2.4 to add (N6). |
+| **T1.5** CLI skeleton | ✅ | ⚠️ H2 and S1 are still open. |
+| **T1.8** SQLite store | ✅ | ⚠️ The reader pool is still missing (H1). T2.5 avoided the deadlock by reading only through the transaction. |
+| **T2.2 / T2.3** | ✅ | ⚠️ N1/N2/N3 are still open, and their output is now persisted (P1). |
+| **T2.4** import preview | ✅ | ⚠️ S2 (§7.1 htmx error fragments) and N6 are still open. |
+| **T2.5** confirm | ✅ | ⚠️ Every acceptance criterion is met and tested. R3 (`dir_name` vs disk) and R4 (stale choice) are open. |
+| **T2.6** topic list | ✅ | ⚠️ Every acceptance criterion is met, including 500 topics under 300ms. R1 (Back button) is open. The running-job indicator is deferred, and PROGRESS.md already says so (R14). |
 
 ---
 
-## 3. New findings (`f1caabc`, `8d91bf4`)
+## 3. New findings (`b293fdb`, `09a10b4`)
+
+### Process
+
+**P1. T2.5 was implemented while the last report's "fix before T2.5" items were open.**
+- **Which items:** N1 (keys change when a same-named sibling group gains a topic), N2 (dropped content) and N3 (`Normalize` gaps).
+- **What is now persisted:**
+  - `groups.stable_key` and `topics.stable_key`. T2.7 will match on them.
+  - `topics.title_norm`. Search uses it.
+  - `topics.outline`. Content dropped by N2 is missing from it.
+- **Recovery:** the full source survives in `rev-001.md` and `roadmap_revisions.parsed_tree`, so everything can be recomputed.
+- **Cause:** the implementing session didn't read `review-report.md`. The continuity protocol in `AGENTS.md`/`PROGRESS.md` only points to `PROGRESS.md`.
+- **Fix:**
+  - Fix N1/N2/N3 now, before any real import and before T2.7.
+  - Add a pointer to `review-report.md`'s "Recommended order" in `PROGRESS.md`, so blockers aren't missed again.
 
 ### Medium
 
-**S1. `hub serve` exits with code 0 when the server fails, and logs "Listening" before the port is bound.** *(Confirmed, and re-run by me.)*
+**R1. The Back button can replace the `/topics` page with a bare results fragment.** *(Confirmed from the htmx 2.0.4 source; not run in a browser.)*
 
-- **Scenario:** port 8787 is already taken. The log shows `Listening`, then `bind: address already in use`, and the exit code is 0. A failure in `NewSecurityManager` also exits 0.
-- **Why it matters:** `hub doctor`, scripts or a service manager would think the server started.
-- **Where:** `cmd/hub/main.go:191`, `cmd/hub/main.go:202-209`
+- **What happens:**
+  - Live search uses `hx-push-url`, so every 300ms pause in typing adds a history entry.
+  - On Back, if htmx's history cache misses, it re-requests the URL with `HX-Request: true` and `HX-History-Restore-Request: true`. It then puts the response in place of the whole `<body>` (verified in `internal/ui/static/htmx.min.js`).
+  - The handler only checks `HX-Request`, so it returns the `topic-results` fragment.
+- **Result:** the header, heading, search form and import link disappear.
+- **When the cache misses:**
+  - After 10 entries (`historyCacheSize:10`).
+  - When localStorage is full, which comes quickly with a 500-topic page.
+  - Always, when localStorage is blocked.
+- **Where:** `internal/httpserver/handlers_topics.go:39-42`, `internal/ui/templates/topics.html:7`
 - **Fix:**
-  1. Call `net.Listen` first, then log, then `srv.Serve(ln)`.
-  2. Have `runServe` return an error, and have `main` call `os.Exit(1)`. The deferred unlock and DB close still run inside `runServe`.
+  - Render the full layout when `HX-History-Restore-Request: true`.
+  - Use `hx-replace-url` instead of `hx-push-url`, so Back doesn't step through every partial query.
+  - Add `Vary: HX-Request`.
 
-**S2. Under htmx, error responses are never shown.** *(Confirmed from the htmx 2.0.4 source; not run in a browser.)*
+**R3. A topic's `dir_name` is checked only against the database, never against the disk.** *(Confirmed with a probe.)*
 
-- **Cause:** htmx's default `responseHandling` does not swap 4xx/5xx responses, and our `htmx-config` doesn't change that.
-- **Scenario:** the draft expires while the page is open, and the user ticks a box. The server returns 404, but nothing changes on screen: the box looks ticked even though nothing was saved. The 422 "invalid rule" fragment is never displayed either.
-- **Second problem:** the 404 path renders a full page, which would end up nested inside the form if it were ever swapped in.
-- **Spec:** design §7.1 requires an error fragment with `HX-Retarget` for htmx requests.
-- **Where:** `internal/httpserver/handlers_roadmaps.go:117-119, 144, 152, 166-171`
-- **Fix:** for `HX-Request`:
-  - Send 404 with `HX-Redirect: /roadmaps/new`.
-  - Return errors as fragments with `HX-Retarget`/`HX-Reswap`, or add a `responseHandling` entry for 422 in the meta config.
+- **The gap:** `freeRoadmapSlug` checks the disk, but topic folder numbering does not.
+- **Probe:** a folder `topics/01-types/answers/v1/q01-x.go` was left over from an earlier `app.db`. A new import gave a topic `dir_name=01-types`.
+- **Result:** since `dir_name` never changes (§3.4, I6), that topic's first generation either fails forever on `WriteNew` or mixes new files with old answers.
+- **Second problem:** the number is `COUNT(*)` of topics, which is gap-free only while no topic row is ever deleted.
+- **Where:** `internal/services/roadmaps/confirm.go:117-131`
+- **Fix:** inside the transaction, skip numbers whose `topics/<dir>` exists on disk or in the DB (`MAX` + probe), and drop the reliance on `COUNT(*)`.
 
-**S3. Keyboard focus is lost after every change** (accessibility). *(Confirmed from the htmx source.)*
+**R4. Confirm reads the draft's choice outside the transaction, so a late untick can be lost.** *(Plausible: a timing race, not reproduced.)*
 
-- **Cause:** the whole form is swapped `outerHTML`. htmx only restores focus to an element that has an `id`, and the `<select>` and checkboxes have none.
-- **Scenario:** a keyboard user ticks a box, focus jumps to `<body>`, and they have to tab through the whole tree again. With a 500-topic roadmap that is unusable.
-- **Also:** the `aria-live` counter is replaced rather than updated, so screen readers may not announce the new count.
-- **Where:** `internal/ui/templates/draft.html:9, 13, 30`
-- **Fix:** swap an inner container so the form element survives. Or add stable ids: `id="sel-rule"`, and `id="t-{{.Key}}"` on checkboxes (keys are unique per selection).
+- **The code:** `Confirm` loads the draft and its `Choice` before `WithTx`. Inside the transaction it only deletes the draft by id.
+- **Scenario:** the user unticks a topic, which sends an htmx POST to `/selection`. That handler re-parses up to 1 MB. The user clicks Confirm right away, and the confirm reads the old choice first.
+- **Result:** the unticked topic is imported, and topics are never deleted.
+- **Same outcome when:** the selection POST fails silently (S2), or the click is dropped (S4).
+- **Where:** `confirm.go:26-31` with `drafts.go:122`
+- **Fix:** read `selection` and `content` inside the transaction. For example, `DELETE … RETURNING selection, content`, then compute the selection from what was returned.
 
 ### Low
 
 | # | Finding | Status | Location |
 |---|---|---|---|
-| S4 | Two quick clicks can lose the second one. htmx queues the second request, then drops it because the first response replaced its form. The DB and screen stay consistent, but the click is undone. Same fix as S3, or `hx-sync="this:replace"`. | Plausible | `draft.html:9` |
-| S5 | An oversized body sent with the `X-CSRF-Token` header (the htmx path) gets 422 "invalid rule" instead of 413. With the header present the middleware skips parsing, and `FormValue` hides the error. Fix: `r.ParseForm()` in the handler, mapping `MaxBytesError` to 413. | Confirmed | `handlers_roadmaps.go:141`, `middleware.go:117` |
-| S6 | With `listen = "[::1]:8787"`, which the config allows, every POST gets 403 because `http://[::1]:port` is missing from the Origin allowlist. This was L4 before; `serve` now makes it reachable. Related: §8.1 asks for an exact `host:port` Host match, but the code ignores the port. Low risk. | Confirmed | `middleware.go:93-98` |
-| S7 | A body over 1 MB + 64 KB gets a plain-text English 413 from the middleware instead of the Persian upload page. Go may also close the connection, so the browser shows "connection reset" instead. | Plausible | `middleware.go:115-119` |
-| S8 | `SetChoice` stores excluded keys that don't exist in the draft, although its comment says it "validates c against the draft". The handler filters keys correctly (forged and duplicate keys were tested). This matters for T2.5 callers. | Confirmed | `services/roadmaps/drafts.go:130-133` |
-| S9 | `config.Limits.MaxRoadmapBytes` exists but is never read; 1 MB is hardcoded in the service and the middleware. Wire it through, or delete the field. | Confirmed | `drafts.go:23`, `middleware.go:69` |
-| S10 | Test gaps:<br>• The tick test checks only the count, not which box is unticked or that ticks survive a reload.<br>• No test pins `Referrer-Policy: same-origin`, so the fix can silently regress.<br>• No test for 413 on the htmx path, or for htmx not swapping 4xx.<br>• `server_test.go` is not `gofmt`-clean (one trailing blank line). | Confirmed | `internal/httpserver/server_test.go` |
+| R2 | After Back, the results match the older query but the search box shows the first-render value. htmx snapshots `innerHTML`, which keeps the `value` *attribute*, and the form sits outside the swapped region. Fix: put the form inside the swap, or update the input out-of-band. | Confirmed (source) | `topics.html:6-15` |
+| R5 | The roadmap slug is capped at 64 *runes*, not bytes. A file name of 60 four-byte letters fails every confirm with "path exceeds 220", shown as a generic 500. A 64-character Persian name works. Fix: cap by bytes (about 120), or fall back to `roadmap`. | Confirmed (probe) | `confirm.go:162` |
+| R6 | `%02d` with one counter shared across all roadmaps. From topic 100 on, folders sort `10-`, `100-`, `11-`. A second roadmap starts at, say, `37-`. Decide `%03d`, or per-roadmap numbering, **before real data**, because `dir_name` never changes. | Confirmed | `confirm.go:131` |
+| R7 | Search can't match a query typed with no space where the title has a half-space: `نوعها` doesn't find `نوع‌ها`. Queries with a space or a ZWNJ do match. Fix: also compare with spaces stripped on both sides. | Confirmed (probe) | `services/topics/list.go:40,76` |
+| R8 | A file named exactly `.md` gives an empty roadmap title, so the list shows an empty `<h2>`. Fix: fall back to the first H1, or the slug. | Confirmed (probe) | `confirm.go:61` |
+| R9 | `List` runs three separate queries with no transaction. A Confirm committing between the group and topic queries shows new topics flat under their roadmap until reload. A read transaction is not an option, because `_txlock=immediate` takes the write lock. Fix: fetch groups in the same query. | Plausible | `list.go:40-79` |
+| R10 | `printf "%.0f"` rounds half to even: 60.5 shows as 60, 88.5 as 88. Scores have 2 decimals (T5.3). Fix: round half up, or show decimals. | Confirmed | `topics.html:40` |
+| R11 | `select_rule` stores `{"kind":"deepest"}`, not the level it resolved to. In T2.7, a new revision with a deeper heading would change which level counts as a topic, so every existing topic would look gone and be archived. Fix: store the resolved `{"kind":"level","level":N}`. Recoverable from `parsed_tree`. | Plausible (T2.7) | `confirm.go:57` |
+| R12 | Double-clicking Confirm shows the second response, "draft not found / already registered", instead of the topic list. The data is safe. Fix: on `ErrDraftNotFound` after a confirm, redirect to `/topics`, or disable the button on submit. | Confirmed | `handlers_roadmaps.go:203-205`, `draft.html:5-9` |
+| R13 | If the commit fails, `rev-001.md` is removed but the empty `roadmaps/<slug>/` folder stays, so the retry gets `slug-2`. Cosmetic. | Confirmed (reading) | `confirm.go:151-153` |
+| R14 | §7.2 lists a running-job indicator on `/topics`; it is absent. This is deliberate: there are no jobs until Phase 3, and PROGRESS.md notes it for T3.8. | Spec gap, tracked | `topics.html` |
+| R15 | Test gaps: the 500-topic test has no exercise sets or attempts, so the "latest attempt" part of the query isn't exercised at scale. The reviewer's probe with 15000 attempts took about 15ms. No tests cover `HX-History-Restore-Request`, a topic folder already on disk, or concurrent confirms. | Confirmed | `server_test.go`, `confirm_test.go` |
+| R16 | The 500-topic timing test measures p95 of about 164ms under `-race`, against its 300ms limit. On a slower or loaded machine it can fail with no code change. Fix: skip the timing assertion when the race detector is on, or under `testing.Short()`, and keep the count check. | Confirmed (measured) | `server_test.go:284-287` |
 
 ### Checked and found correct
 
-- **Preview tree (`buildTree`):** a property fuzz of 3000 random documents × 6 rules found 0 mismatches. The fuzz included duplicate titles and skipped heading levels. Order matches `Selection.Topics`, every topic sits under its exact group chain, and each group appears once.
-- **Timestamps:** the Go format matches SQLite `strftime('%Y-%m-%dT%H:%M:%fZ')` at a fixed width, so string comparison is safe. The time is converted to UTC, so a `+03:30` clock still expires at 24 hours (checked ±1 minute). Expiry and purge use `>` and `<=` consistently.
-- **Selection handler:**
-  - Changing the rule resets the ticks.
-  - Forged and duplicate keys are ignored, and a missing `shown_rule` means everything is ticked.
-  - A bad rule gives 422.
-  - Without JavaScript, the form falls back to a 303 redirect.
-- **Referrer-Policy fix:** the Fetch spec's "append a request Origin header" sets `Origin: null` on non-GET requests under `no-referrer`, for both form POSTs and same-origin XHR. So the bug was real, and `same-origin` is the correct fix.
-- **Request bodies:**
-  - Multipart is parsed before the CSRF check, and an oversized body maps to 413.
-  - Memory is capped at about 1.06 MB.
-  - Uploads that spill to temp files are deleted by net/http after the request (0 left, checked on a real `httptest.Server`).
-- **Templates:** `hx-headers` renders valid JSON. Titles, outlines and IDs are escaped. The `htmx-config` meta tag is static text.
-- **htmx:** `internal/ui/static/htmx.min.js` matches the official 2.0.4 SRI hash, and the downloads from unpkg and jsDelivr were byte-identical.
-  - `includeIndicatorStyles:false` avoids a CSP violation.
-  - `allowEval:false` is safe, since nothing uses `hx-on` or `js:`.
-  - The default `selfRequestsOnly` means the CSRF header is never sent to another origin.
-- **Security:**
-  - No CORS headers are sent.
-  - The Host check runs on GET requests too, and `frame-ancestors 'none'` is set.
-  - Draft IDs are 128-bit random.
-  - Nothing state-changing is reachable cross-origin.
-- **Shutdown:** SIGINT gives a graceful exit with code 0. `ErrServerClosed` is handled correctly.
-- **Builds:** `go vet` is clean. `go test -race` passes in every package. The Windows build without CGO and the tests with CGO off both pass.
+- **Atomicity:**
+  - The draft delete and every insert run in one immediate transaction, under the store mutex.
+  - `rev-001.md` is written last with `WriteNew` (create-only) and removed if the commit fails.
+  - If the request is cancelled, everything rolls back and the file is removed. The draft survives a failed confirm.
+  - Tested: a failure mid-way (a DB trigger on the second topic) and a file write failure. Both leave zero rows and no `roadmaps/` folder.
+- **Double or concurrent confirm:** the draft DELETE runs first and checks rows affected, so exactly one import happens and the other gets 404.
+- **What gets recorded:**
+  - Excluded topics are skipped, and groups without topics are skipped. Parents are inserted before children.
+  - Stable keys are unique within a selection (`#N` suffixes), so the per-roadmap UNIQUE constraints can't fire on a valid draft.
+- **Revision file:** `rev-001.md` is byte-exact, including NUL bytes, and its sha256 matches.
+- **Folders and names:**
+  - The roadmap slug is unique in the DB and on disk. It is lowercase, so case-insensitive file systems are fine, and reserved Windows names fall back to `roadmap`.
+  - A 64-character Persian name works. `topics/` is not created at import, as the spec says.
+- **Confirm route:** CSRF is enforced, a missing `confirm=1` gives 409, and success gives 303 to `/topics`. `/` and the header link now go to `/topics`.
+- **List query:**
+  - The score and "ناقص" tag come from the latest attempt of the *current* exercise set.
+  - The status filter is whitelisted, and unknown values are ignored.
+  - Search uses `instr` with bound parameters, so there is no LIKE-wildcard issue. Arabic ي/ك, ZWNJ (typed as a space), Persian digits and case all match.
+  - Branches with no match are pruned, and order follows the document.
+- **htmx:** focus stays in the search box, which is outside the swap target, so S3 does not apply here. Requests queue in order.
+- **Templates:** titles and the query are escaped.
+- **Project rules:** no CGO, all file access goes through `fsx.Root`, and `WriteNew` is used for the immutable revision file.
+- **H1 not triggered:** Confirm reads the draft before `WithTx` and inside it uses only `tx`. List doesn't use `WithTx`, and closes its group rows before the topic query, which matters on a single connection.
 
 ---
 
@@ -134,47 +159,44 @@
 | # | Finding | Status |
 |---|---|---|
 | **B1** | `agy` unusable (account region-blocked). Blocks Phases 3–5. | Open: decision needed. |
-| **H1** | Database deadlock: one connection, and a read inside `WithTx` hangs. `internal/store/db.go:39` | Open. **T2.5 will be the first code to hit it.** The T2.4 drafts code avoids it by not using `WithTx`. |
-| **H2** | `config.toml` is never loaded. `cmd/hub/main.go:134`, `internal/config/config.go:128` | Open. **Now more visible:** `hub serve` creates `app.db` and `.app/` in whatever folder you start it from. |
-| **N1** | A topic's key changes when a same-named sibling group gains a topic. | Open. **Must be fixed before T2.5** stores keys. |
-| M1 | `serve` started no HTTP server. | ✅ **Fixed** in `f1caabc`. |
-| M2 | Forbidden-flag list misses `agy --mode`. | Open (handle in T3.1). |
-| M3 | `hub doctor` reports OK when `agy` can't make a call. | Open (handle in T3.9). |
-| M4 | `ExtractAnswerContent` trims whitespace, so answers aren't kept byte for byte. | Open (fix before Phase 4). |
-| **N2** | The selection rules silently drop content (global "deepest" level; content directly under group headings). | Open. **Needs your decision** before T2.5. The preview now makes this visible but doesn't list what was dropped. |
-| N3 | `Normalize` misses invisible and bidi characters and Arabic diacritics. | Open. Fold into the N1 change, since it also changes keys. |
-| N4–N5 | Edge cases in empty-title and `#N` key suffixes. | Open. |
-| N6 | Titles over 200 characters aren't caught at import. The last report asked the T2.4 preview to check this; it doesn't. | Open. |
-| L4 | Origin allowlist. | Open; see S6. |
-| L7 | Oversized body got 403 instead of 413. | ✅ **Fixed** for form uploads in `8d91bf4`. Still wrong on the htmx header path (S5). |
-| L8 | YAML front matter is parsed as a heading. | Open. **Now user-visible** in the T2.4 preview. |
-| L1–L3, L5, L6, L9, L10 | See the earlier report. | Open. L9 (`gofmt`) now covers 7 files (+`server_test.go`). |
+| **H1** | One DB connection; a read via `db.Writer()` inside `WithTx` deadlocks. | Open, not triggered (see above). Every new transactional service has to remember this. |
+| **H2** | Config loading. | Open, restated: `--config <path>` works (the smoke run used it). With no flag, `DefaultConfigPath()` is never consulted, so `hub serve` uses defaults and the current folder. `cmd/hub/main.go:134`, `config.go:127` |
+| **N1** | A topic's key changes when a same-named sibling group gains a topic. | Open, **worse:** keys are now persisted and T2.7 will match on them (P1). |
+| N2 | Selection rules silently drop content. | Open, **worse:** the dropped content is missing from the stored `topics.outline` (recoverable from `parsed_tree`). |
+| N3 | `Normalize` misses invisible and bidi characters and Arabic diacritics. | Open, **newly reachable:** it now drives search and the stored `title_norm`. A later fix means recomputing `title_norm` and `stable_key`. |
+| N6 | Titles over 200 characters aren't caught at import. | Open, **newly reachable:** Confirm stores titles of any length. |
+| S1 | `hub serve` exits 0 on a failed start. | Open. The new `OpenRoot` failure path in `main.go` also `return`s, so it exits 0 too. |
+| S2 | htmx drops 4xx/5xx responses. | Open. It now also affects live search: a 500 leaves stale results on screen. |
+| S3 | Draft form loses focus after each tick. | Open for the draft form. Live search is fine. |
+| S4 | A fast second tick can be dropped. | Open, and now it matters more: combined with R4, a dropped untick gets imported. |
+| S8 | `SetChoice` stores unknown excluded keys. | Open; harmless for Confirm. |
+| L9 | `gofmt`. | Open: 6 older files. The new and touched files are clean. |
+| M2–M4, N4, N5, S5–S7, S9, S10, L1–L6, L8, L10 | See the earlier reports. | Open, unchanged by these commits. |
 
 ---
 
 ## 5. Recommended order
 
-1. **Before T2.5:**
-   - Fix N1, decide N2, and fold N3 into the same change.
-   - Fix H1 (reader pool), because T2.5's transaction needs it.
-   - Make S8 drop unknown excluded keys.
-2. **Small fixes worth doing together** (about one short commit):
-   - S1: exit code and bind before logging.
-   - S2: htmx error handling, the remaining §7.1 spec gap.
-   - S3/S4: keep the form element; this fixes focus and lost clicks together.
-   - S5: 413 on the htmx path.
-   - S10: a `Referrer-Policy` regression test and `gofmt`.
-3. **H2 (config loading):** small, and now user-visible.
+1. **Before importing any real roadmap and before T2.7:**
+   - Fix N1, decide N2, and fold N3 into the same change. Keys and `title_norm` are persisted now, so this is the cheapest it will ever be.
+   - In the same change, fix R3 and R6 (`dir_name`: check the disk, decide `%03d`/per-roadmap numbering) and R11 (store the resolved rule level). All of them fix values that never change once data exists.
+   - Fix R4: read the choice inside the transaction.
+2. **Small htmx fixes, together** (about one short commit):
+   - R1: full page on `HX-History-Restore-Request`, plus `hx-replace-url` and `Vary`.
+   - R2.
+   - S2: error fragments, with live search covered too.
+   - S3/S4: keep the form element.
+   - R12.
+3. **H2** (default config path) and **S1** (exit code). Both are small and user-visible.
 4. **B1:** decide the AI backend before Phase 3.
-5. **Correct `PROGRESS.md`:**
-   - Reopen T1.1.
-   - Mark T1.8 as partial.
-   - Note that T2.2/T2.3 need the N1/N2 follow-up, and T2.4 needs S2.
-6. **Low items** whenever their file is being changed anyway.
+5. **PROGRESS.md:**
+   - Correct the claims in §2.
+   - Add a line pointing at this report's "Recommended order", so the next session reads it (P1).
+6. **Low items** (R5, R7–R10, R13, R15, R16 and the older L/N/S items) whenever their file is being changed anyway.
 
 ---
 
 *Not covered:*
-- S2, S3, S4 and S7 were confirmed by reading the htmx/net/http source, not by driving a browser.
-- Preview speed for a full 1 MB roadmap was not measured. Each selection POST parses the content three times.
-- The app was not run on Windows. Only cross-compilation was checked.
+- Nothing in this round was driven in a real browser. R1, R2 and R4 come from the htmx source and from tracing the code.
+- The app was not run on Windows; only cross-compilation was checked.
+- Preview and confirm speed for a full 1 MB roadmap was not measured.
