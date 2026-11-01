@@ -17,6 +17,7 @@ import (
 	"learninghub/internal/config"
 	"learninghub/internal/fsx"
 	"learninghub/internal/httpserver"
+	"learninghub/internal/jobs"
 	"learninghub/internal/services/roadmaps"
 	"learninghub/internal/services/topics"
 	"learninghub/internal/store"
@@ -206,6 +207,18 @@ func runServe(args []string) {
 	}
 	// shortcut: expired drafts are purged at startup and on each upload, not on a timer; T6.5 maintenance can add one.
 	srv := httpserver.NewServer(cfg.Listen, sm, drafts, topics.NewService(db))
+
+	// shortcut: no handlers registered yet; T3.6 registers the lesson handler.
+	runner := jobs.New(db, cfg.Jobs.MaxConcurrent)
+	runnerDone := make(chan struct{})
+	go func() {
+		defer close(runnerDone)
+		if err := runner.Run(ctx); err != nil {
+			slog.Error("Job runner stopped", "error", err)
+		}
+	}()
+	// Runs before the deferred db.Close: running jobs are cancelled (process trees killed) and recorded.
+	defer func() { cancel(); <-runnerDone }()
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.ListenAndServe() }()
