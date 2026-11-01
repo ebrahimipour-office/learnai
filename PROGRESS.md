@@ -35,7 +35,7 @@
 - [x] **T1.2**: الگوی اصلی `skills/AGENTS.md.tmpl` با اصول هشت‌گانه رفتار مدل
 - [x] **T1.3**: الگوی پروفایل یادگیرنده در `skills/profile.md.tmpl`
 - [x] **T1.4**: مهارت‌های سه‌گانه پایه در `skills/` (`lesson-generator`, `exercise-generator`, `answer-evaluator`)
-- [x] **T1.5**: اسکلت CLI (`cmd/hub/main.go`) با زیرفرمان‌های `version`, `doctor`, `migrate`, `serve` و قفل تک‌نمونه با `flock`
+- [x] **T1.5**: اسکلت CLI (`cmd/hub/main.go`) با زیرفرمان‌های `version`, `doctor`, `migrate`, `serve` و قفل تک‌نمونه با `flock` — ⚠️ توجه: `serve` هنوز `http.Server` راه نمی‌اندازد و میان‌افزار امنیتی به آن وصل نیست؛ باید پیش از T2.4 تکمیل شود
 - [x] **T1.6**: پکیج سیستم‌فایل امن `internal/fsx` با پوشش `os.Root`، `WriteNew`، `safename` و ۸ تست امنیتی سبز
 - [x] **T1.7**: میان‌افزارهای امنیتی HTTP در `internal/httpserver` (بررسی Host/Origin/CSRF/CSP) با ۷ تست امنیتی سبز
 - [x] **T1.8**: راه‌اندازی دیتابیس SQLite بدون CGO در `internal/store`، حالت WAL، و اسکریپت `0001_init.sql` با تست ایندکس‌های یکتا

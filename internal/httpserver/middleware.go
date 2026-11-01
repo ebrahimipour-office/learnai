@@ -59,7 +59,15 @@ func (sm *SecurityManager) SecurityMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
 		w.Header().Set("Cache-Control", "no-store")
 
-		// 3. For state-changing methods (POST, PUT, DELETE, PATCH), enforce Origin, Sec-Fetch-Site, and CSRF
+		// 3. Enforce request body limits (1MB for roadmap drafts, 64KB default).
+		// Must run before the CSRF check: r.FormValue reads the body.
+		maxBytes := int64(64 * 1024)
+		if strings.HasPrefix(r.URL.Path, "/roadmaps/drafts") {
+			maxBytes = 1048576 // 1MB
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+
+		// 4. For state-changing methods (POST, PUT, DELETE, PATCH), enforce Origin, Sec-Fetch-Site, and CSRF
 		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
 			// A. Check Sec-Fetch-Site (Fetch Metadata defense-in-depth)
 			secFetchSite := r.Header.Get("Sec-Fetch-Site")
@@ -109,13 +117,6 @@ func (sm *SecurityManager) SecurityMiddleware(next http.Handler) http.Handler {
 				return
 			}
 		}
-
-		// 4. Enforce request body limits (1MB for roadmap drafts, 64KB default)
-		maxBytes := int64(64 * 1024)
-		if strings.HasPrefix(r.URL.Path, "/roadmaps/drafts") {
-			maxBytes = 1048576 // 1MB
-		}
-		r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 
 		next.ServeHTTP(w, r)
 	})

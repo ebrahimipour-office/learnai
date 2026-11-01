@@ -98,6 +98,20 @@ func TestSecurityMiddleware(t *testing.T) {
 		}
 	})
 
+	t.Run("Body limit applies before CSRF form parsing", func(t *testing.T) {
+		// Valid token in a form body larger than the 64KB default must not reach the handler.
+		body := "csrf_token=" + sm.CSRFToken() + "&pad=" + strings.Repeat("a", 128*1024)
+		req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8787/topics/1/jobs/lesson", strings.NewReader(body))
+		req.Host = "127.0.0.1:8787"
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+		if rec.Code == http.StatusOK {
+			t.Errorf("Expected oversized form POST to be rejected, got 200")
+		}
+	})
+
 	t.Run("Accepts valid POST with CSRF header and valid Origin", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8787/topics/1/jobs/lesson", strings.NewReader("{}"))
 		req.Host = "127.0.0.1:8787"

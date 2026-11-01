@@ -39,15 +39,26 @@ func (r *Root) WriteNew(relPath string, data []byte, perm os.FileMode) error {
 		}
 		return fmt.Errorf("opening new file %s: %w", cleanRel, err)
 	}
-	defer f.Close()
-
-	if _, err := f.Write(data); err != nil {
-		// Clean up the partially created file if writing fails
+	// Sync and Close errors must be checked: a protected file left truncated can never be rewritten.
+	if err := writeSyncClose(f, data); err != nil {
+		// We created this file above with O_EXCL, so removing it cannot touch user data.
 		_ = r.rawRoot.Remove(cleanRel)
 		return fmt.Errorf("writing data to %s: %w", cleanRel, err)
 	}
 
 	return nil
+}
+
+// writeSyncClose writes data, flushes it to disk, and closes f, returning the first error.
+func writeSyncClose(f *os.File, data []byte) error {
+	_, err := f.Write(data)
+	if err == nil {
+		err = f.Sync()
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	return err
 }
 
 // WriteAtomic writes data to a temporary file in the same directory and atomically renames it.
@@ -84,13 +95,7 @@ func (r *Root) WriteAtomic(relPath string, data []byte, perm os.FileMode) error 
 		return fmt.Errorf("creating temp file %s: %w", tmpName, err)
 	}
 
-	writeErr := func() error {
-		defer f.Close()
-		_, err := f.Write(data)
-		return err
-	}()
-
-	if writeErr != nil {
+	if writeErr := writeSyncClose(f, data); writeErr != nil {
 		_ = r.rawRoot.Remove(tmpName)
 		return fmt.Errorf("writing to temp file: %w", writeErr)
 	}
