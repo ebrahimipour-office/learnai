@@ -243,3 +243,20 @@ func TestProbe(t *testing.T) {
 		t.Fatalf("ineligible caps = %+v err=%v", caps, err)
 	}
 }
+
+// Real SUCCESS line captured from agy 1.4.12 on 2026-11-01 (json_schema/usage trimmed).
+func TestRealSuccessEnvelope(t *testing.T) {
+	line := `{"event":"result","result":{"conversation_id":"ebc1bafb","status":"SUCCESS","response":"pong\n{\"answer\":\"pong\"}\n","duration_seconds":6.8,"num_turns":2,"structured_output":{"answer":"pong"}}}`
+	var env envelope
+	if err := json.Unmarshal([]byte(line), &env); err != nil {
+		t.Fatal(err)
+	}
+	var r result
+	if err := json.Unmarshal(env.Result, &r); err != nil {
+		t.Fatal(err)
+	}
+	got, err := r.structured()
+	if err != nil || string(got) != `{"answer":"pong"}` {
+		t.Fatalf("structured() = %s, %v", got, err)
+	}
+}

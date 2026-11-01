@@ -40,9 +40,9 @@ func eventKind(name string) string {
 	}
 }
 
-// structured picks the JSON object from a SUCCESS result.
-// shortcut: success envelope not yet observed (account location-blocked); falls back to
-// parsing "response" as JSON. Re-check the field name after the first real run.
+// structured picks the JSON object from a SUCCESS result. Confirmed against agy 1.4.12
+// (2026-11-01): it lives in "structured_output"; "response" holds free text plus the JSON,
+// so the fallback only covers a bare-JSON response.
 func (r *result) structured() (json.RawMessage, error) {
 	if s := bytes.TrimSpace(r.StructuredOutput); len(s) > 0 && !bytes.Equal(s, []byte("null")) {
 		return s, nil

@@ -9,9 +9,9 @@
 | مشخصه | وضعیت |
 |---|---|
 | **فاز فعال کنونی** | **فاز ۴ — تولید تمرین، مانیفست و تمپلیت پاسخ (Phase 4)** — فاز ۳ کامل شد ✅ |
-| **کار بعدی برای اجرا** | **Task T4.1 — هندلر تولید تمرین** (پیشنهاد: ابتدا اجرای واقعی دستی T3.1، اکنون ممکن است) |
+| **کار بعدی برای اجرا** | **Task T4.1 — هندلر تولید تمرین** |
 | **آخرین کامیت Git** | `feat(settings): T3.9 settings page, doctor and Persian job errors` |
-| **⚠️ باز از T3.1** | «یک اجرای واقعی دستی موفق» هنوز انجام نشده. **۲۰۲۶-۱۱-۰۱:** `hub doctor` با `agy` 1.4.12 احراز هویت موفق نشان داد (محدودیت مکانی دیگر دیده نشد) ⇒ اجرای واقعی اکنون ممکن است. قالب `agy models` تأیید شد: `<id>\t<label>` در هر خط. **پاکت موفق `-p` هنوز دیده نشده:** نام فیلد خروجی ساختاریافته (`structured_output` با fallback به JSON داخل `response`) و رویدادهای میانی (`init`/`step_update`) فرض‌اند (`internal/ai/antigravity/stream.go`). |
+| **✅ بسته‌شده از T3.1** | **۲۰۲۶-۱۱-۰۱:** اجرای واقعی دستی با `agy` 1.4.12 (`gemini-3.8-flash-high`، `--json-schema`، `--sandbox`) موفق بود. تأیید شد: خروجی ساختاریافته در `result.structured_output` است؛ `response` متن آزاد + JSON است (fallback فقط برای JSON خالص)؛ رویدادهای میانی `init` و `step_update` درست‌اند. خط واقعی در `TestRealSuccessEnvelope` ثبت شد. |
 | **وضعیت آزمون‌های خودکار** | **۱۰۰٪ سبز و موفق** (`go test ./...` روی همه پکیج‌ها) |
 | **مسیر دایرکتوری پایه** | `C:\Users\Asus\Desktop\Leaning-appication\prj` |
 
@@ -61,7 +61,7 @@
 
 ### فاز ۳ — هسته Job Runner و تولید درس (فاز فعال کنونی 🚀)
 - [x] **T3.1**: اینترفیس `ai.Adapter` (`internal/ai`: انواع، ۸ خطای نوع‌دار، `ai.Code` ⇒ `error_code`) و `ai/antigravity` — `argbuilder` بدون شل (فهرست سیاه پرچم‌ها با `-x`/`--x`/`=`: `dangerously-skip-permissions`، `mode`، `add-dir` و پرچم‌های تحت کنترل Adapter)؛ نوشتن `output.schema.json` در `WorkDir` و `cwd=WorkDir`؛ پارسر NDJSON (`event`/`result`، خطوط غیر JSON نادیده)؛ نگاشت خطا با الگوهای قابل پیکربندی (`Config.Patterns`؛ «Eligibility» ⇒ `auth_required`)؛ timeout = `--print-timeout` + kill پس از `KillGrace` (۳۰s)، لغو ⇒ `ErrCanceled`؛ لاگ `.app/logs/jobs/<id>/<UTC>-<task>/` (`prompt.txt`, `events.ndjson`, `response.json`, `stderr.txt`, `meta.json`) با mask رازها؛ `Probe` (نسخه، پشتیبانی stream-json/json-schema، مدل‌ها، احراز) — آزمون قراردادی: باینری تست خودش نقش `agy` جعلی را بازی می‌کند (موفق، fallback، eligibility واقعی، rate limit، crash، خروج بی‌نتیجه، خروجی بی‌ساختار، کند ⇒ timeout/لغو)
-  - ⏳ **باز:** اجرای واقعی دستی (مسدود به‌علت محدودیت مکانی حساب) — بالا را ببینید
+  - ✅ اجرای واقعی دستی انجام شد (۲۰۲۶-۱۱-۰۱) — بالا را ببینید
   - ⏭️ نگهبان سکوت (`StallTimeout`) در T3.5. اعتبارسنجی نام مدل با `agy models` و پیام‌های فارسی خطا در T3.9
 - [x] **T3.2**: `internal/ai/procgroup` — `Start(cmd)` فرزند را در گروه پردازش (یونیکس: `Setpgid`؛ `Kill` = SIGTERM به `-pgid` و SIGKILL پس از ۳s حتی اگر رهبر خارج شده باشد) یا Job Object (ویندوز: `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`؛ `Kill` = `TerminateJobObject` + `Process.Kill`) اجرا می‌کند و `cmd.Cancel` را جایگزین می‌کند؛ `Close` پس از `Wait` بازمانده‌ها را می‌کشد؛ Adapter آنتی‌گراویتی از آن استفاده می‌کند — تست: فرزند + نوه (نوه SIGTERM را نادیده می‌گیرد) ⇒ لغو، هر دو ظرف ≈۳s تمام؛ فرزندی که نوه یتیم رها کرده ⇒ `Close` نوه را می‌کشد؛ آزمون منفی (kill فقط فرزند) هر دو تست را می‌شکند؛ `GOOS=windows go vet` سبز
   - ⏳ **باز:** آزمون دستی ویندوز (درخت واقعی `agy` و بستن ناگهانی `hub.exe`) هنوز ثبت نشده
