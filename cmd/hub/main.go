@@ -20,6 +20,7 @@ import (
 	"learninghub/internal/fsx"
 	"learninghub/internal/httpserver"
 	"learninghub/internal/jobs"
+	"learninghub/internal/services/exercises"
 	"learninghub/internal/services/lessons"
 	"learninghub/internal/services/roadmaps"
 	"learninghub/internal/services/topics"
@@ -244,6 +245,10 @@ func runServe(args []string) {
 	runner.Register(domain.JobKindLesson, (&lessons.Service{
 		DB: db, Root: root, Adapter: adapter, Model: cfg.Adapter.Model, Language: cfg.Language,
 		Timeout: cfg.Jobs.TimeoutLesson, Stall: cfg.Jobs.StallTimeout,
+	}).Handle)
+	runner.Register(domain.JobKindExercises, (&exercises.Service{
+		DB: db, Root: root, Adapter: adapter, Model: cfg.Adapter.Model, Language: cfg.Language,
+		Timeout: cfg.Jobs.TimeoutExercises, Stall: cfg.Jobs.StallTimeout, Config: cfg.Exercises,
 	}).Handle)
 	srv := httpserver.NewServer(cfg.Listen, sm, drafts, topics.NewService(db), runner, root,
 		httpserver.Settings{DB: db, Adapter: adapter, Model: cfg.Adapter.Model})

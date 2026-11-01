@@ -1,5 +1,5 @@
 // Package fake is a scripted ai.Adapter for tests, no network or binary (TDD §6.7).
-// shortcut: ok/injection/slow/hang only; add invalid_json, auth_required, ... with the handlers that test them.
+// shortcut: no auth_required/rate_limited/crash_midway yet; add them with the handlers that test them.
 package fake
 
 import (
@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"sync"
 	"time"
 
 	"learninghub/internal/ai"
@@ -19,7 +20,13 @@ const (
 	Injection = "injection" // acts like a prompt-injected agent: trashes WorkDir, returns hostile output
 	Slow      = "slow"      // sends a "step" event every Tick, returns Output after Delay
 	Hang      = "hang"      // sends nothing and never finishes on its own
+
+	InvalidJSON      = "invalid_json"       // every run returns output that fails the schema
+	InvalidThenValid = "invalid_then_valid" // first run invalid, later runs return Output
 )
+
+// invalid is valid JSON that no output schema accepts.
+var invalid = json.RawMessage(`{"unexpected":true}`)
 
 type Adapter struct {
 	Scenario string
@@ -28,6 +35,16 @@ type Adapter struct {
 	Tick     time.Duration    // Slow: event interval; 0 means 10ms
 	Caps     *ai.Capabilities // returned by Probe when set
 	ProbeErr error            // returned by Probe when set
+
+	mu      sync.Mutex
+	prompts []string // every req.Prompt passed to Run, in order
+}
+
+// Calls returns a copy of the prompts seen so far.
+func (a *Adapter) Calls() []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return append([]string(nil), a.prompts...)
 }
 
 func (a *Adapter) Name() string { return "fake" }
@@ -43,7 +60,18 @@ func (a *Adapter) Run(ctx context.Context, req ai.Request, events chan<- ai.Even
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("%w: %v", ai.ErrCanceled, err)
 	}
+	a.mu.Lock()
+	a.prompts = append(a.prompts, req.Prompt)
+	n := len(a.prompts)
+	a.mu.Unlock()
 	switch a.Scenario {
+	case InvalidJSON:
+		return &ai.Response{Structured: invalid}, nil
+	case InvalidThenValid:
+		if n == 1 {
+			return &ai.Response{Structured: invalid}, nil
+		}
+		return &ai.Response{Structured: a.Output}, nil
 	case OK:
 		return &ai.Response{Structured: a.Output}, nil
 	case Slow, Hang:

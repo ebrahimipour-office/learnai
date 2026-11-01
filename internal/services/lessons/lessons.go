@@ -105,9 +105,14 @@ func (s *Service) Handle(ctx context.Context, j jobs.Job) error {
 		return err
 	}
 
-	// 2) ai
+	// 2) ai + validate
 	s.phase(ctx, j.ID, "ai")
-	resp, err := ai.Watch(ctx, s.Adapter, req, nil)
+	var out Output
+	resp, err := ai.WatchValid(ctx, s.Adapter, req, nil, func(raw json.RawMessage) (err error) {
+		s.phase(ctx, j.ID, "validate")
+		out, err = Validate(raw)
+		return err
+	})
 	if resp != nil {
 		usage, _ := json.Marshal(resp.Usage)
 		if _, uerr := s.DB.Writer().ExecContext(context.WithoutCancel(ctx), `UPDATE jobs SET usage = ?, log_dir = ? WHERE id = ?`,
@@ -119,13 +124,7 @@ func (s *Service) Handle(ctx context.Context, j jobs.Job) error {
 		return err
 	}
 
-	// 3) validate
-	// shortcut: no automatic retry on invalid output yet; T4.1 adds it (with fake invalid_then_valid) for all handlers.
-	s.phase(ctx, j.ID, "validate")
-	out, err := Validate(resp.Structured)
-	if err != nil {
-		return err
-	}
+	// 3) validate: done inside WatchValid, which retries once on invalid output.
 	md := []byte(Render(out))
 
 	// 4) commit

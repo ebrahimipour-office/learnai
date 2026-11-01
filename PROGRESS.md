@@ -9,8 +9,8 @@
 | مشخصه | وضعیت |
 |---|---|
 | **فاز فعال کنونی** | **فاز ۴ — تولید تمرین، مانیفست و تمپلیت پاسخ (Phase 4)** — فاز ۳ کامل شد ✅ |
-| **کار بعدی برای اجرا** | **Task T4.1 — هندلر تولید تمرین** |
-| **آخرین کامیت Git** | `feat(settings): T3.9 settings page, doctor and Persian job errors` |
+| **کار بعدی برای اجرا** | **Task T4.2 — قواعد بین‌فیلدی و بازپارس `exercises.md` (fixture شکست‌دهنده برای هر قاعده)** |
+| **آخرین کامیت Git** | `feat(exercises): T4.1 exercise set handler with one retry on invalid output` |
 | **✅ بسته‌شده از T3.1** | **۲۰۲۶-۱۱-۰۱:** اجرای واقعی دستی با `agy` 1.4.12 (`gemini-3.8-flash-high`، `--json-schema`، `--sandbox`) موفق بود. تأیید شد: خروجی ساختاریافته در `result.structured_output` است؛ `response` متن آزاد + JSON است (fallback فقط برای JSON خالص)؛ رویدادهای میانی `init` و `step_update` درست‌اند. خط واقعی در `TestRealSuccessEnvelope` ثبت شد. |
 | **وضعیت آزمون‌های خودکار** | **۱۰۰٪ سبز و موفق** (`go test ./...` روی همه پکیج‌ها) |
 | **مسیر دایرکتوری پایه** | `C:\Users\Asus\Desktop\Leaning-appication\prj` |
@@ -84,7 +84,8 @@
 ---
 
 ### فاز ۴ — تولید تمرین، مانیفست و تمپلیت پاسخ (در انتظار)
-- [ ] **T4.1**: هندلر تولید تمرین و فایل‌های `exercises.md`, `manifest.json`, `rubric-vN.json`
+- [x] **T4.1**: هندلر تولید تمرین (`internal/services/exercises`) — `Build`: خروجی AI ⇒ شناسه‌های `q01..` توسط نرم‌افزار، slug نرمال‌شده به الگوی manifest، پسوند lowercase، وزن تا سقف ۱۰۰۰، حذف BiDi از عنوان/صورت؛ ساخت `exercises.md` (`## [qNN] عنوان`)، `manifest.json`، `.internal/rubric-vN.json` و قالب پاسخ‌ها (`fsx.GenerateAnswerTemplate`)؛ اعتبارسنجی اسکیمای manifest/rubric + همه crosscheckها + بازپارس سرفصل‌ها (`CheckHeadings`؛ سرفصل قاچاقی در صورت تمرین رد می‌شود) — **retry مشترک** `ai.WatchValid`: خطای `invalid_output` (از Adapter یا اعتبارسنج) ⇒ یک‌بار اجرای دوباره با فهرست خطاها در prompt، جمع usage؛ درس (T3.6) هم روی همین رفت — commit: همه فایل‌ها با `WriteNew`، اگر هر فایلی (مثلاً پاسخ) از قبل باشد **کل commit رد** و فایل‌های همین Job حذف می‌شوند؛ تراکنش: `files` (پاسخ‌ها `immutable=1`)، `exercise_sets` (`is_current`)، `exercises` (`template_sha256`، `external_deps`)، `suggestions`، وضعیت موضوع ⇒ `exercises_ready` — پیش‌نیاز: درس جاری؛ مجموعه دوم فقط با `confirm_new_version` و `vN+1` — fake: سناریوهای `invalid_json` و `invalid_then_valid` + `Calls()` — ثبت در `cmd/hub` — تست: مجموعه اول (فایل‌ها، اسکیما، سرفصل‌ها، نام فایل پاسخ، ردیف‌ها، وضعیت)، retry موفق، دو بار نامعتبر (`invalid_json`، جمع امتیاز ≠ ۱۰۰، پسوند غیرمجاز) ⇒ شکست بدون فایل/ردیف، نبود درس، v2 با حفظ v1، فایل پاسخ موجود ⇒ رد کل commit
+  - ⏭️ `count` در params فقط از API (UI در T4.5)؛ `audit_log` برای مجموعه جدید با T4.4؛ پر کردن خودکار `out_of_scope_knowledge` از `external_knowledge` با T4.6 (اکنون ناهماهنگی ⇒ retry)؛ بازیابی `commit_journal` پس از crash مثل درس هنوز نیست
 - [ ] **T4.2**: اعتبارسنجی جمع امتیاز ۱۰۰ برای معیارهای هر تمرین
 - [ ] **T4.3**: ساخت فایل‌های پاسخ با کامنت‌های متناسب زبان و رد تراکنش در صورت وجود فایل قبلی
 - [ ] **T4.4**: نسخه‌بندی تمرین‌ها (`vN+1`) با حفظ تمام فایل‌های قبلی
