@@ -9,9 +9,9 @@
 | مشخصه | وضعیت |
 |---|---|
 | **فاز فعال کنونی** | **فاز ۳ — هسته Job Runner و تولید درس (Phase 3)** — فاز ۲ کامل شد ✅ |
-| **کار بعدی برای اجرا** | **Task T3.1 — اینترفیس `ai.Adapter`** (پیش از شروع: تصمیم درباره Adapter به‌دلیل مسدودکننده زیر) |
-| **آخرین کامیت Git** | `feat(roadmap): T2.7 re-import with diff report` |
-| **⚠️ مسدودکننده فاز ۳** | آزمایش واقعی `agy` (نسخه 1.4.7، ۲۰۲۶-۱۱-۰۱) شکست خورد: `Eligibility check failed: ... not currently available in your location` — در سطح حساب، برای همه مدل‌ها. پیش از فاز ۳ باید درباره Adapter تصمیم گرفته شود. یافته‌های قالب پاکت: کلید `event` (نه `type`)، فیلدها داخل `result` (`status`, `error`, `response`, `finished_reason`). |
+| **کار بعدی برای اجرا** | **Task T3.2 — `procgroup` (kill درخت پردازش)** |
+| **آخرین کامیت Git** | `feat(ai): T3.1 adapter interface and antigravity stream-json runner` |
+| **⚠️ باز از T3.1** | «یک اجرای واقعی دستی موفق» هنوز انجام نشده: `agy` 1.4.12 (۲۰۲۶-۱۱-۰۱) همچنان `Eligibility check failed: ... not currently available in your location` در سطح حساب. پاکت خطای واقعی: `{"event":"result","result":{conversation_id,status,response,error,duration_seconds,num_turns,usage{input/output/thinking/cache_read/total_tokens},finished_reason}}`. **پاکت موفق دیده نشده:** نام فیلد خروجی ساختاریافته (`structured_output` با fallback به JSON داخل `response`)، رویدادهای میانی (`init`/`step_update`) و قالب `agy models` فرض‌اند — پس از اولین اجرای واقعی بررسی شوند (`internal/ai/antigravity/stream.go`). |
 | **وضعیت آزمون‌های خودکار** | **۱۰۰٪ سبز و موفق** (`go test ./...` روی همه پکیج‌ها) |
 | **مسیر دایرکتوری پایه** | `C:\Users\Asus\Desktop\Leaning-appication\prj` |
 
@@ -59,8 +59,10 @@
 
 ---
 
-### فاز ۳ — هسته Job Runner و تولید درس (فاز فعال کنونی 🚀 — مسدود تا تصمیم Adapter)
-- [ ] **T3.1**: اینترفیس `ai.Adapter` و پیاده‌سازی `ai/antigravity` با استریم NDJSON
+### فاز ۳ — هسته Job Runner و تولید درس (فاز فعال کنونی 🚀)
+- [x] **T3.1**: اینترفیس `ai.Adapter` (`internal/ai`: انواع، ۸ خطای نوع‌دار، `ai.Code` ⇒ `error_code`) و `ai/antigravity` — `argbuilder` بدون شل (فهرست سیاه پرچم‌ها با `-x`/`--x`/`=`: `dangerously-skip-permissions`، `mode`، `add-dir` و پرچم‌های تحت کنترل Adapter)؛ نوشتن `output.schema.json` در `WorkDir` و `cwd=WorkDir`؛ پارسر NDJSON (`event`/`result`، خطوط غیر JSON نادیده)؛ نگاشت خطا با الگوهای قابل پیکربندی (`Config.Patterns`؛ «Eligibility» ⇒ `auth_required`)؛ timeout = `--print-timeout` + kill پس از `KillGrace` (۳۰s)، لغو ⇒ `ErrCanceled`؛ لاگ `.app/logs/jobs/<id>/<UTC>-<task>/` (`prompt.txt`, `events.ndjson`, `response.json`, `stderr.txt`, `meta.json`) با mask رازها؛ `Probe` (نسخه، پشتیبانی stream-json/json-schema، مدل‌ها، احراز) — آزمون قراردادی: باینری تست خودش نقش `agy` جعلی را بازی می‌کند (موفق، fallback، eligibility واقعی، rate limit، crash، خروج بی‌نتیجه، خروجی بی‌ساختار، کند ⇒ timeout/لغو)
+  - ⏳ **باز:** اجرای واقعی دستی (مسدود به‌علت محدودیت مکانی حساب) — بالا را ببینید
+  - ⏭️ kill فقط فرزند مستقیم (`exec.CommandContext`)؛ kill درخت در T3.2. نگهبان سکوت (`StallTimeout`) در T3.5. اعتبارسنجی نام مدل با `agy models` و پیام‌های فارسی خطا در T3.9
 - [ ] **T3.2**: مدیریت فرآیندهای ویندوز با Job Object جهت توقف قطعی پردازش‌های فرزند (`procgroup`)
 - [ ] **T3.3**: ساخت Sandbox موقت در `.app/work/<job>` با `prompt.Composer`
 - [ ] **T3.4**: هسته Job Runner (صف کارهای FIFO، سمافور سراسری، بازیابی پس از crash)
