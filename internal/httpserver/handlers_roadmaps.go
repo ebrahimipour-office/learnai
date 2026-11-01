@@ -13,18 +13,20 @@ import (
 
 	"learninghub/internal/roadmap"
 	"learninghub/internal/services/roadmaps"
+	"learninghub/internal/services/topics"
 	"learninghub/internal/ui"
 )
 
 type app struct {
 	sm     *SecurityManager
 	drafts *roadmaps.Service
+	topics *topics.Service
 	pages  map[string]*template.Template
 }
 
 // pageData is shared by all pages; each template uses the fields it needs.
 type pageData struct {
-	Title, CSRF, Error, Notice string
+	Title, CSRF, Error string
 
 	Draft           *roadmaps.Draft
 	Expires         string
@@ -33,6 +35,11 @@ type pageData struct {
 	Items           []*treeNode
 	Included, Total int
 	SuggestItems    bool
+
+	Query, Status       string
+	Statuses            []ruleOption
+	Topics              []*topics.Node
+	Matched, TopicTotal int
 }
 
 type ruleOption struct {
@@ -50,10 +57,11 @@ type treeNode struct {
 	Items    []*treeNode
 }
 
-func newApp(sm *SecurityManager, drafts *roadmaps.Service) *app {
-	a := &app{sm: sm, drafts: drafts, pages: map[string]*template.Template{}}
-	for _, p := range []string{"new", "draft"} {
-		a.pages[p] = template.Must(template.ParseFS(ui.FS, "templates/layout.html", "templates/"+p+".html"))
+func newApp(sm *SecurityManager, drafts *roadmaps.Service, topicList *topics.Service) *app {
+	a := &app{sm: sm, drafts: drafts, topics: topicList, pages: map[string]*template.Template{}}
+	funcs := template.FuncMap{"statusLabel": func(s string) string { return statusLabels[s] }}
+	for _, p := range []string{"new", "draft", "topics"} {
+		a.pages[p] = template.Must(template.New(p).Funcs(funcs).ParseFS(ui.FS, "templates/layout.html", "templates/"+p+".html"))
 	}
 	return a
 }
@@ -188,7 +196,7 @@ func (a *app) confirmDraft(w http.ResponseWriter, r *http.Request) {
 		a.renderDraft(w, r, http.StatusConflict, d, "برای ثبت، تأیید لازم است.")
 		return
 	}
-	_, n, err := a.drafts.Confirm(r.Context(), d.ID)
+	_, _, err := a.drafts.Confirm(r.Context(), d.ID)
 	switch {
 	case errors.Is(err, roadmaps.ErrNothingSelected):
 		a.renderDraft(w, r, http.StatusUnprocessableEntity, d, "هیچ موضوعی انتخاب نشده است.")
@@ -199,9 +207,7 @@ func (a *app) confirmDraft(w http.ResponseWriter, r *http.Request) {
 		slog.Error("confirming draft", "error", err)
 		a.renderDraft(w, r, http.StatusInternalServerError, d, "ثبت ناموفق بود؛ هیچ تغییری ذخیره نشد.")
 	default:
-		// shortcut: shows a notice on the import page; T2.6 should 303 to /topics once it exists.
-		a.render(w, http.StatusOK, "new", "layout", &pageData{Title: "ورود نقشه راه",
-			Notice: fmt.Sprintf("نقشه راه ثبت شد: %d موضوع.", n)})
+		http.Redirect(w, r, "/topics", http.StatusSeeOther)
 	}
 }
 

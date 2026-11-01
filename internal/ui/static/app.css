@@ -13,3 +13,9 @@ select, input[type=file], button { font: inherit; margin-inline-start: .5rem; }
 .group-title { font-weight: 600; }
 .topic label { margin: .25rem 0; }
 pre { overflow-x: auto; padding: .5rem; border: 1px solid var(--line); }
+.badge { font-size: .8em; padding: 0 .4em; border: 1px solid var(--line); border-radius: .3em; color: var(--muted); }
+.badge.warn { color: var(--err); border-color: currentColor; }
+.badge.suggested { border-style: dashed; }
+.score { font-weight: 600; }
+.archived > bdi { color: var(--muted); text-decoration: line-through; }
+summary.group-title { cursor: pointer; }

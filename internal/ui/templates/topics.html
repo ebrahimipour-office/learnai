@@ -1,0 +1,44 @@
+{{define "content"}}
+<h1>موضوعات</h1>
+{{if eq .TopicTotal 0}}
+<p class="note">هنوز موضوعی ثبت نشده است. <a href="/roadmaps/new">یک نقشه راه وارد کنید.</a></p>
+{{else}}
+<form method="get" action="/topics" role="search"
+      hx-get="/topics" hx-trigger="input delay:300ms" hx-target="#topic-results" hx-swap="outerHTML" hx-push-url="true">
+  <label>جست‌وجو <input type="search" name="q" value="{{.Query}}"></label>
+  <label>وضعیت
+    <select name="status">
+      <option value="">همه</option>
+      {{range .Statuses}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}
+    </select>
+  </label>
+  <noscript><button type="submit">اعمال</button></noscript>
+</form>
+{{template "topic-results" .}}
+<p><a href="/roadmaps/new">ورود نقشه راه جدید</a></p>
+{{end}}
+{{end}}
+
+{{define "topic-results"}}
+<div id="topic-results">
+  {{if or .Query .Status}}<p class="count" aria-live="polite"><strong>{{.Matched}}</strong> موضوع یافت شد</p>{{end}}
+  {{range .Topics}}
+  <section>
+    <h2><bdi>{{.Title}}</bdi></h2>
+    <ul class="tree">{{range .Items}}{{template "tnode" .}}{{end}}</ul>
+  </section>
+  {{end}}
+</div>
+{{end}}
+
+{{define "tnode"}}{{if eq .Kind "group"}}
+<li class="group"><details open><summary class="group-title"><bdi>{{.Title}}</bdi></summary>
+  <ul>{{range .Items}}{{template "tnode" .}}{{end}}</ul>
+</details></li>{{else}}
+<li class="topic{{if eq .State "archived"}} archived{{end}}">
+  <bdi>{{.Title}}</bdi>
+  <span class="badge">{{statusLabel .Status}}</span>
+  {{if .Score.Valid}}<span class="score">{{printf "%.0f" .Score.Float64}}</span>{{if .Partial}} <span class="badge warn">ناقص</span>{{end}}{{end}}
+  {{if eq .Origin "suggested"}}<span class="badge suggested">پیشنهادی</span>{{end}}
+  {{if eq .State "archived"}}<span class="badge">بایگانی‌شده</span>{{end}}
+</li>{{end}}{{end}}

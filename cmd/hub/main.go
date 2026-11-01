@@ -18,6 +18,7 @@ import (
 	"learninghub/internal/fsx"
 	"learninghub/internal/httpserver"
 	"learninghub/internal/services/roadmaps"
+	"learninghub/internal/services/topics"
 	"learninghub/internal/store"
 
 	"github.com/gofrs/flock"
@@ -204,7 +205,7 @@ func runServe(args []string) {
 		slog.Info("Purged expired import drafts", "count", n)
 	}
 	// shortcut: expired drafts are purged at startup and on each upload, not on a timer; T6.5 maintenance can add one.
-	srv := httpserver.NewServer(cfg.Listen, sm, drafts)
+	srv := httpserver.NewServer(cfg.Listen, sm, drafts, topics.NewService(db))
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.ListenAndServe() }()

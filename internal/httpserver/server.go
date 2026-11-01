@@ -7,12 +7,13 @@ import (
 	"time"
 
 	"learninghub/internal/services/roadmaps"
+	"learninghub/internal/services/topics"
 	"learninghub/internal/ui"
 )
 
 // NewServer builds the HTTP server with every route behind SecurityMiddleware (Section 8).
-func NewServer(addr string, sm *SecurityManager, drafts *roadmaps.Service) *http.Server {
-	a := newApp(sm, drafts)
+func NewServer(addr string, sm *SecurityManager, drafts *roadmaps.Service, topicList *topics.Service) *http.Server {
+	a := newApp(sm, drafts, topicList)
 	static, err := fs.Sub(ui.FS, "static")
 	if err != nil {
 		panic(err) // embedded at build time; cannot fail at runtime
@@ -24,8 +25,8 @@ func NewServer(addr string, sm *SecurityManager, drafts *roadmaps.Service) *http
 		_, _ = io.WriteString(w, "ok")
 	})
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(static)))
-	// shortcut: "/" goes to the import form until the topic list exists, switch to /topics in T2.6.
-	mux.Handle("GET /{$}", http.RedirectHandler("/roadmaps/new", http.StatusSeeOther))
+	mux.Handle("GET /{$}", http.RedirectHandler("/topics", http.StatusSeeOther))
+	mux.HandleFunc("GET /topics", a.listTopics)
 	mux.HandleFunc("GET /roadmaps/new", a.newRoadmap)
 	mux.HandleFunc("POST /roadmaps/drafts", a.createDraft)
 	mux.HandleFunc("GET /roadmaps/drafts/{id}", a.showDraft)

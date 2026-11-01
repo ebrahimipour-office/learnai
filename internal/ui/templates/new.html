@@ -1,7 +1,6 @@
 {{define "content"}}
 <h1>ورود نقشه راه</h1>
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
-{{with .Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
 <form method="post" action="/roadmaps/drafts" enctype="multipart/form-data">
   <input type="hidden" name="csrf_token" value="{{.CSRF}}">
   <label>فایل Markdown (حداکثر ۱ مگابایت)

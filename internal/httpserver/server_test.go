@@ -2,18 +2,22 @@ package httpserver_test
 
 import (
 	"bytes"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"learninghub/internal/fsx"
 	"learninghub/internal/httpserver"
 	"learninghub/internal/services/roadmaps"
+	"learninghub/internal/services/topics"
 	"learninghub/internal/store"
 )
 
@@ -42,7 +46,7 @@ func newEnv(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { root.Close() })
-	srv := httpserver.NewServer("127.0.0.1:8787", sm, roadmaps.NewService(db, root))
+	srv := httpserver.NewServer("127.0.0.1:8787", sm, roadmaps.NewService(db, root), topics.NewService(db))
 	if srv.ReadHeaderTimeout == 0 || srv.IdleTimeout == 0 {
 		t.Error("server timeouts must be set (Section 8)")
 	}
@@ -229,8 +233,8 @@ func TestConfirmImport(t *testing.T) {
 		t.Errorf("confirm without confirm=1: want 409, got %d", rec.Code)
 	}
 	rec := e.confirm(draftURL, url.Values{"csrf_token": {csrf}, "confirm": {"1"}})
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "ثبت شد: 2 موضوع") {
-		t.Fatalf("confirm: want 200 with notice, got %d\n%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/topics" {
+		t.Fatalf("confirm: want 303 to /topics, got %d %q", rec.Code, rec.Header().Get("Location"))
 	}
 	var n int
 	if err := e.db.Writer().QueryRow("SELECT COUNT(*) FROM topics").Scan(&n); err != nil || n != 2 {
@@ -241,5 +245,56 @@ func TestConfirmImport(t *testing.T) {
 	}
 	if rec := e.confirm(draftURL, url.Values{"csrf_token": {csrf}, "confirm": {"1"}}); rec.Code != http.StatusNotFound {
 		t.Errorf("repeat confirm: want 404, got %d", rec.Code)
+	}
+}
+
+func TestTopicListPage(t *testing.T) {
+	e := newEnv(t)
+	rec := e.do(httptest.NewRequest(http.MethodGet, "/", nil))
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/topics" {
+		t.Errorf("/: want 303 to /topics, got %d %q", rec.Code, rec.Header().Get("Location"))
+	}
+	if body := e.do(httptest.NewRequest(http.MethodGet, "/topics", nil)).Body.String(); !strings.Contains(body, `href="/roadmaps/new">یک نقشه راه`) {
+		t.Errorf("empty list must link to import:\n%s", body)
+	}
+
+	// 500 topics in 10 groups (T2.6: server-side render under 300ms p95).
+	var md strings.Builder
+	md.WriteString("# Big\n")
+	for i := 0; i < 500; i++ {
+		if i%50 == 0 {
+			fmt.Fprintf(&md, "## Group %d\n", i/50)
+		}
+		fmt.Fprintf(&md, "### Topic %d\n", i)
+	}
+	draftURL := e.upload("big.md", []byte(md.String())).Header().Get("Location")
+	if rec := e.confirm(draftURL, url.Values{"csrf_token": {e.sm.CSRFToken()}, "confirm": {"1"}}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("confirm: %d %s", rec.Code, rec.Body.String())
+	}
+
+	var times []time.Duration
+	for i := 0; i < 20; i++ {
+		start := time.Now()
+		rec = e.do(httptest.NewRequest(http.MethodGet, "/topics", nil))
+		times = append(times, time.Since(start))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("/topics: %d", rec.Code)
+		}
+	}
+	slices.Sort(times)
+	t.Logf("500 topics: p95 %v", times[18])
+	if p95 := times[18]; p95 > 300*time.Millisecond {
+		t.Errorf("500 topics: p95 %v > 300ms", p95)
+	}
+	if body := rec.Body.String(); strings.Count(body, `class="topic"`) != 500 || !strings.Contains(body, "Topic 499") {
+		t.Errorf("full list must show 500 topics")
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/topics?q=topic+42&status=bogus", nil)
+	req.Header.Set("HX-Request", "true")
+	frag := e.do(req).Body.String()
+	// "topic 42" matches 42 and 420-429.
+	if strings.Contains(frag, "<html") || !strings.Contains(frag, "<strong>11</strong> موضوع یافت شد") {
+		t.Errorf("htmx search fragment wrong:\n%s", frag)
 	}
 }
