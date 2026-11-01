@@ -1,5 +1,5 @@
 {{define "content"}}
-<h1>پیش‌نمایش ورود: <bdi>{{.Draft.SourceName}}</bdi></h1>
+<h1>{{if .Draft.RoadmapID}}پیش‌نمایش ورود مجدد{{else}}پیش‌نمایش ورود{{end}}: <bdi>{{.Draft.SourceName}}</bdi></h1>
 <p class="note">تا پیش از تأیید هیچ موضوع، گروه یا فایلی ثبت نمی‌شود. این پیش‌نویس تا <bdi>{{.Expires}}</bdi> نگه داشته می‌شود.</p>
 {{template "draft-form" .}}
 <form method="post" action="/roadmaps/drafts/{{.Draft.ID}}/confirm">
@@ -23,8 +23,25 @@
   {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
   <p class="count" aria-live="polite"><strong>{{.Included}}</strong> موضوع انتخاب‌شده از {{.Total}}</p>
   {{if .SuggestItems}}<p class="hint">با این قاعده هیچ موضوعی پیدا نشد. قاعده «آیتم‌های لیست» را امتحان کنید.</p>{{end}}
+  {{with .Diff}}{{template "diff" .}}{{end}}
   <ul class="tree">{{range .Items}}{{template "node" .}}{{end}}</ul>
 </form>
+{{end}}
+
+{{define "diff"}}
+<section class="diff" aria-label="گزارش تفاوت">
+  <h2>تفاوت با نسخه ثبت‌شده</h2>
+  <p class="count">{{len .New}} جدید، {{len .Changed}} تغییرکرده، {{len .Gone}} ناپدیدشده، {{.Same}} بدون تغییر</p>
+  <p class="note">موضوعات ناپدیدشده فقط بایگانی می‌شوند و هیچ فایلی حذف نمی‌شود. تغییر نام یک سرفصل یا گروه، موضوع جدیدی می‌سازد و تاریخچه موضوع قبلی به آن منتقل نمی‌شود.</p>
+  {{if or .New .Changed .Gone}}<table>
+    <thead><tr><th>وضعیت</th><th>موضوع</th><th>توضیح</th></tr></thead>
+    <tbody>
+    {{range .New}}<tr class="diff-new"><td>جدید</td><td><bdi>{{.Title}}</bdi></td><td>{{with .Guess}}شاید همان «<bdi>{{.}}</bdi>» باشد{{end}}</td></tr>{{end}}
+    {{range .Changed}}<tr class="diff-changed"><td>{{if .Restored}}بازگردانی{{else}}تغییرکرده{{end}}</td><td><bdi>{{.Title}}</bdi></td><td>{{with .OldTitle}}عنوان قبلی: <bdi>{{.}}</bdi>{{end}}</td></tr>{{end}}
+    {{range .Gone}}<tr class="diff-gone"><td>بایگانی</td><td><bdi>{{.Title}}</bdi></td><td></td></tr>{{end}}
+    </tbody>
+  </table>{{end}}
+</section>
 {{end}}
 
 {{define "node"}}{{if .IsGroup}}

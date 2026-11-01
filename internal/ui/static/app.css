@@ -19,3 +19,6 @@ pre { overflow-x: auto; padding: .5rem; border: 1px solid var(--line); }
 .score { font-weight: 600; }
 .archived > bdi { color: var(--muted); text-decoration: line-through; }
 summary.group-title { cursor: pointer; }
+.diff table { width: 100%; border-collapse: collapse; }
+.diff th, .diff td { text-align: start; padding: .25rem .5rem; border-bottom: 1px solid var(--line); }
+.diff-gone bdi { color: var(--muted); text-decoration: line-through; }

@@ -35,6 +35,9 @@ type pageData struct {
 	Items           []*treeNode
 	Included, Total int
 	SuggestItems    bool
+	Diff            *roadmaps.Diff
+	Roadmaps        []roadmaps.RoadmapRef
+	RoadmapID       int64 // re-import target preselected in the upload form
 
 	Query, Status       string
 	Statuses            []ruleOption
@@ -80,14 +83,22 @@ func (a *app) render(w http.ResponseWriter, status int, page, name string, d *pa
 	_, _ = buf.WriteTo(w)
 }
 
+// renderNew shows the upload form with the re-import picker.
+func (a *app) renderNew(w http.ResponseWriter, r *http.Request, status int, msg string) {
+	list, err := a.drafts.Roadmaps(r.Context())
+	if err != nil {
+		slog.Error("listing roadmaps", "error", err)
+	}
+	rid, _ := strconv.ParseInt(r.FormValue("roadmap_id"), 10, 64)
+	a.render(w, status, "new", "layout", &pageData{Title: "ورود نقشه راه", Error: msg, Roadmaps: list, RoadmapID: rid})
+}
+
 func (a *app) newRoadmap(w http.ResponseWriter, r *http.Request) {
-	a.render(w, http.StatusOK, "new", "layout", &pageData{Title: "ورود نقشه راه"})
+	a.renderNew(w, r, http.StatusOK, "")
 }
 
 func (a *app) createDraft(w http.ResponseWriter, r *http.Request) {
-	fail := func(status int, msg string) {
-		a.render(w, status, "new", "layout", &pageData{Title: "ورود نقشه راه", Error: msg})
-	}
+	fail := func(status int, msg string) { a.renderNew(w, r, status, msg) }
 	file, hdr, err := r.FormFile("file")
 	if err != nil {
 		var tooBig *http.MaxBytesError
@@ -105,10 +116,22 @@ func (a *app) createDraft(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := a.drafts.CreateDraft(r.Context(), hdr.Filename, content)
+	var id string
+	if v := r.FormValue("roadmap_id"); v != "" {
+		rid, perr := strconv.ParseInt(v, 10, 64)
+		if perr != nil || rid <= 0 {
+			fail(http.StatusUnprocessableEntity, "نقشه راه انتخاب‌شده نامعتبر است.")
+			return
+		}
+		id, err = a.drafts.CreateReimport(r.Context(), rid, hdr.Filename, content)
+	} else {
+		id, err = a.drafts.CreateDraft(r.Context(), hdr.Filename, content)
+	}
 	switch {
 	case errors.Is(err, roadmaps.ErrTooLarge):
 		fail(http.StatusRequestEntityTooLarge, "حجم فایل بیش از ۱ مگابایت است.")
+	case errors.Is(err, roadmaps.ErrNoRoadmap):
+		fail(http.StatusUnprocessableEntity, "نقشه راه انتخاب‌شده پیدا نشد.")
 	case errors.Is(err, roadmaps.ErrInvalidSource):
 		fail(http.StatusUnprocessableEntity, "فایل باید Markdown (.md)، غیرخالی و با کدگذاری UTF-8 باشد.")
 	case err != nil:
@@ -123,8 +146,7 @@ func (a *app) createDraft(w http.ResponseWriter, r *http.Request) {
 func (a *app) loadDraft(w http.ResponseWriter, r *http.Request) *roadmaps.Draft {
 	d, err := a.drafts.Draft(r.Context(), r.PathValue("id"))
 	if errors.Is(err, roadmaps.ErrDraftNotFound) {
-		a.render(w, http.StatusNotFound, "new", "layout", &pageData{Title: "ورود نقشه راه",
-			Error: "پیش‌نویس پیدا نشد یا منقضی شده است؛ فایل را دوباره بارگذاری کنید."})
+		a.renderNew(w, r, http.StatusNotFound, "پیش‌نویس پیدا نشد یا منقضی شده است؛ فایل را دوباره بارگذاری کنید.")
 		return nil
 	}
 	if err != nil {
@@ -201,8 +223,7 @@ func (a *app) confirmDraft(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, roadmaps.ErrNothingSelected):
 		a.renderDraft(w, r, http.StatusUnprocessableEntity, d, "هیچ موضوعی انتخاب نشده است.")
 	case errors.Is(err, roadmaps.ErrDraftNotFound):
-		a.render(w, http.StatusNotFound, "new", "layout", &pageData{Title: "ورود نقشه راه",
-			Error: "پیش‌نویس پیدا نشد، منقضی شده یا قبلاً ثبت شده است."})
+		a.renderNew(w, r, http.StatusNotFound, "پیش‌نویس پیدا نشد، منقضی شده یا قبلاً ثبت شده است.")
 	case err != nil:
 		slog.Error("confirming draft", "error", err)
 		a.renderDraft(w, r, http.StatusInternalServerError, d, "ثبت ناموفق بود؛ هیچ تغییری ذخیره نشد.")
@@ -224,6 +245,12 @@ func (a *app) renderDraft(w http.ResponseWriter, r *http.Request, status int, d 
 		excluded[k] = true
 	}
 	items, included := buildTree(sel, excluded)
+	diff, err := a.drafts.Diff(r.Context(), d)
+	if err != nil {
+		slog.Error("diffing draft", "error", err)
+		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
+		return
+	}
 	value := ruleValue(d.Choice.Rule)
 	data := &pageData{
 		Title:        "پیش‌نمایش ورود",
@@ -236,6 +263,7 @@ func (a *app) renderDraft(w http.ResponseWriter, r *http.Request, status int, d 
 		Included:     included,
 		Total:        len(sel.Topics),
 		SuggestItems: len(sel.Topics) == 0 && d.Choice.Rule.Kind != roadmap.RuleItems,
+		Diff:         diff,
 	}
 	name := "layout"
 	if r.Header.Get("HX-Request") == "true" {

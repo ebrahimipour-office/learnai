@@ -1,4 +1,4 @@
-// Package roadmaps holds roadmap import: drafts and preview (T2.4), confirm (T2.5), later diff.
+// Package roadmaps holds roadmap import: drafts and preview (T2.4), confirm (T2.5), re-import diff (T2.7).
 package roadmaps
 
 import (
@@ -29,6 +29,7 @@ var (
 	ErrDraftNotFound = errors.New("draft not found or expired")
 	ErrTooLarge      = errors.New("roadmap file is larger than 1 MB")
 	ErrInvalidSource = errors.New("invalid roadmap file")
+	ErrNoRoadmap     = errors.New("roadmap to re-import not found")
 )
 
 // Choice is the user's selection in the preview, stored as import_drafts.selection.
@@ -40,6 +41,7 @@ type Choice struct {
 // Draft is an import preview. It never touches roadmaps, groups, topics or the file system.
 type Draft struct {
 	ID         string
+	RoadmapID  int64 // 0 = new roadmap; otherwise a re-import of that roadmap (T2.7)
 	SourceName string
 	Content    []byte
 	Choice     Choice
@@ -65,6 +67,15 @@ func (s *Service) ts(t time.Time) string { return t.UTC().Format(tsFormat) }
 
 // CreateDraft validates an uploaded roadmap and stores it as a draft with the default rule.
 func (s *Service) CreateDraft(ctx context.Context, name string, content []byte) (string, error) {
+	return s.createDraft(ctx, 0, name, content)
+}
+
+// CreateReimport stores a draft for a new revision of an existing roadmap, starting from its saved rule.
+func (s *Service) CreateReimport(ctx context.Context, roadmapID int64, name string, content []byte) (string, error) {
+	return s.createDraft(ctx, roadmapID, name, content)
+}
+
+func (s *Service) createDraft(ctx context.Context, roadmapID int64, name string, content []byte) (string, error) {
 	name = filepath.Base(strings.ReplaceAll(name, `\`, "/"))
 	ext := strings.ToLower(filepath.Ext(name))
 	switch {
@@ -84,7 +95,23 @@ func (s *Service) CreateDraft(ctx context.Context, name string, content []byte) 
 	if err != nil {
 		return "", err
 	}
-	choice, err := json.Marshal(Choice{Rule: roadmap.Rule{Kind: roadmap.RuleDeepest}})
+	rule := roadmap.Rule{Kind: roadmap.RuleDeepest}
+	var roadmapRef sql.NullInt64
+	if roadmapID != 0 {
+		var raw string
+		err := s.db.Writer().QueryRowContext(ctx, `SELECT select_rule FROM roadmaps WHERE id = ?`, roadmapID).Scan(&raw)
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", ErrNoRoadmap
+		}
+		if err != nil {
+			return "", err
+		}
+		if err := json.Unmarshal([]byte(raw), &rule); err != nil {
+			return "", fmt.Errorf("decoding roadmap rule: %w", err)
+		}
+		roadmapRef = sql.NullInt64{Int64: roadmapID, Valid: true}
+	}
+	choice, err := json.Marshal(Choice{Rule: rule})
 	if err != nil {
 		return "", err
 	}
@@ -98,9 +125,9 @@ func (s *Service) CreateDraft(ctx context.Context, name string, content []byte) 
 		return "", err
 	}
 	_, err = s.db.Writer().ExecContext(ctx,
-		`INSERT INTO import_drafts (id, source_name, content, content_sha, parsed_tree, selection, expires_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		id, name, string(content), fsx.HashBytes(content), string(tree), string(choice), s.ts(s.Now().Add(DraftTTL)))
+		`INSERT INTO import_drafts (id, roadmap_id, source_name, content, content_sha, parsed_tree, selection, expires_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, roadmapRef, name, string(content), fsx.HashBytes(content), string(tree), string(choice), s.ts(s.Now().Add(DraftTTL)))
 	if err != nil {
 		return "", fmt.Errorf("inserting draft: %w", err)
 	}
@@ -110,10 +137,11 @@ func (s *Service) CreateDraft(ctx context.Context, name string, content []byte) 
 // Draft loads a draft that has not expired.
 func (s *Service) Draft(ctx context.Context, id string) (*Draft, error) {
 	var content, choice, expires string
+	var roadmapID sql.NullInt64
 	d := &Draft{ID: id}
 	err := s.db.Writer().QueryRowContext(ctx,
-		`SELECT source_name, content, selection, expires_at FROM import_drafts WHERE id = ? AND expires_at > ?`,
-		id, s.ts(s.Now())).Scan(&d.SourceName, &content, &choice, &expires)
+		`SELECT roadmap_id, source_name, content, selection, expires_at FROM import_drafts WHERE id = ? AND expires_at > ?`,
+		id, s.ts(s.Now())).Scan(&roadmapID, &d.SourceName, &content, &choice, &expires)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrDraftNotFound
 	}
@@ -124,6 +152,7 @@ func (s *Service) Draft(ctx context.Context, id string) (*Draft, error) {
 		return nil, fmt.Errorf("decoding draft selection: %w", err)
 	}
 	d.Content = []byte(content)
+	d.RoadmapID = roadmapID.Int64
 	d.ExpiresAt, _ = time.Parse(tsFormat, expires)
 	return d, nil
 }
@@ -156,4 +185,27 @@ func (s *Service) PurgeExpired(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("purging expired drafts: %w", err)
 	}
 	return res.RowsAffected()
+}
+
+// RoadmapRef names a recorded roadmap for the re-import picker.
+type RoadmapRef struct {
+	ID    int64
+	Title string
+}
+
+func (s *Service) Roadmaps(ctx context.Context) ([]RoadmapRef, error) {
+	rows, err := s.db.Writer().QueryContext(ctx, `SELECT id, title FROM roadmaps ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []RoadmapRef
+	for rows.Next() {
+		var r RoadmapRef
+		if err := rows.Scan(&r.ID, &r.Title); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
 }

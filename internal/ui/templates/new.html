@@ -6,6 +6,12 @@
   <label>فایل Markdown (حداکثر ۱ مگابایت)
     <input type="file" name="file" accept=".md,.markdown,text/markdown" required>
   </label>
+  {{if .Roadmaps}}<label>مقصد
+    <select name="roadmap_id">
+      <option value="">نقشه راه جدید</option>
+      {{range .Roadmaps}}<option value="{{.ID}}"{{if eq .ID $.RoadmapID}} selected{{end}}>ورود مجدد: {{.Title}}</option>{{end}}
+    </select>
+  </label>{{end}}
   <button type="submit">پیش‌نمایش</button>
 </form>
 {{end}}

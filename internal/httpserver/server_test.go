@@ -63,9 +63,17 @@ func (e *env) do(req *http.Request) *httptest.ResponseRecorder {
 }
 
 func (e *env) upload(name string, content []byte) *httptest.ResponseRecorder {
+	return e.uploadTo("", name, content)
+}
+
+// uploadTo posts a roadmap file; a non-empty roadmapID makes it a re-import.
+func (e *env) uploadTo(roadmapID, name string, content []byte) *httptest.ResponseRecorder {
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
 	_ = mw.WriteField("csrf_token", e.sm.CSRFToken())
+	if roadmapID != "" {
+		_ = mw.WriteField("roadmap_id", roadmapID)
+	}
 	fw, _ := mw.CreateFormFile("file", name)
 	_, _ = fw.Write(content)
 	_ = mw.Close()
@@ -296,5 +304,44 @@ func TestTopicListPage(t *testing.T) {
 	// "topic 42" matches 42 and 420-429.
 	if strings.Contains(frag, "<html") || !strings.Contains(frag, "<strong>11</strong> موضوع یافت شد") {
 		t.Errorf("htmx search fragment wrong:\n%s", frag)
+	}
+}
+
+func TestReimportFlow(t *testing.T) {
+	e := newEnv(t)
+	csrf := e.sm.CSRFToken()
+	draftURL := e.upload("go.md", []byte("# Go\n## Basics\n### Types\n### Loops\n")).Header().Get("Location")
+	if rec := e.confirm(draftURL, url.Values{"csrf_token": {csrf}, "confirm": {"1"}}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("first import: %d", rec.Code)
+	}
+	form := e.do(httptest.NewRequest(http.MethodGet, "/roadmaps/new?roadmap_id=1", nil)).Body.String()
+	if !strings.Contains(form, `<option value="1" selected>`) {
+		t.Errorf("upload form must offer re-import of roadmap 1:\n%s", form)
+	}
+	if rec := e.uploadTo("99", "go.md", []byte("# Go\n")); rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("unknown roadmap: want 422, got %d", rec.Code)
+	}
+
+	rec := e.uploadTo("1", "go.md", []byte("# Go\n## Basics\n### Types\n### Loop\n"))
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("re-import upload: %d %s", rec.Code, rec.Body.String())
+	}
+	draftURL = rec.Header().Get("Location")
+	page := e.do(httptest.NewRequest(http.MethodGet, draftURL, nil)).Body.String()
+	for _, want := range []string{"ورود مجدد", "1 جدید، 0 تغییرکرده، 1 ناپدیدشده، 1 بدون تغییر", "شاید همان «<bdi>Loops</bdi>»"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("preview must contain %q:\n%s", want, page)
+		}
+	}
+	if rec := e.confirm(draftURL, url.Values{"csrf_token": {csrf}, "confirm": {"1"}}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("confirm re-import: %d %s", rec.Code, rec.Body.String())
+	}
+	var topics, archived int
+	_ = e.db.Writer().QueryRow(`SELECT COUNT(*), COUNT(*) FILTER (WHERE state = 'archived') FROM topics`).Scan(&topics, &archived)
+	if topics != 3 || archived != 1 {
+		t.Errorf("want 3 topics with 1 archived, got %d/%d", topics, archived)
+	}
+	if _, err := os.Stat(filepath.Join(e.base, "roadmaps", "go", "rev-002.md")); err != nil {
+		t.Errorf("rev-002.md: %v", err)
 	}
 }

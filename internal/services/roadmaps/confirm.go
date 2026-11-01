@@ -18,10 +18,12 @@ var ErrNothingSelected = errors.New("no topics selected")
 // maxDirSlugRunes keeps topics/<NN-slug>/... well under fsx's 220-byte path limit for Persian titles.
 const maxDirSlugRunes = 40
 
-// Confirm records the draft as a new roadmap (T2.5): roadmaps, roadmap_revisions, groups and topics
-// in one transaction, plus roadmaps/<slug>/rev-001.md written with WriteNew. Excluded topics are
-// skipped, and so are groups left without topics. The draft is consumed. On any failure no rows
-// remain and the revision file is not left behind.
+// Confirm records the draft (T2.5, T2.7) in one transaction: the roadmap (new import) or its next
+// revision (re-import), groups and topics, plus roadmaps/<slug>/rev-NNN.md written with WriteNew.
+// Excluded topics are skipped, and so are groups left without topics. On re-import, topics are
+// matched by stable key and updated in place (dir_name never changes); recorded topics and groups
+// that are no longer kept are only archived, never deleted. The draft is consumed. On any failure
+// no rows change and the revision file is not left behind.
 func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topics int, err error) {
 	d, err := s.Draft(ctx, id)
 	if err != nil {
@@ -31,23 +33,21 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 	if err != nil {
 		return 0, 0, fmt.Errorf("%w: %v", ErrInvalidSource, err)
 	}
-	excluded := map[string]bool{}
-	for _, k := range d.Choice.Excluded {
-		excluded[k] = true
-	}
-	var kept []roadmap.Topic
-	usedGroup := make([]bool, len(sel.Groups))
-	for _, t := range sel.Topics {
-		if excluded[t.StableKey] {
-			continue
-		}
-		kept = append(kept, t)
-		for g := t.Group; g >= 0 && !usedGroup[g]; g = sel.Groups[g].Parent {
-			usedGroup[g] = true
-		}
-	}
+	kept := keptTopics(sel, d.Choice.Excluded)
 	if len(kept) == 0 {
 		return 0, 0, ErrNothingSelected
+	}
+	usedGroup := make([]bool, len(sel.Groups))
+	var groupKeys []string
+	for _, t := range kept {
+		for g := t.Group; g >= 0 && !usedGroup[g]; g = sel.Groups[g].Parent {
+			usedGroup[g] = true
+			groupKeys = append(groupKeys, sel.Groups[g].StableKey)
+		}
+	}
+	topicKeys := make([]string, len(kept))
+	for i, t := range kept {
+		topicKeys[i] = t.StableKey
 	}
 
 	tree, err := json.Marshal(roadmap.Parse(d.Content))
@@ -58,7 +58,7 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 	if err != nil {
 		return 0, 0, err
 	}
-	title := strings.TrimSuffix(d.SourceName, filepath.Ext(d.SourceName))
+	keysJSON := func(keys []string) string { b, _ := json.Marshal(append([]string{}, keys...)); return string(b) }
 	var revPath string // set once the file exists, so a failed commit can remove it
 
 	err = s.db.WithTx(ctx, func(tx *sql.Tx) error {
@@ -71,21 +71,34 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 			return ErrDraftNotFound
 		}
 
-		slug, err := s.freeRoadmapSlug(ctx, tx, title)
-		if err != nil {
-			return err
+		var slug string
+		revNo := 1
+		if d.RoadmapID == 0 {
+			title := strings.TrimSuffix(d.SourceName, filepath.Ext(d.SourceName))
+			if slug, err = s.freeRoadmapSlug(ctx, tx, title); err != nil {
+				return err
+			}
+			res, err = tx.ExecContext(ctx, `INSERT INTO roadmaps (slug, title, select_rule) VALUES (?, ?, ?)`, slug, title, string(rule))
+			if err != nil {
+				return fmt.Errorf("inserting roadmap: %w", err)
+			}
+			if roadmapID, err = res.LastInsertId(); err != nil {
+				return err
+			}
+		} else {
+			roadmapID = d.RoadmapID
+			if err := tx.QueryRowContext(ctx, `SELECT r.slug, COALESCE(MAX(v.rev_no), 0) + 1 FROM roadmaps r
+				LEFT JOIN roadmap_revisions v ON v.roadmap_id = r.id WHERE r.id = ? GROUP BY r.id`, roadmapID).Scan(&slug, &revNo); err != nil {
+				return fmt.Errorf("loading roadmap %d: %w", roadmapID, err)
+			}
+			if _, err := tx.ExecContext(ctx, `UPDATE roadmaps SET select_rule = ? WHERE id = ?`, string(rule), roadmapID); err != nil {
+				return err
+			}
 		}
-		res, err = tx.ExecContext(ctx, `INSERT INTO roadmaps (slug, title, select_rule) VALUES (?, ?, ?)`, slug, title, string(rule))
-		if err != nil {
-			return fmt.Errorf("inserting roadmap: %w", err)
-		}
-		if roadmapID, err = res.LastInsertId(); err != nil {
-			return err
-		}
-		rel := "roadmaps/" + slug + "/rev-001.md"
+		rel := fmt.Sprintf("roadmaps/%s/rev-%03d.md", slug, revNo)
 		res, err = tx.ExecContext(ctx,
-			`INSERT INTO roadmap_revisions (roadmap_id, rev_no, rel_path, sha256, parsed_tree) VALUES (?, 1, ?, ?, ?)`,
-			roadmapID, rel, fsx.HashBytes(d.Content), string(tree))
+			`INSERT INTO roadmap_revisions (roadmap_id, rev_no, rel_path, sha256, parsed_tree) VALUES (?, ?, ?, ?, ?)`,
+			roadmapID, revNo, rel, fsx.HashBytes(d.Content), string(tree))
 		if err != nil {
 			return fmt.Errorf("inserting revision: %w", err)
 		}
@@ -103,23 +116,36 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 			if g.Parent >= 0 {
 				parent = groupID[g.Parent]
 			}
-			res, err := tx.ExecContext(ctx,
-				`INSERT INTO groups (roadmap_id, parent_id, stable_key, title, level, ord) VALUES (?, ?, ?, ?, ?, ?)`,
-				roadmapID, parent, g.StableKey, g.Title, g.Level, float64(i+1))
+			var gid int64
+			err := tx.QueryRowContext(ctx,
+				`INSERT INTO groups (roadmap_id, parent_id, stable_key, title, level, ord) VALUES (?, ?, ?, ?, ?, ?)
+				 ON CONFLICT (roadmap_id, stable_key) DO UPDATE SET parent_id = excluded.parent_id, title = excluded.title,
+				   level = excluded.level, ord = excluded.ord, state = 'active'
+				 RETURNING id`,
+				roadmapID, parent, g.StableKey, g.Title, g.Level, float64(i+1)).Scan(&gid)
 			if err != nil {
-				return fmt.Errorf("inserting group %q: %w", g.Title, err)
-			}
-			gid, err := res.LastInsertId()
-			if err != nil {
-				return err
+				return fmt.Errorf("recording group %q: %w", g.Title, err)
 			}
 			groupID[i] = sql.NullInt64{Int64: gid, Valid: true}
 		}
+		if _, err := tx.ExecContext(ctx, `UPDATE groups SET state = 'archived'
+			WHERE roadmap_id = ? AND state = 'active' AND stable_key NOT IN (SELECT value FROM json_each(?))`,
+			roadmapID, keysJSON(groupKeys)); err != nil {
+			return fmt.Errorf("archiving groups: %w", err)
+		}
 
+		old, err := recordedTopics(ctx, tx, roadmapID)
+		if err != nil {
+			return err
+		}
+		oldID := make(map[string]int64, len(old))
+		for _, o := range old {
+			oldID[o.Key] = o.ID
+		}
 		// Topics are never deleted (only archived), so the count is a gap-free global sequence
 		// that keeps dir_name unique across roadmaps.
-		var existing int
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM topics`).Scan(&existing); err != nil {
+		var seq int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM topics`).Scan(&seq); err != nil {
 			return err
 		}
 		for i, t := range kept {
@@ -127,15 +153,32 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 			if t.Group >= 0 {
 				group = groupID[t.Group]
 			}
+			outline := sql.NullString{String: t.Outline, Valid: t.Outline != ""}
+			if tid, ok := oldID[t.StableKey]; ok {
+				_, err := tx.ExecContext(ctx,
+					`UPDATE topics SET group_id = ?, title = ?, title_norm = ?, outline = ?, ord = ?, state = 'active',
+					   source_rev_id = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`,
+					group, t.Title, roadmap.Normalize(t.Title), outline, float64(i+1), revID, tid)
+				if err != nil {
+					return fmt.Errorf("updating topic %q: %w", t.Title, err)
+				}
+				continue
+			}
+			seq++
 			slug := slugOr(t.Title, "topic", maxDirSlugRunes)
 			_, err := tx.ExecContext(ctx,
 				`INSERT INTO topics (roadmap_id, group_id, stable_key, title, title_norm, outline, ord, slug, dir_name, source_rev_id)
 				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-				roadmapID, group, t.StableKey, t.Title, roadmap.Normalize(t.Title), sql.NullString{String: t.Outline, Valid: t.Outline != ""},
-				float64(i+1), slug, fmt.Sprintf("%02d-%s", existing+i+1, slug), revID)
+				roadmapID, group, t.StableKey, t.Title, roadmap.Normalize(t.Title), outline,
+				float64(i+1), slug, fmt.Sprintf("%02d-%s", seq, slug), revID)
 			if err != nil {
 				return fmt.Errorf("inserting topic %q: %w", t.Title, err)
 			}
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE topics SET state = 'archived', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+			WHERE roadmap_id = ? AND origin = 'roadmap' AND state = 'active' AND stable_key NOT IN (SELECT value FROM json_each(?))`,
+			roadmapID, keysJSON(topicKeys)); err != nil {
+			return fmt.Errorf("archiving topics: %w", err)
 		}
 
 		// The file goes last: any earlier failure leaves nothing on disk.
