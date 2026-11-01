@@ -19,11 +19,18 @@ const nested = `# Roadmap
 - a book
 `
 
+// mustSelect blanks stable keys so these tests check structure only; stablekey_test.go covers keys.
 func mustSelect(t *testing.T, src string, r Rule) *Selection {
 	t.Helper()
 	s, err := Select(Parse([]byte(src)), r)
 	if err != nil {
 		t.Fatal(err)
+	}
+	for i := range s.Groups {
+		s.Groups[i].StableKey = ""
+	}
+	for i := range s.Topics {
+		s.Topics[i].StableKey = ""
 	}
 	return s
 }

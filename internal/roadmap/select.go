@@ -22,19 +22,21 @@ type Rule struct {
 
 // Group is a heading above a topic. Parent indexes Selection.Groups; -1 means top level.
 type Group struct {
-	Title  string `json:"title"`
-	Level  int    `json:"level"`
-	Line   int    `json:"line"`
-	Parent int    `json:"parent"`
+	StableKey string `json:"stable_key"`
+	Title     string `json:"title"`
+	Level     int    `json:"level"`
+	Line      int    `json:"line"`
+	Parent    int    `json:"parent"`
 }
 
 // Topic is one selected topic. Group indexes Selection.Groups; -1 means none.
 // Outline holds the topic's sub-entries as a nested Markdown list (topics.outline).
 type Topic struct {
-	Title   string `json:"title"`
-	Line    int    `json:"line"`
-	Group   int    `json:"group"`
-	Outline string `json:"outline,omitempty"`
+	StableKey string `json:"stable_key"`
+	Title     string `json:"title"`
+	Line      int    `json:"line"`
+	Group     int    `json:"group"`
+	Outline   string `json:"outline,omitempty"`
 }
 
 // Selection is the result of applying a Rule, in document order.
@@ -53,6 +55,14 @@ func Select(root *Node, r Rule) (*Selection, error) {
 	}
 	s := &Selection{Groups: []Group{}, Topics: []Topic{}}
 	groupIdx := map[*Node]int{}
+	var groupPaths []string // normalized key path of each entry in s.Groups
+	usedG, usedT := map[string]bool{}, map[string]bool{}
+	pathOf := func(group int) string {
+		if group < 0 {
+			return ""
+		}
+		return groupPaths[group]
+	}
 
 	// group returns the index of the innermost heading in path, creating missing groups outermost first.
 	group := func(path []*Node) int {
@@ -62,7 +72,9 @@ func Select(root *Node, r Rule) (*Selection, error) {
 			if !ok {
 				i = len(s.Groups)
 				groupIdx[h] = i
-				s.Groups = append(s.Groups, Group{Title: h.Title, Level: h.Level, Line: h.Line, Parent: parent})
+				p := childPath(pathOf(parent), h.Title, usedG)
+				groupPaths = append(groupPaths, p)
+				s.Groups = append(s.Groups, Group{StableKey: stableKey(p), Title: h.Title, Level: h.Level, Line: h.Line, Parent: parent})
 			}
 			parent = i
 		}
@@ -73,7 +85,9 @@ func Select(root *Node, r Rule) (*Selection, error) {
 	walk = func(n *Node, path []*Node) {
 		for _, c := range n.Children {
 			if isTopic(c, n) {
-				s.Topics = append(s.Topics, Topic{Title: c.Title, Line: c.Line, Group: group(path), Outline: outline(c)})
+				g := group(path)
+				key := stableKey(childPath(pathOf(g), c.Title, usedT))
+				s.Topics = append(s.Topics, Topic{StableKey: key, Title: c.Title, Line: c.Line, Group: g, Outline: outline(c)})
 			} else if c.Kind == KindHeading {
 				walk(c, append(path[:len(path):len(path)], c))
 			}
