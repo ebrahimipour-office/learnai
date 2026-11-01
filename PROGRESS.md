@@ -11,6 +11,7 @@
 | **فاز فعال کنونی** | **فاز ۲ — ورود نقشه راه و مدیریت موضوعات (Phase 2: Roadmap Ingestion)** |
 | **کار بعدی برای اجرا** | **Task T2.2 — قاعده انتخاب «موضوع» و گروه‌ها (`internal/roadmap/select.go`)** — پیشنهاد: پیش از ادامه فاز ۲، آزمایش کوچک یک‌سره `agy` → JSON → اعتبارسنجی اسکیما |
 | **آخرین کامیت Git** | `feat(roadmap): T2.1 deterministic goldmark AST parser` |
+| **⚠️ مسدودکننده فاز ۳** | آزمایش واقعی `agy` (نسخه 1.4.7، ۲۰۲۶-۱۱-۰۱) شکست خورد: `Eligibility check failed: ... not currently available in your location` — در سطح حساب، برای همه مدل‌ها. پیش از فاز ۳ باید درباره Adapter تصمیم گرفته شود. یافته‌های قالب پاکت: کلید `event` (نه `type`)، فیلدها داخل `result` (`status`, `error`, `response`, `finished_reason`). |
 | **وضعیت آزمون‌های خودکار** | **۱۰۰٪ سبز و موفق** (`go test ./...` روی همه پکیج‌ها) |
 | **مسیر دایرکتوری پایه** | `C:\Users\Asus\Desktop\Leaning-appication\prj` |
 
