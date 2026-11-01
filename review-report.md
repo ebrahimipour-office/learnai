@@ -1,32 +1,45 @@
 # Review Report: Work Completed So Far
 
 **Date:** 2026-11-01
-**Scope:** everything up to `9cd42c8`: Phase 1 (T1.1–T1.9), the fixes in `966b630`, T2.1 (`cb1b66a`), T2.2 (`be92d25`) and T2.3 (`9cd42c8`).
-**Earlier report:** this replaces the review of work up to `68268c0` (commit `01ce546`, still in git history). The code it reviewed has **not changed** since, so its findings were re-checked and carried over below.
+**Scope:** everything up to `8d91bf4`. That is Phase 1 (T1.1–T1.9), T2.1–T2.3, plus two commits new since the last review:
+- `f1caabc`: `hub serve` now starts the HTTP server.
+- `8d91bf4`: T2.4, the import draft preview, including a `Referrer-Policy` fix.
+
+**Earlier reports:** this replaces the review up to `9cd42c8` (commit `25a314f`). Full details of older findings are in `git show 25a314f:review-report.md`. No code under `store`, `roadmap`, `config`, `fsx` or `schema` has changed since then (`git diff 9cd42c8 8d91bf4` on those directories is empty), so every earlier finding in them is still open as described.
 
 **Method:**
-- `go vet ./...`; `go test -race -count=1 ./...`.
-- A first-time check for the Windows target: `CGO_ENABLED=0 GOOS=windows go build ./...` and `CGO_ENABLED=0 go test ./...`.
-- A separate reviewer (who didn't write T2.2/T2.3) read both against the design doc and used throwaway probe tests to confirm findings.
-- I re-ran the two most serious findings (N1, N2) myself.
-- `PROGRESS.md` was compared with the actual code.
+- `go vet ./...`; `go test -race -count=1 ./...`; `CGO_ENABLED=0 GOOS=windows go build ./...`; `CGO_ENABLED=0 go test ./...`; `gofmt -l`.
+- A separate reviewer who didn't write `f1caabc`/`8d91bf4` read them against the design doc (T2.4 row, §7 routes, §8 security). It confirmed findings with throwaway probe tests (since deleted) and a 3000-document property fuzz of the preview tree.
+- I re-ran the most serious new finding (S1) myself.
+- A manual browser run of T2.4 (Playwright/Chromium) was done during implementation. It is how the `Origin: null` bug was found.
 
 ---
 
 ## 1. Verdict
 
-The foundation is still sound. Everything passes vet and the race detector. **The Windows build without CGO compiles cleanly**, which is new: it was never checked before. The CGO-free rule holds.
+**The new work is functionally correct.**
+- Upload, preview, rule switching and ticks all work in a real browser.
+- Nothing is written to `roadmaps`/`groups`/`topics` or the `roadmaps/` folder before confirm. A test checks this, and the real database from the browser run confirmed it.
+- All checks pass, including the race detector and the Windows build without CGO.
+- The `Referrer-Policy` fix was independently confirmed against the Fetch spec. Before it, every POST from a real browser was rejected.
 
-**T2.2 and T2.3 work, but they have one high-severity bug and one design gap, both in topic identity and selection.** Duplicate group titles can make a topic's stable key change even though the topic itself wasn't edited (N1). The default "deepest heading" rule silently drops whole branches of the roadmap (N2). Both should be fixed before T2.4/T2.5 store anything, because once keys are in the database, changing the key formula means migrating stored data.
+**The weaknesses are in error paths, not the main flow:**
+- `hub serve` exits with code 0 when it can't start (S1).
+- Under htmx, error responses are silently dropped (S2).
+- Keyboard focus is lost after every tick (S3).
 
-**None of the earlier findings has been fixed yet.** The blocker (B1) and the two high-severity issues (H1 database deadlock, H2 config never loaded) are still open. `PROGRESS.md` still marks T1.1 and T1.8 as done.
+**Still blocking the roadmap:**
+1. **N1 and N2 (stable keys / dropped content) must be fixed before T2.5.** T2.4 only stores keys in temporary drafts, so it was safe to build. T2.5 writes them permanently.
+2. **H1 (database deadlock) will hit T2.5 directly:** T2.5 is the first code that reads inside `WithTx`.
+3. **B1 (no working AI backend) still blocks Phase 3.**
 
-| Severity | Earlier (still open) | New (T2.2/T2.3) |
+| Severity | Earlier, still open | New in this round |
 |---|---|---|
-| Blocker | 1 | 0 |
-| High | 2 | 1 |
-| Medium | 4 | 2 |
-| Low | 10 | 3 |
+| Blocker | 1 (B1) | 0 |
+| High | 3 (H1, H2, N1) | 0 |
+| Medium | 5 (M2, M3, M4, N2, N3) | 3 (S1–S3) |
+| Low | 12 (L1–L6, L8–L10, N4–N6) | 7 (S4–S10) |
+| Fixed since last report | M1 (`serve`), L7 for form uploads | — |
 
 ---
 
@@ -34,115 +47,134 @@ The foundation is still sound. Everything passes vet and the race detector. **Th
 
 | Task | Claimed | Actual |
 |---|---|---|
-| **T1.1** agy feasibility | ✅ done (mentions `agy 1.1.12`) | ❌ **not done.** Only `--version` was ever checked, and the installed version is 1.4.7. A real call fails because the account is region-blocked (B1). `docs/feasibility-report.md` doesn't exist. |
-| **T1.5** CLI skeleton | ✅ with a ⚠️ note | ⚠️ partial: `serve` starts no HTTP server (M1), and the config is never loaded (H2). |
-| **T1.8** SQLite store | ✅ done | ⚠️ partial: the read-only reader pool from design §4.1 is missing, which causes H1. |
+| **T1.1** agy feasibility | ✅ | ❌ Not done (B1). Unchanged. |
+| **T1.5** CLI skeleton | ✅ (now says `serve` is complete) | ⚠️ `serve` works, but the config is still never loaded (H2), and a failed start exits 0 (S1). |
+| **T1.8** SQLite store | ✅ | ⚠️ The reader pool is missing (H1). Unchanged. |
 | **T2.1** parser | ✅ | ✅ |
-| **T2.2** topic selection | ✅ | ⚠️ works, but has N2 (dropped content) and N1 (via groups). |
-| **T2.3** stable key | ✅ | ⚠️ meets the spec's list, but has N1 and N3. |
+| **T2.2 / T2.3** | ✅ | ⚠️ N1/N2/N3 are still open. |
+| **T2.4** import preview | ✅ | ⚠️ Every acceptance criterion is met. Two spec gaps remain: §7.1 htmx error fragments (S2) and the 200-character title check that the last report asked T2.4 to add (N6). |
 
 ---
 
-## 3. New findings (T2.2 / T2.3)
-
-### High
-
-**N1. A topic's key changes when a same-named sibling group gains a topic.** *(Confirmed, and re-run by me.)*
-Groups are only created when they contain a selected topic. So which duplicate group gets the `#2` suffix depends on which of its same-named siblings happen to have topics.
-
-- **Example:**
-  - `# A / ## Intro / ## Intro / ### T` → T gets key `514241916ecb9c3e`.
-  - Add `### U` under the *first* Intro → T gets key `de8ab63e09ebc194`.
-- **Why it matters:** T wasn't touched, but T2.7 (re-import) will see it as removed plus new. The old row is archived and the student's progress is orphaned. The first Intro also takes over the second one's old group key.
-- **Where:** `internal/roadmap/select.go:67-82`, `internal/roadmap/stablekey.go:46-56`
-- **Fix:** number duplicates across **all** sibling headings in the parsed tree, not only the ones that were selected. For example, compute every heading's path once before selecting.
+## 3. New findings (`f1caabc`, `8d91bf4`)
 
 ### Medium
 
-**N2. Selection silently drops content.** *(Confirmed, and re-run by me.)*
+**S1. `hub serve` exits with code 0 when the server fails, and logs "Listening" before the port is bound.** *(Confirmed, and re-run by me.)*
 
-- **(a) "Deepest" uses one level for the whole file.** `# R / ## Git / - branching / ## Docker / ### Images` gives one topic, "Images". "Git" and its items appear nowhere: not as a topic, not as a group, not in an outline. Skipped levels behave the same way: with `# A / ### B / ## C`, the deepest rule keeps only B, and level 2 keeps only C.
-- **(b) Content directly under a group heading is lost.** With `# A / - intro item / ## B` and level 2, "intro item" disappears. In the test fixture, "Resources / - a book" is dropped under level 3.
-- **Tests:** `TestSelectDeepestDefault` *asserts* the dropped branches, so the current tests protect this behaviour.
-- **Spec:** A9 says "topic = deepest heading level". A literal reading allows this, but the likely intent is "the lowest heading in each branch". This needs **your decision.** Options:
-  1. Make "deepest" mean leaf headings per branch.
-  2. Keep the global level, and have Select return the dropped nodes so T2.4 can show them.
-- **Where:** `select.go:87-95`, `select.go:105-106`, `maxHeadingLevel` at `select.go:119`
+- **Scenario:** port 8787 is already taken. The log shows `Listening`, then `bind: address already in use`, and the exit code is 0. A failure in `NewSecurityManager` also exits 0.
+- **Why it matters:** `hub doctor`, scripts or a service manager would think the server started.
+- **Where:** `cmd/hub/main.go:191`, `cmd/hub/main.go:202-209`
+- **Fix:**
+  1. Call `net.Listen` first, then log, then `srv.Serve(ln)`.
+  2. Have `runServe` return an error, and have `main` call `os.Exit(1)`. The deferred unlock and DB close still run inside `runServe`.
 
-**N3. `Normalize` misses invisible characters common in pasted Persian text.** *(Confirmed.)*
+**S2. Under htmx, error responses are never shown.** *(Confirmed from the htmx 2.0.4 source; not run in a browser.)*
 
-- **Not handled:**
-  - ZWJ U+200D, ZWSP U+200B
-  - LRM/RLM U+200E/F, ALM U+061C, bidi controls U+202A-E / U+2066-9
-  - a BOM in the middle of text
-  - Arabic diacritics (harakat, tanwin, shadda) and superscript alef U+0670
-  - `هٔ` vs `ۀ`
-- **Example:** `"‏abc"` ≠ `"abc"`.
-- **Why it matters:** an invisible-only edit changes the key, so T2.7 archives and re-adds the topic. It also weakens `title_norm` search (T2.6).
-- **Spec:** the spec's required list is met. This is a robustness gap, not a spec violation. There is no UNIQUE-constraint risk, because duplicates are numbered after normalizing.
-- **Where:** `stablekey.go:15-34`
-- **Fix:** drop Unicode format characters (category Cf) and Arabic marks U+064B–U+065F and U+0670.
+- **Cause:** htmx's default `responseHandling` does not swap 4xx/5xx responses, and our `htmx-config` doesn't change that.
+- **Scenario:** the draft expires while the page is open, and the user ticks a box. The server returns 404, but nothing changes on screen: the box looks ticked even though nothing was saved. The 422 "invalid rule" fragment is never displayed either.
+- **Second problem:** the 404 path renders a full page, which would end up nested inside the form if it were ever swapped in.
+- **Spec:** design §7.1 requires an error fragment with `HX-Retarget` for htmx requests.
+- **Where:** `internal/httpserver/handlers_roadmaps.go:117-119, 144, 152, 166-171`
+- **Fix:** for `HX-Request`:
+  - Send 404 with `HX-Redirect: /roadmaps/new`.
+  - Return errors as fragments with `HX-Retarget`/`HX-Reswap`, or add a `responseHandling` entry for 422 in the meta config.
+
+**S3. Keyboard focus is lost after every change** (accessibility). *(Confirmed from the htmx source.)*
+
+- **Cause:** the whole form is swapped `outerHTML`. htmx only restores focus to an element that has an `id`, and the `<select>` and checkboxes have none.
+- **Scenario:** a keyboard user ticks a box, focus jumps to `<body>`, and they have to tab through the whole tree again. With a 500-topic roadmap that is unusable.
+- **Also:** the `aria-live` counter is replaced rather than updated, so screen readers may not announce the new count.
+- **Where:** `internal/ui/templates/draft.html:9, 13, 30`
+- **Fix:** swap an inner container so the form element survives. Or add stable ids: `id="sel-rule"`, and `id="t-{{.Key}}"` on checkboxes (keys are unique per selection).
 
 ### Low
 
-| # | Finding | Location |
-|---|---|---|
-| N4 | A heading made only of ZWNJ or kashida normalizes to `""`. Its children's keys then match top-level titles (`# ‌ / ## X` gives X the same key as a top-level X). All such groups share one key. Rare input. Fix: drop these headings in Parse, or use a non-empty placeholder. | `select.go:61-65`, `stablekey.go:48` |
-| N5 | The `#N` suffix shares a namespace with literal titles. Reordering `X, X, X#2` vs `X, X#2, X` moves the key between the literal "X#2" and the second "X". Fix: use a separator that can't appear in a title (e.g. `\x00`) for the suffix. | `stablekey.go:52-54` |
-| N6 | Titles have no length cap. `manifest.schema.json` allows at most 200 characters for a topic title, so a long heading passes import and only fails later at manifest validation (Phase 4). Check it in the T2.4 preview. | `select.go` (Topic.Title) |
+| # | Finding | Status | Location |
+|---|---|---|---|
+| S4 | Two quick clicks can lose the second one. htmx queues the second request, then drops it because the first response replaced its form. The DB and screen stay consistent, but the click is undone. Same fix as S3, or `hx-sync="this:replace"`. | Plausible | `draft.html:9` |
+| S5 | An oversized body sent with the `X-CSRF-Token` header (the htmx path) gets 422 "invalid rule" instead of 413. With the header present the middleware skips parsing, and `FormValue` hides the error. Fix: `r.ParseForm()` in the handler, mapping `MaxBytesError` to 413. | Confirmed | `handlers_roadmaps.go:141`, `middleware.go:117` |
+| S6 | With `listen = "[::1]:8787"`, which the config allows, every POST gets 403 because `http://[::1]:port` is missing from the Origin allowlist. This was L4 before; `serve` now makes it reachable. Related: §8.1 asks for an exact `host:port` Host match, but the code ignores the port. Low risk. | Confirmed | `middleware.go:93-98` |
+| S7 | A body over 1 MB + 64 KB gets a plain-text English 413 from the middleware instead of the Persian upload page. Go may also close the connection, so the browser shows "connection reset" instead. | Plausible | `middleware.go:115-119` |
+| S8 | `SetChoice` stores excluded keys that don't exist in the draft, although its comment says it "validates c against the draft". The handler filters keys correctly (forged and duplicate keys were tested). This matters for T2.5 callers. | Confirmed | `services/roadmaps/drafts.go:130-133` |
+| S9 | `config.Limits.MaxRoadmapBytes` exists but is never read; 1 MB is hardcoded in the service and the middleware. Wire it through, or delete the field. | Confirmed | `drafts.go:23`, `middleware.go:69` |
+| S10 | Test gaps:<br>• The tick test checks only the count, not which box is unticked or that ticks survive a reload.<br>• No test pins `Referrer-Policy: same-origin`, so the fix can silently regress.<br>• No test for 413 on the htmx path, or for htmx not swapping 4xx.<br>• `server_test.go` is not `gofmt`-clean (one trailing blank line). | Confirmed | `internal/httpserver/server_test.go` |
 
-### Test gaps
+### Checked and found correct
 
-- Duplicate numbering is tested for topics only, never for groups. That's exactly where N1 lives.
-- `TestStableKeyDiffersByPath` checks topic keys only, not group keys.
-- There are no tests for skipped heading levels or for content under group headings (N2).
-- The comment about the Items rule handling items promoted from an empty parent has no test. A probe showed it works correctly.
+- **Preview tree (`buildTree`):** a property fuzz of 3000 random documents × 6 rules found 0 mismatches. The fuzz included duplicate titles and skipped heading levels. Order matches `Selection.Topics`, every topic sits under its exact group chain, and each group appears once.
+- **Timestamps:** the Go format matches SQLite `strftime('%Y-%m-%dT%H:%M:%fZ')` at a fixed width, so string comparison is safe. The time is converted to UTC, so a `+03:30` clock still expires at 24 hours (checked ±1 minute). Expiry and purge use `>` and `<=` consistently.
+- **Selection handler:**
+  - Changing the rule resets the ticks.
+  - Forged and duplicate keys are ignored, and a missing `shown_rule` means everything is ticked.
+  - A bad rule gives 422.
+  - Without JavaScript, the form falls back to a 303 redirect.
+- **Referrer-Policy fix:** the Fetch spec's "append a request Origin header" sets `Origin: null` on non-GET requests under `no-referrer`, for both form POSTs and same-origin XHR. So the bug was real, and `same-origin` is the correct fix.
+- **Request bodies:**
+  - Multipart is parsed before the CSRF check, and an oversized body maps to 413.
+  - Memory is capped at about 1.06 MB.
+  - Uploads that spill to temp files are deleted by net/http after the request (0 left, checked on a real `httptest.Server`).
+- **Templates:** `hx-headers` renders valid JSON. Titles, outlines and IDs are escaped. The `htmx-config` meta tag is static text.
+- **htmx:** `internal/ui/static/htmx.min.js` matches the official 2.0.4 SRI hash, and the downloads from unpkg and jsDelivr were byte-identical.
+  - `includeIndicatorStyles:false` avoids a CSP violation.
+  - `allowEval:false` is safe, since nothing uses `hx-on` or `js:`.
+  - The default `selfRequestsOnly` means the CSRF header is never sent to another origin.
+- **Security:**
+  - No CORS headers are sent.
+  - The Host check runs on GET requests too, and `frame-ancestors 'none'` is set.
+  - Draft IDs are 128-bit random.
+  - Nothing state-changing is reachable cross-origin.
+- **Shutdown:** SIGINT gives a graceful exit with code 0. `ErrServerClosed` is handled correctly.
+- **Builds:** `go vet` is clean. `go test -race` passes in every package. The Windows build without CGO and the tests with CGO off both pass.
 
 ---
 
-## 4. Earlier findings: status (all still open)
-
-All details are in the earlier report (`git show 01ce546:review-report.md`).
+## 4. Earlier findings: status
 
 | # | Finding | Status |
 |---|---|---|
-| **B1** | `agy` unusable: the account is region-blocked for all models. Blocks Phases 3–5. | Open. Decision needed (another account, or a direct-API adapter). |
-| **H1** | Database deadlock: `SetMaxOpenConns(1)`, and a read inside `WithTx` hangs forever. The reader pool is missing. `internal/store/db.go:39` | Open |
-| **H2** | `config.toml` is never loaded: an empty `--config` doesn't fall back to `DefaultConfigPath()`, and a missing explicit path is silently ignored. `cmd/hub/main.go:138`, `internal/config/config.go:128` | Open |
-| M1 | `hub serve` starts no HTTP server, and the middleware isn't wired in. **Blocks T2.4.** | Open |
-| M2 | The forbidden-flag list misses `agy --mode auto/accept-edits`. | Open |
-| M3 | `hub doctor` reports OK when `agy` can't make a call; its write test bypasses `fsx.Root`. | Open |
-| M4 | `ExtractAnswerContent` trims whitespace, so the student's answer isn't kept byte for byte. `internal/fsx/answertpl.go:79-88` | Open |
-| L1–L10 | Duplicate exercise IDs in `CrossCheckResult`; the path length limit counted in bytes; dead code; Origin list; DSN not escaped; no directory flush; 403 instead of 413; front matter parsed as a heading; `gofmt` on 6 files; `migrate` without the instance lock. | All open. `gofmt -l` still lists the same 6 files. |
+| **B1** | `agy` unusable (account region-blocked). Blocks Phases 3–5. | Open: decision needed. |
+| **H1** | Database deadlock: one connection, and a read inside `WithTx` hangs. `internal/store/db.go:39` | Open. **T2.5 will be the first code to hit it.** The T2.4 drafts code avoids it by not using `WithTx`. |
+| **H2** | `config.toml` is never loaded. `cmd/hub/main.go:134`, `internal/config/config.go:128` | Open. **Now more visible:** `hub serve` creates `app.db` and `.app/` in whatever folder you start it from. |
+| **N1** | A topic's key changes when a same-named sibling group gains a topic. | Open. **Must be fixed before T2.5** stores keys. |
+| M1 | `serve` started no HTTP server. | ✅ **Fixed** in `f1caabc`. |
+| M2 | Forbidden-flag list misses `agy --mode`. | Open (handle in T3.1). |
+| M3 | `hub doctor` reports OK when `agy` can't make a call. | Open (handle in T3.9). |
+| M4 | `ExtractAnswerContent` trims whitespace, so answers aren't kept byte for byte. | Open (fix before Phase 4). |
+| **N2** | The selection rules silently drop content (global "deepest" level; content directly under group headings). | Open. **Needs your decision** before T2.5. The preview now makes this visible but doesn't list what was dropped. |
+| N3 | `Normalize` misses invisible and bidi characters and Arabic diacritics. | Open. Fold into the N1 change, since it also changes keys. |
+| N4–N5 | Edge cases in empty-title and `#N` key suffixes. | Open. |
+| N6 | Titles over 200 characters aren't caught at import. The last report asked the T2.4 preview to check this; it doesn't. | Open. |
+| L4 | Origin allowlist. | Open; see S6. |
+| L7 | Oversized body got 403 instead of 413. | ✅ **Fixed** for form uploads in `8d91bf4`. Still wrong on the htmx header path (S5). |
+| L8 | YAML front matter is parsed as a heading. | Open. **Now user-visible** in the T2.4 preview. |
+| L1–L3, L5, L6, L9, L10 | See the earlier report. | Open. L9 (`gofmt`) now covers 7 files (+`server_test.go`). |
 
 ---
 
-## 5. What's verified as solid
+## 5. Recommended order
 
-- **Windows build:** `CGO_ENABLED=0 GOOS=windows go build ./...` succeeds. The instance lock uses `gofrs/flock`, which works on Windows. *(New.)*
-- **Tests:** all packages pass `go test -race -count=1`, and also pass with CGO turned off. `go vet` is clean.
-- **T2.2/T2.3 basics** (confirmed by the separate reviewer):
-  - Output is deterministic and in document order.
-  - A parent group always comes before its children, and the indexes are correct.
-  - Keys match `^[0-9a-f]{16}$`.
-  - No UNIQUE-constraint violation is possible within one import.
-  - Invalid rules return errors.
-  - Outline nesting is correct.
-  - The test strings really contain the characters they claim (decomposed é, ZWNJ, kashida, Persian and Arabic digits).
-- **Phase 1 strengths are unchanged:** `os.Root` confinement, `O_EXCL` file creation, strict path patterns for AI output, partial unique indexes on the database, the scoring formula, Host/Origin/CSRF/CSP checks.
-
----
-
-## 6. Recommended order
-
-1. **Fix N1 and decide N2 now**, before T2.4/T2.5 store keys. Changing the key formula after topics are in the database means migrating data. Fold N3 into the same change: it's a few lines in `Normalize`, and changing it later would also change keys.
-2. **Decide the AI backend (B1).** Phase 2 can continue in the meantime.
-3. **H2 (config) and H1 (reader pool).** Both are small. Do them before more database code builds on the single connection.
-4. **M1 (`serve`).** Required before T2.4.
-5. **M4** before Phase 4. **M2 and M3** inside T3.1 and T3.9.
-6. **Correct `PROGRESS.md`:** reopen T1.1, mark T1.8 as partial, and mark T2.2/T2.3 as needing the N1/N2 follow-up.
-7. **Low items** whenever their file is being changed anyway.
+1. **Before T2.5:**
+   - Fix N1, decide N2, and fold N3 into the same change.
+   - Fix H1 (reader pool), because T2.5's transaction needs it.
+   - Make S8 drop unknown excluded keys.
+2. **Small fixes worth doing together** (about one short commit):
+   - S1: exit code and bind before logging.
+   - S2: htmx error handling, the remaining §7.1 spec gap.
+   - S3/S4: keep the form element; this fixes focus and lost clicks together.
+   - S5: 413 on the htmx path.
+   - S10: a `Referrer-Policy` regression test and `gofmt`.
+3. **H2 (config loading):** small, and now user-visible.
+4. **B1:** decide the AI backend before Phase 3.
+5. **Correct `PROGRESS.md`:**
+   - Reopen T1.1.
+   - Mark T1.8 as partial.
+   - Note that T2.2/T2.3 need the N1/N2 follow-up, and T2.4 needs S2.
+6. **Low items** whenever their file is being changed anyway.
 
 ---
 
-*Not covered:* the app was not run on Windows. Only cross-compilation was checked, so L5 (DSN escaping) and the planned Windows Job Object work are still unverified at runtime. The design document was compared only for the parts covering finished tasks.
+*Not covered:*
+- S2, S3, S4 and S7 were confirmed by reading the htmx/net/http source, not by driving a browser.
+- Preview speed for a full 1 MB roadmap was not measured. Each selection POST parses the content three times.
+- The app was not run on Windows. Only cross-compilation was checked.
