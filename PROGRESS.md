@@ -9,8 +9,8 @@
 | مشخصه | وضعیت |
 |---|---|
 | **فاز فعال کنونی** | **فاز ۲ — ورود نقشه راه و مدیریت موضوعات (Phase 2: Roadmap Ingestion)** |
-| **کار بعدی برای اجرا** | **Task T2.1 — پارسر قطعی Markdown بر پایه AST (`internal/roadmap/parse.go`)** |
-| **آخرین کامیت Git** | `4a98728` (`feat: Phase 1 foundation - fsx, sqlite store, json schemas, security middleware, and skills`) |
+| **کار بعدی برای اجرا** | **Task T2.2 — قاعده انتخاب «موضوع» و گروه‌ها (`internal/roadmap/select.go`)** — پیشنهاد: پیش از ادامه فاز ۲، آزمایش کوچک یک‌سره `agy` → JSON → اعتبارسنجی اسکیما |
+| **آخرین کامیت Git** | `feat(roadmap): T2.1 deterministic goldmark AST parser` |
 | **وضعیت آزمون‌های خودکار** | **۱۰۰٪ سبز و موفق** (`go test ./...` روی همه پکیج‌ها) |
 | **مسیر دایرکتوری پایه** | `C:\Users\Asus\Desktop\Leaning-appication\prj` |
 
@@ -44,8 +44,8 @@
 ---
 
 ### فاز ۲ — ورود Roadmap و فهرست موضوعات (فاز فعال کنونی 🚀)
-- [ ] **T2.1 (گام بعدی)**: پارسر قطعی Markdown با AST (`internal/roadmap/parse.go`) بر پایه `goldmark`
-- [ ] **T2.2**: قواعد انتخاب «موضوع» و استخراج گروه‌های والد
+- [x] **T2.1**: پارسر قطعی Markdown با AST (`internal/roadmap/parse.go`) بر پایه `goldmark` — ۷ تست golden، تعیین‌پذیری ۱۰۰ اجرا، CRLF/BOM، حفظ نیم‌فاصله
+- [ ] **T2.2 (گام بعدی)**: قواعد انتخاب «موضوع» و استخراج گروه‌های والد
 - [ ] **T2.3**: تابع محاسبه شناسه پایدار `stable_key` با نرمال‌سازی فارسی/عربی، NFC، نیم‌فاصله و ارقام
 - [ ] **T2.4**: سیستم پیش‌نویس `import_drafts` و پیش‌نمایش درختی با htmx
 - [ ] **T2.5**: تایید و ثبت تراکنشی در جدول‌های `roadmaps`, `groups`, `topics` و ایجاد فایل `rev-001.md`

@@ -1,0 +1,40 @@
+{
+  "kind": "root",
+  "level": 0,
+  "title": "",
+  "line": 0,
+  "children": [
+    {
+      "kind": "item",
+      "level": 1,
+      "title": "Closures",
+      "line": 3
+    },
+    {
+      "kind": "item",
+      "level": 1,
+      "title": "Iterators",
+      "line": 4,
+      "children": [
+        {
+          "kind": "item",
+          "level": 2,
+          "title": "Range-over-func",
+          "line": 5
+        }
+      ]
+    },
+    {
+      "kind": "item",
+      "level": 1,
+      "title": "Errors",
+      "line": 7
+    },
+    {
+      "kind": "item",
+      "level": 1,
+      "title": "Testing",
+      "line": 8
+    }
+  ]
+}

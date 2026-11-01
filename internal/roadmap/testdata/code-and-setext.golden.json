@@ -1,0 +1,30 @@
+{
+  "kind": "root",
+  "level": 0,
+  "title": "",
+  "line": 0,
+  "children": [
+    {
+      "kind": "heading",
+      "level": 1,
+      "title": "Setext Title",
+      "line": 1,
+      "children": [
+        {
+          "kind": "heading",
+          "level": 2,
+          "title": "Setext Section",
+          "line": 11,
+          "children": [
+            {
+              "kind": "heading",
+              "level": 3,
+              "title": "Deep under setext",
+              "line": 18
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

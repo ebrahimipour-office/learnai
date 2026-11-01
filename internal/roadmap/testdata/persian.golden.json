@@ -1,0 +1,70 @@
+{
+  "kind": "root",
+  "level": 0,
+  "title": "",
+  "line": 0,
+  "children": [
+    {
+      "kind": "heading",
+      "level": 1,
+      "title": "نقشه راه یادگیری Go",
+      "line": 1,
+      "children": [
+        {
+          "kind": "heading",
+          "level": 2,
+          "title": "مبانی زبان",
+          "line": 3,
+          "children": [
+            {
+              "kind": "heading",
+              "level": 3,
+              "title": "متغیرها و نوع‌ها",
+              "line": 5,
+              "children": [
+                {
+                  "kind": "item",
+                  "level": 1,
+                  "title": "اعلان متغیر با var و :=",
+                  "line": 6
+                },
+                {
+                  "kind": "item",
+                  "level": 1,
+                  "title": "نوع‌های پایه",
+                  "line": 7
+                }
+              ]
+            },
+            {
+              "kind": "heading",
+              "level": 3,
+              "title": "توابع",
+              "line": 9
+            }
+          ]
+        },
+        {
+          "kind": "heading",
+          "level": 2,
+          "title": "هم‌روندی",
+          "line": 12,
+          "children": [
+            {
+              "kind": "heading",
+              "level": 3,
+              "title": "گوروتین‌ها",
+              "line": 14
+            },
+            {
+              "kind": "heading",
+              "level": 3,
+              "title": "کانال‌ها",
+              "line": 15
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

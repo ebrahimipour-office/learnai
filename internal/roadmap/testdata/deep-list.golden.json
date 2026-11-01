@@ -1,0 +1,84 @@
+{
+  "kind": "root",
+  "level": 0,
+  "title": "",
+  "line": 0,
+  "children": [
+    {
+      "kind": "heading",
+      "level": 1,
+      "title": "Data Structures",
+      "line": 1,
+      "children": [
+        {
+          "kind": "item",
+          "level": 1,
+          "title": "Linear",
+          "line": 3,
+          "children": [
+            {
+              "kind": "item",
+              "level": 2,
+              "title": "Arrays",
+              "line": 4,
+              "children": [
+                {
+                  "kind": "item",
+                  "level": 3,
+                  "title": "Static arrays",
+                  "line": 5
+                },
+                {
+                  "kind": "item",
+                  "level": 3,
+                  "title": "Dynamic arrays",
+                  "line": 6,
+                  "children": [
+                    {
+                      "kind": "item",
+                      "level": 4,
+                      "title": "Amortized growth",
+                      "line": 7
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "item",
+              "level": 2,
+              "title": "Linked lists",
+              "line": 8
+            }
+          ]
+        },
+        {
+          "kind": "item",
+          "level": 1,
+          "title": "Non-linear",
+          "line": 9,
+          "children": [
+            {
+              "kind": "item",
+              "level": 2,
+              "title": "Trees",
+              "line": 10
+            },
+            {
+              "kind": "item",
+              "level": 2,
+              "title": "Graphs",
+              "line": 11
+            }
+          ]
+        },
+        {
+          "kind": "item",
+          "level": 2,
+          "title": "Promoted item",
+          "line": 13
+        }
+      ]
+    }
+  ]
+}

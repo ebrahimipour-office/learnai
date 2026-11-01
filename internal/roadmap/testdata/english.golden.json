@@ -1,0 +1,70 @@
+{
+  "kind": "root",
+  "level": 0,
+  "title": "",
+  "line": 0,
+  "children": [
+    {
+      "kind": "heading",
+      "level": 1,
+      "title": "Backend Roadmap",
+      "line": 1,
+      "children": [
+        {
+          "kind": "heading",
+          "level": 2,
+          "title": "Internet",
+          "line": 3,
+          "children": [
+            {
+              "kind": "heading",
+              "level": 3,
+              "title": "How does the internet work?",
+              "line": 4
+            },
+            {
+              "kind": "heading",
+              "level": 3,
+              "title": "What is HTTP?",
+              "line": 5
+            }
+          ]
+        },
+        {
+          "kind": "heading",
+          "level": 2,
+          "title": "Databases",
+          "line": 7,
+          "children": [
+            {
+              "kind": "heading",
+              "level": 3,
+              "title": "Relational",
+              "line": 8,
+              "children": [
+                {
+                  "kind": "item",
+                  "level": 1,
+                  "title": "PostgreSQL",
+                  "line": 9
+                },
+                {
+                  "kind": "item",
+                  "level": 1,
+                  "title": "MySQL",
+                  "line": 10
+                }
+              ]
+            },
+            {
+              "kind": "heading",
+              "level": 3,
+              "title": "NoSQL",
+              "line": 11
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
