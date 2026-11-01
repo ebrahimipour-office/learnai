@@ -164,6 +164,21 @@ func (r *Root) Remove(relPath string) error {
 	return r.rawRoot.Remove(path.Clean(relPath))
 }
 
+// RemoveAll removes relPath and everything under it; only for internal scratch dirs (.app/work, .app/staging).
+func (r *Root) RemoveAll(relPath string) error {
+	if err := ValidateRelPath(relPath); err != nil {
+		return err
+	}
+
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.closed {
+		return ErrRootClosed
+	}
+
+	return r.rawRoot.RemoveAll(path.Clean(relPath))
+}
+
 // HashFile calculates the SHA-256 hash and byte length of a file within the root.
 func (r *Root) HashFile(relPath string) (string, int64, error) {
 	f, err := r.Open(relPath)

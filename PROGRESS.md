@@ -9,8 +9,8 @@
 | مشخصه | وضعیت |
 |---|---|
 | **فاز فعال کنونی** | **فاز ۳ — هسته Job Runner و تولید درس (Phase 3)** — فاز ۲ کامل شد ✅ |
-| **کار بعدی برای اجرا** | **Task T3.3 — Sandbox موقت `.app/work/<job>` با `prompt.Composer`** |
-| **آخرین کامیت Git** | `feat(ai): T3.2 procgroup process-tree kill` |
+| **کار بعدی برای اجرا** | **Task T3.4 — هسته Job Runner (صف FIFO، سمافور سراسری، بازیابی پس از crash)** |
+| **آخرین کامیت Git** | `feat(ai): T3.3 prompt composer and job sandbox` |
 | **⚠️ باز از T3.1** | «یک اجرای واقعی دستی موفق» هنوز انجام نشده: `agy` 1.4.12 (۲۰۲۶-۱۱-۰۱) همچنان `Eligibility check failed: ... not currently available in your location` در سطح حساب. پاکت خطای واقعی: `{"event":"result","result":{conversation_id,status,response,error,duration_seconds,num_turns,usage{input/output/thinking/cache_read/total_tokens},finished_reason}}`. **پاکت موفق دیده نشده:** نام فیلد خروجی ساختاریافته (`structured_output` با fallback به JSON داخل `response`)، رویدادهای میانی (`init`/`step_update`) و قالب `agy models` فرض‌اند — پس از اولین اجرای واقعی بررسی شوند (`internal/ai/antigravity/stream.go`). |
 | **وضعیت آزمون‌های خودکار** | **۱۰۰٪ سبز و موفق** (`go test ./...` روی همه پکیج‌ها) |
 | **مسیر دایرکتوری پایه** | `C:\Users\Asus\Desktop\Leaning-appication\prj` |
@@ -66,7 +66,8 @@
 - [x] **T3.2**: `internal/ai/procgroup` — `Start(cmd)` فرزند را در گروه پردازش (یونیکس: `Setpgid`؛ `Kill` = SIGTERM به `-pgid` و SIGKILL پس از ۳s حتی اگر رهبر خارج شده باشد) یا Job Object (ویندوز: `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`؛ `Kill` = `TerminateJobObject` + `Process.Kill`) اجرا می‌کند و `cmd.Cancel` را جایگزین می‌کند؛ `Close` پس از `Wait` بازمانده‌ها را می‌کشد؛ Adapter آنتی‌گراویتی از آن استفاده می‌کند — تست: فرزند + نوه (نوه SIGTERM را نادیده می‌گیرد) ⇒ لغو، هر دو ظرف ≈۳s تمام؛ فرزندی که نوه یتیم رها کرده ⇒ `Close` نوه را می‌کشد؛ آزمون منفی (kill فقط فرزند) هر دو تست را می‌شکند؛ `GOOS=windows go vet` سبز
   - ⏳ **باز:** آزمون دستی ویندوز (درخت واقعی `agy` و بستن ناگهانی `hub.exe`) هنوز ثبت نشده
   - ⚠️ ویندوز: نوه‌ای که بین `CreateProcess` و `AssignProcessToJobObject` ساخته شود از Job فرار می‌کند (پنجره میکروثانیه‌ای). یونیکس: crash سخت `hub` گروه را زنده رها می‌کند (خاموشی عادی با لغو context پوشش داده می‌شود؛ T3.4 باید context ریشه را هنگام خاموشی لغو کند)
-- [ ] **T3.3**: ساخت Sandbox موقت در `.app/work/<job>` با `prompt.Composer`
+- [x] **T3.3**: `internal/ai/prompt` — `Composer.Compose(Input)` پوشه `.app/work/<job>` را از صفر می‌سازد (بقایای اجرای crash‌شده پاک می‌شود) و فقط فهرست سفید §6.3 را می‌نویسد: `AGENTS.md`، `SKILL.md`، `profile.md` و `inputs/{task.json, roadmap_excerpt.md, lesson.md, question.md, rubric.json, answer<ext>}` (نام دیگر ⇒ `ErrInput`)؛ ورودی‌ها **بایت** هستند نه مسیر، پس sandbox همیشه کپی دارد؛ `name`/`version` از frontmatter (BOM/CRLF مجاز) ⇒ `SkillRef`؛ `Preamble` امنیتی سه‌قاعده‌ای در `-p` و بلافاصله پس از frontmatter در `SKILL.md`؛ Prompt بیش از ۴KB ⇒ خطا؛ `output.schema.json` را همچنان Adapter می‌نویسد؛ `Cleanup(job)` با `fsx.Root.RemoveAll` (جدید) — `internal/ai/fake` با سناریوهای `ok` و `injection` (همه فایل‌های WorkDir را بازنویسی و `evil.sh` اضافه می‌کند؛ خروجی شامل `../../x` و `<script>`) — تست: فهرست دقیق فایل‌های sandbox، hash همه فایل‌های واقعی پایه (بیرون از `.app/`) قبل/بعد injection یکسان، پیش‌گفتار و سقف ۴KB برای هر سه Skill واقعی، رد نام‌های غیرمجاز و Skill بی‌frontmatter/بی‌نسخه بدون باقی‌گذاشتن sandbox
+  - ⏭️ خواندن `AGENTS.md`/`profile.md`/`.agent/<skill>/SKILL.md` از دایرکتوری پایه و ساخت `task.json` با Handlerها (T3.6+)؛ سناریوهای دیگر Adapter جعلی (`slow`، `invalid_json`، ...) در T3.4/T3.5
 - [ ] **T3.4**: هسته Job Runner (صف کارهای FIFO، سمافور سراسری، بازیابی پس از crash)
 - [ ] **T3.5**: مدیریت لغو، Timeout و نگهبان سکوت (Stall Watchdog)
 - [ ] **T3.6**: هندلر تولید درس و آرشیو نسخه قبلی در `lesson/history/lesson.NNNN.md`
