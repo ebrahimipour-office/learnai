@@ -9,11 +9,15 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"path"
+	"strconv"
 	"sync"
 	"time"
 
 	"learninghub/internal/ai"
+	"learninghub/internal/ai/prompt"
 	"learninghub/internal/domain"
+	"learninghub/internal/fsx"
 	"learninghub/internal/store"
 )
 
@@ -21,6 +25,8 @@ const (
 	nowSQL = `strftime('%Y-%m-%dT%H:%M:%fZ','now')`
 	// InterruptedMessage is shown when the app closed while the job ran (TDD §6.4).
 	InterruptedMessage = "برنامه هنگام اجرا بسته شد؛ قابل تکرار است"
+	// LateCancelMessage is recorded on a job that succeeded because a cancel reached it during commit.
+	LateCancelMessage = "لغو دیر رسید؛ کار در مرحله ثبت بود و کامل شد"
 )
 
 // Job is what a Handler receives.
@@ -32,7 +38,30 @@ type Job struct {
 	RoadmapID int64  // 0 = none
 	Params    json.RawMessage
 	RetryOf   int64 // 0 = none
+
+	r *Runner
 }
+
+// Commit runs fn as the job's commit phase (TDD §6.6). It refuses to start once a cancel was
+// requested; after that fn runs with a context that is never cancelled, so a cancel arriving
+// now is too late and the job still succeeds (no half-committed state).
+func (j Job) Commit(ctx context.Context, fn func(ctx context.Context) error) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("%w: before commit: %v", ai.ErrCanceled, err)
+	}
+	res, err := j.r.db.Writer().ExecContext(ctx,
+		`UPDATE jobs SET phase = 'commit' WHERE id = ? AND status = 'running' AND cancel_requested = 0`, j.ID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n != 1 {
+		return fmt.Errorf("%w: before commit", ai.ErrCanceled)
+	}
+	return fn(context.WithoutCancel(ctx))
+}
+
+// StagingRel is where a job builds its output before commit (TDD §6.6).
+func StagingRel(jobID int64) string { return path.Join(".app/staging", strconv.FormatInt(jobID, 10)) }
 
 // Handler does one job. Returning nil means the job succeeded; ctx is cancelled on shutdown.
 type Handler func(ctx context.Context, j Job) error
@@ -51,15 +80,22 @@ type Runner struct {
 	handlers map[domain.JobKind]Handler
 	wake     chan struct{}
 
+	mu      sync.Mutex
+	running map[int64]context.CancelFunc
+
 	Poll      time.Duration // dispatcher fallback tick (TDD §6.5: 2s)
 	Heartbeat time.Duration // heartbeat_at update interval (TDD §6.5: 5s)
+	// Files is the base dir; work/ and staging/ of succeeded and canceled jobs are removed from it.
+	// Failed jobs keep them for diagnosis and retry. nil skips cleanup.
+	Files *fsx.Root
 }
 
 // New returns a runner that runs at most maxConcurrent jobs at once (config jobs.max_concurrent).
 func New(db *store.DB, maxConcurrent int) *Runner {
 	return &Runner{
 		db: db, max: max(maxConcurrent, 1), handlers: map[domain.JobKind]Handler{}, wake: make(chan struct{}, 1),
-		Poll: 2 * time.Second, Heartbeat: 5 * time.Second,
+		running: map[int64]context.CancelFunc{},
+		Poll:    2 * time.Second, Heartbeat: 5 * time.Second,
 	}
 }
 
@@ -126,6 +162,42 @@ func (r *Runner) enqueue(ctx context.Context, j Job, retryOf int64) (id int64, e
 	default:
 	}
 	return id, nil
+}
+
+// Cancel stops job id (TDD §6.5): a queued job is canceled at once; a running one gets
+// cancel_requested and its context cancelled, and the runner records canceled once the handler
+// returns. late reports that the job was already committing, so it will still succeed.
+func (r *Runner) Cancel(ctx context.Context, id int64) (late bool, err error) {
+	var status string
+	var phase sql.NullString
+	err = r.db.WithTx(ctx, func(tx *sql.Tx) error {
+		err := tx.QueryRowContext(ctx, `SELECT status, phase FROM jobs WHERE id = ?`, id).Scan(&status, &phase)
+		if errors.Is(err, sql.ErrNoRows) {
+			return domain.ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		switch domain.JobStatus(status) {
+		case domain.JobStatusQueued:
+			_, err = tx.ExecContext(ctx, `UPDATE jobs SET status = 'canceled', cancel_requested = 1, finished_at = `+nowSQL+` WHERE id = ?`, id)
+		case domain.JobStatusRunning:
+			_, err = tx.ExecContext(ctx, `UPDATE jobs SET cancel_requested = 1 WHERE id = ?`, id)
+		default:
+			err = fmt.Errorf("%w: job %d is %s", domain.ErrInvalidState, id, status)
+		}
+		return err
+	})
+	if err != nil || status != string(domain.JobStatusRunning) {
+		return false, err
+	}
+	// Set in the DB first: execute re-reads the flag after registering, so a job claimed just now is not missed.
+	r.mu.Lock()
+	if cancel := r.running[id]; cancel != nil {
+		cancel()
+	}
+	r.mu.Unlock()
+	return phase.String == "commit", nil
 }
 
 // Recover marks jobs left running by a previous process as failed/interrupted; queued jobs stay queued.
@@ -213,12 +285,30 @@ func (r *Runner) execute(ctx context.Context, j Job) {
 	slog.Info("Job started", "job", j.ID, "kind", j.Kind, "scope", j.Scope)
 	jobCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	r.mu.Lock()
+	r.running[j.ID] = cancel
+	r.mu.Unlock()
+	defer func() {
+		r.mu.Lock()
+		delete(r.running, j.ID)
+		r.mu.Unlock()
+	}()
+	if r.cancelRequested(ctx, j.ID) {
+		cancel()
+	}
 	go r.heartbeat(jobCtx, j.ID)
 
+	j.r = r
 	err := r.call(jobCtx, j)
+	canceled := r.cancelRequested(context.WithoutCancel(ctx), j.ID)
 	status, code, msg := domain.JobStatusSucceeded, "", ""
 	switch {
 	case err == nil:
+		if canceled {
+			msg = LateCancelMessage
+		}
+	case canceled:
+		status = domain.JobStatusCanceled
 	case ctx.Err() != nil: // shutdown (TDD §6.5): retryable like a crash
 		status, code, msg = domain.JobStatusFailed, "interrupted", InterruptedMessage
 	default:
@@ -233,7 +323,20 @@ func (r *Runner) execute(ctx context.Context, j Job) {
 	if werr != nil {
 		slog.Error("Recording job result failed", "job", j.ID, "error", werr)
 	}
+	if r.Files != nil && status != domain.JobStatusFailed {
+		if err := errors.Join(r.Files.RemoveAll(prompt.WorkRel(j.ID)), r.Files.RemoveAll(StagingRel(j.ID))); err != nil {
+			slog.Error("Removing job work/staging failed", "job", j.ID, "error", err)
+		}
+	}
 	slog.Info("Job finished", "job", j.ID, "status", status, "error_code", code)
+}
+
+func (r *Runner) cancelRequested(ctx context.Context, id int64) bool {
+	var c bool
+	if err := r.db.Writer().QueryRowContext(ctx, `SELECT cancel_requested FROM jobs WHERE id = ?`, id).Scan(&c); err != nil {
+		slog.Error("Reading cancel_requested failed", "job", id, "error", err)
+	}
+	return c
 }
 
 // call runs the handler; a panic fails the job instead of the whole server.

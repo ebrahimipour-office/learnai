@@ -210,6 +210,7 @@ func runServe(args []string) {
 
 	// shortcut: no handlers registered yet; T3.6 registers the lesson handler.
 	runner := jobs.New(db, cfg.Jobs.MaxConcurrent)
+	runner.Files = root
 	runnerDone := make(chan struct{})
 	go func() {
 		defer close(runnerDone)
