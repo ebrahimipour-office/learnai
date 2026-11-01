@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"learninghub/internal/ai"
+	"learninghub/internal/ai/procgroup"
 	"learninghub/internal/fsx"
 )
 
@@ -147,7 +148,6 @@ func (a *Adapter) Run(ctx context.Context, req ai.Request, events chan<- ai.Even
 	}
 	defer cancel()
 
-	// shortcut: CommandContext kills only the direct child; T3.2 procgroup swaps in a tree kill.
 	cmd := exec.CommandContext(runCtx, bin, args...)
 	cmd.Dir = req.WorkDir
 	cmd.WaitDelay = 5 * time.Second
@@ -159,12 +159,14 @@ func (a *Adapter) Run(ctx context.Context, req ai.Request, events chan<- ai.Even
 	}
 
 	start := time.Now()
-	if err := cmd.Start(); err != nil {
+	group, err := procgroup.Start(cmd) // cancel/timeout kills agy's whole process tree
+	if err != nil {
 		log.finish(args, nil, stderr.String(), -1, 0, err)
 		return nil, fmt.Errorf("%w: start: %v", ai.ErrToolFailed, err)
 	}
 	res, rawRes := readStream(runCtx, stdout, events, log)
 	waitErr := cmd.Wait()
+	group.Close()
 	dur := time.Since(start)
 
 	resp := &ai.Response{Duration: dur, RawLogDir: log.absDir()}
