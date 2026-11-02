@@ -23,6 +23,10 @@ func exOutput() json.RawMessage {
 	}
 	b, _ := json.Marshal(map[string]any{"suggestions": []any{}, "exercises": []any{
 		ex("Hello handler", "hello", "go", "coding"), ex("Explain context", "explain", "md", "conceptual"), ex("Status codes", "status", "go", "coding")}})
+	var m map[string]any
+	_ = json.Unmarshal(b, &m)
+	m["exercises"].([]any)[2].(map[string]any)["external_knowledge"] = []map[string]string{{"topic": "RFC 9110", "note": "status semantics"}}
+	b, _ = json.Marshal(m)
 	return b
 }
 
@@ -87,6 +91,9 @@ func TestExercisesTab(t *testing.T) {
 	e := newEnv(t)
 	e.exerciseSet()
 	page := e.get("/topics/1/exercises").Body.String()
+	if strings.Count(page, "دانش خارج از درس") != 1 || !strings.Contains(page, "RFC 9110") {
+		t.Error("external knowledge badge missing or on the wrong exercises")
+	}
 	for _, want := range []string{"Hello handler", "کدنویسی", "مفهومی", "[q01]", `aria-current="page">تمرین‌ها`, "مجموعه جدید"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("exercises tab missing %q", want)

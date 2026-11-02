@@ -3,9 +3,11 @@ package topics
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 
 	"learninghub/internal/domain"
+	"learninghub/internal/schema"
 )
 
 // SetVersion is one exercise set of a topic (exercises tab, T4.5).
@@ -24,7 +26,8 @@ type Exercise struct {
 	AnswerFileID                  int64
 	AnswerRel, Presence           string
 	TemplateSHA                   string
-	EvaluatedSHA                  string // answer hash at the latest evaluation; "" = never evaluated
+	EvaluatedSHA                  string                     // answer hash at the latest evaluation; "" = never evaluated
+	External                      []schema.ExternalKnowledge // knowledge outside the lesson; not penalized (R3.2)
 }
 
 // Answer statuses of the answers tab (R3.3).
@@ -73,7 +76,7 @@ func (s *Service) Sets(ctx context.Context, topicID int64) ([]SetVersion, error)
 // Exercises returns the exercises of a set in order.
 func (s *Service) Exercises(ctx context.Context, setID int64) ([]Exercise, error) {
 	rows, err := s.db.Writer().QueryContext(ctx, `
-		SELECT e.ex_id, e.title, e.type, e.difficulty, e.weight, f.id, f.rel_path, f.presence, e.template_sha256,
+		SELECT e.ex_id, e.title, e.type, e.difficulty, e.weight, f.id, f.rel_path, f.presence, e.template_sha256, e.external_deps,
 			COALESCE((SELECT i.answer_sha256 FROM attempt_items i JOIN attempts a ON a.id = i.attempt_id
 				WHERE i.exercise_id = e.id AND i.status = 'evaluated' AND i.answer_sha256 IS NOT NULL
 				ORDER BY a.attempt_no DESC LIMIT 1), '')
@@ -86,8 +89,12 @@ func (s *Service) Exercises(ctx context.Context, setID int64) ([]Exercise, error
 	var out []Exercise
 	for rows.Next() {
 		var x Exercise
+		var deps string
 		if err := rows.Scan(&x.ExID, &x.Title, &x.Type, &x.Difficulty, &x.Weight, &x.AnswerFileID, &x.AnswerRel, &x.Presence,
-			&x.TemplateSHA, &x.EvaluatedSHA); err != nil {
+			&x.TemplateSHA, &deps, &x.EvaluatedSHA); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal([]byte(deps), &x.External); err != nil {
 			return nil, err
 		}
 		out = append(out, x)

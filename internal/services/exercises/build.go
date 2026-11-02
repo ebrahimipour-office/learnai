@@ -113,7 +113,8 @@ func Build(raw json.RawMessage, m Meta) (*Set, error) {
 		})
 		r := x.Rubric
 		set.Rubric.Exercises = append(set.Rubric.Exercises, schema.RubricExercise{ID: id, ReferenceAnswer: r.ReferenceAnswer,
-			Criteria: r.Criteria, CommonErrors: r.CommonErrors, OutOfScopeKnowledge: r.OutOfScopeKnowledge, GradingNotes: r.GradingNotes})
+			Criteria: r.Criteria, CommonErrors: r.CommonErrors, OutOfScopeKnowledge: outOfScope(r.OutOfScopeKnowledge, x.ExternalKnowledge),
+			GradingNotes: r.GradingNotes})
 		fmt.Fprintf(&md, "\n## [%s] %s\n\n%s\n", id, title, statement)
 		set.Answers = append(set.Answers, Answer{ExID: id, FileName: ans.FileName,
 			Content: fsx.GenerateAnswerTemplate(m.StableKey, m.Version, id, title, ext, x.Answer.Starter)})
@@ -181,3 +182,19 @@ func slug(s string) string {
 }
 
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+// outOfScope adds a do_not_penalize entry for every external topic the AI left out of the rubric (R3.2, R8.3),
+// so a forgotten mirror costs no retry; the crosscheck still guards every other path.
+func outOfScope(oos []schema.OutOfScopeKnowledge, ext []schema.ExternalKnowledge) []schema.OutOfScopeKnowledge {
+	have := map[string]bool{}
+	for _, o := range oos {
+		have[strings.ToLower(o.Topic)] = true
+	}
+	for _, e := range ext {
+		if !have[strings.ToLower(e.Topic)] {
+			have[strings.ToLower(e.Topic)] = true
+			oos = append(oos, schema.OutOfScopeKnowledge{Topic: e.Topic, Handling: "do_not_penalize"})
+		}
+	}
+	return oos
+}

@@ -43,7 +43,8 @@
   {{if not .Set.Current}}<p class="note">در حال مشاهده مجموعه قدیمی v{{.Set.Version}}. <a href="/topics/{{.Panel.ID}}/{{.Tab}}">مجموعه جاری</a></p>{{end}}
   {{if eq .Tab "exercises"}}
   <table class="grid"><thead><tr><th>شناسه</th><th>عنوان</th><th>نوع</th><th>دشواری</th><th>وزن</th></tr></thead>
-    <tbody>{{range .Exercises}}<tr><td><code>{{.ExID}}</code></td><td><bdi>{{.Title}}</bdi></td><td>{{exType .Type}}</td><td>{{difficulty .Difficulty}}</td><td>{{.Weight}}</td></tr>{{end}}</tbody>
+    <tbody>{{range .Exercises}}<tr><td><code>{{.ExID}}</code></td><td><bdi>{{.Title}}</bdi>{{if .External}} <span class="badge warn">دانش خارج از درس</span>
+        <ul class="note">{{range .External}}<li><bdi>{{.Topic}}</bdi> — <bdi>{{.Note}}</bdi></li>{{end}}</ul>{{end}}</td><td>{{exType .Type}}</td><td>{{difficulty .Difficulty}}</td><td>{{.Weight}}</td></tr>{{end}}</tbody>
   </table>
   <article class="md" dir="auto">{{.ExercisesMD}}</article>
   {{else}}

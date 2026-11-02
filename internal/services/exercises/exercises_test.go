@@ -357,3 +357,26 @@ func TestCheckHeadings(t *testing.T) {
 		}
 	}
 }
+
+// T4.6: an external topic the AI forgot in the rubric is mirrored as do_not_penalize, in one run (no retry).
+func TestExternalKnowledgeMirroredInRubric(t *testing.T) {
+	e := setup(t)
+	ex := exercise("TLS client", "tls", ".go", 100)
+	ex["external_knowledge"] = []map[string]string{{"topic": "X.509", "note": "certificate basics"}, {"topic": "DNS", "note": "lookup"}}
+	ex["rubric"].(map[string]any)["out_of_scope_knowledge"] = []map[string]string{{"topic": "dns", "handling": "do_not_penalize"}}
+	if st, code := e.run(2, output(ex, exercise("B", "b", ".go", 100), exercise("C", "c", ".go", 100)), `{}`); st != "succeeded" {
+		t.Fatalf("status %s (%s)", st, code)
+	}
+	if n := len(e.ad.Calls()); n != 1 {
+		t.Errorf("adapter runs = %d, want 1", n)
+	}
+	var r schema.Rubric
+	_ = json.Unmarshal(e.read("topics/02-http/.internal/rubric-v1.json"), &r)
+	got := r.Exercises[0].OutOfScopeKnowledge
+	if len(got) != 2 || got[0].Topic != "dns" || got[1].Topic != "X.509" || got[1].Handling != "do_not_penalize" {
+		t.Errorf("out_of_scope_knowledge = %+v", got)
+	}
+	if n := e.count(`SELECT COUNT(*) FROM exercises WHERE ex_id = 'q01' AND external_deps LIKE '%X.509%'`); n != 1 {
+		t.Error("external_deps not stored")
+	}
+}

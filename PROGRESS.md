@@ -8,9 +8,9 @@
 
 | مشخصه | وضعیت |
 |---|---|
-| **فاز فعال کنونی** | **فاز ۴ — تولید تمرین، مانیفست و تمپلیت پاسخ (Phase 4)** — فاز ۳ کامل شد ✅ |
-| **کار بعدی برای اجرا** | **Task T4.6 — وابستگی‌های دانشی خارج از محدوده (`out_of_scope_knowledge`)** |
-| **آخرین کامیت Git** | `feat(ui): T4.5 exercises and answers tabs with copyable paths; rubric served only after evaluation` |
+| **فاز فعال کنونی** | **فاز ۵ — موتور ارزیابی، نمره‌دهی و گزارش‌ها (Phase 5)** — فاز ۴ کامل شد ✅ |
+| **کار بعدی برای اجرا** | **Task T5.1 — انتخاب ورودی‌های ارزیابی (حالت افزایشی، عدم ارسال فایل‌های بدون پاسخ)** |
+| **آخرین کامیت Git** | `feat(exercises): T4.6 out-of-scope knowledge mirrored in rubric, badged in UI, not penalized by evaluator` |
 | **✅ بسته‌شده از T3.1** | **۲۰۲۶-۱۱-۰۱:** اجرای واقعی دستی با `agy` 1.4.12 (`gemini-3.8-flash-high`، `--json-schema`، `--sandbox`) موفق بود. تأیید شد: خروجی ساختاریافته در `result.structured_output` است؛ `response` متن آزاد + JSON است (fallback فقط برای JSON خالص)؛ رویدادهای میانی `init` و `step_update` درست‌اند. خط واقعی در `TestRealSuccessEnvelope` ثبت شد. |
 | **وضعیت آزمون‌های خودکار** | **۱۰۰٪ سبز و موفق** (`go test ./...` روی همه پکیج‌ها) |
 | **مسیر دایرکتوری پایه** | `C:\Users\Asus\Desktop\Leaning-appication\prj` |
@@ -83,7 +83,7 @@
 
 ---
 
-### فاز ۴ — تولید تمرین، مانیفست و تمپلیت پاسخ (در انتظار)
+### فاز ۴ — تولید تمرین، مانیفست و تمپلیت پاسخ (کامل ✅)
 - [x] **T4.1**: هندلر تولید تمرین (`internal/services/exercises`) — `Build`: خروجی AI ⇒ شناسه‌های `q01..` توسط نرم‌افزار، slug نرمال‌شده به الگوی manifest، پسوند lowercase، وزن تا سقف ۱۰۰۰، حذف BiDi از عنوان/صورت؛ ساخت `exercises.md` (`## [qNN] عنوان`)، `manifest.json`، `.internal/rubric-vN.json` و قالب پاسخ‌ها (`fsx.GenerateAnswerTemplate`)؛ اعتبارسنجی اسکیمای manifest/rubric + همه crosscheckها + بازپارس سرفصل‌ها (`CheckHeadings`؛ سرفصل قاچاقی در صورت تمرین رد می‌شود) — **retry مشترک** `ai.WatchValid`: خطای `invalid_output` (از Adapter یا اعتبارسنج) ⇒ یک‌بار اجرای دوباره با فهرست خطاها در prompt، جمع usage؛ درس (T3.6) هم روی همین رفت — commit: همه فایل‌ها با `WriteNew`، اگر هر فایلی (مثلاً پاسخ) از قبل باشد **کل commit رد** و فایل‌های همین Job حذف می‌شوند؛ تراکنش: `files` (پاسخ‌ها `immutable=1`)، `exercise_sets` (`is_current`)، `exercises` (`template_sha256`، `external_deps`)، `suggestions`، وضعیت موضوع ⇒ `exercises_ready` — پیش‌نیاز: درس جاری؛ مجموعه دوم فقط با `confirm_new_version` و `vN+1` — fake: سناریوهای `invalid_json` و `invalid_then_valid` + `Calls()` — ثبت در `cmd/hub` — تست: مجموعه اول (فایل‌ها، اسکیما، سرفصل‌ها، نام فایل پاسخ، ردیف‌ها، وضعیت)، retry موفق، دو بار نامعتبر (`invalid_json`، جمع امتیاز ≠ ۱۰۰، پسوند غیرمجاز) ⇒ شکست بدون فایل/ردیف، نبود درس، v2 با حفظ v1، فایل پاسخ موجود ⇒ رد کل commit
   - ⏭️ `count` در params فقط از API (UI در T4.5)؛ `audit_log` برای مجموعه جدید با T4.4؛ پر کردن خودکار `out_of_scope_knowledge` از `external_knowledge` با T4.6 (اکنون ناهماهنگی ⇒ retry)؛ بازیابی `commit_journal` پس از crash مثل درس هنوز نیست
 - [x] **T4.2**: قواعد بین‌فیلدی — `crosscheck_test.go`: نمونه‌های §5.1/§5.2 قبول؛ برای هر قاعده fixture شکست‌دهنده با `errors.Is` (۱: id تکراری، شکاف/شروع order؛ ۳: پسوند غیرمجاز `ErrExtNotAllowed`، `file_name` ساختگی `ErrFileNameMismatch`؛ ۴: کم/زیاد؛ ۵: جمع وزن صفر؛ ۶: rubric ناقص/id بیگانه/id تکراری؛ rubric: جمع <۱۰۰، >۱۰۰، بدون معیار، معیار تکراری؛ `external_knowledge` بدون `out_of_scope_knowledge`) — قاعده ۲: `CheckHeadings` حالا عنوان سرفصل را هم با manifest مقایسه می‌کند (CRLF مجاز)؛ تست: گم‌شده، تکراری، جابه‌جا، عنوان نادرست، بدون فاصله
@@ -91,7 +91,8 @@
 - [x] **T4.4**: نسخه‌بندی تمرین‌ها (`vN+1`) با حفظ تمام فایل‌های قبلی — بیشتر در T4.1 بود (`confirm_new_version`، `vN+1`، فقط یک `is_current`)؛ اکنون جایگزینی مجموعه جاری در همان تراکنش commit یک ردیف `audit_log` (`new_exercise_set`، `target=exercise_set`، detail با `previous_version`/`previous_set_id`/`job_id`) می‌نویسد؛ تست: hash همه فایل‌های v1 (درس، exercises.md، manifest، rubric، پاسخ‌ها) پس از v2 ثابت، ردیف v1 با `is_current=0` باقی، بدون تأیید ⇒ شکست و بدون ردیف audit
 - [x] **T4.5**: تب‌های «تمرین‌ها» و «فایل‌های پاسخ» — `GET /topics/{id}/exercises` (جدول شناسه/عنوان/نوع/دشواری/وزن + `exercises.md` رندرشده)، `GET /topics/{id}/answers` (نام فایل با پیوند، **مسیر کامل** در input فقط‌خواندنی + دکمه «کپی مسیر» با `static/app.js` بدون اسکریپت inline، وضعیت از hash روی دیسک: بدون پاسخ = hash قالب، تغییرکرده = ≠ hash آخرین `attempt_items` ارزیابی‌شده، گم‌شده = خطای خواندن)؛ انتخاب نسخه با `?v=`؛ `POST /topics/{id}/jobs/exercises` (`confirm_new_version` لازم اگر مجموعه هست، `count` با بازه `exercises.count_min..max` ⇒ ۴۲۲، بدون درس ⇒ ۴۰۹)؛ ناحیه Job با `tab` روی همان تب می‌ماند؛ `GET /files/{id}` فقط با مسیر DB (`.md/.txt` ⇒ `text/plain` inline، `.json` inline، بقیه `attachment` + octet-stream)، Rubric ⇒ ۴۰۳ تا **همه** تمرین‌های مجموعه یک‌بار ارزیابی شوند (یک فایل Rubric مرجع همه تمرین‌ها را دارد)؛ `.internal` در هیچ تبی نیست — `topics.Sets/Exercises/File`، `Exercise.AnswerStatus` — تست: جریان کامل از UI (درس ⇒ مجموعه)، نشت نکردن rubric/مرجع، ۴۰۹/۴۲۲ بدون enqueue، v2 با v1 قابل انتخاب، چهار وضعیت، سرو فایل و ۴۰۳/۲۰۰ Rubric، ۴۰۴
   - ⏭️ دکمه «باز کردن» با T6.6؛ وضعیت گم‌شده/جابه‌جاشده پایدار در DB (`presence`) با همگام‌سازی T6.3 (اکنون فقط از دیسک در لحظه)؛ برچسب `external_knowledge` با T4.6؛ بررسی دستی در مرورگر انجام نشده
-- [ ] **T4.6**: مدیریت وابستگی‌های دانشی خارج از سرفصل (`out_of_scope_knowledge`)
+- [x] **T4.6**: مدیریت وابستگی‌های دانشی خارج از سرفصل (`out_of_scope_knowledge`) — قاعده رد (crosscheck `ErrMissingOutOfScope`) از T4.2 برقرار است؛ اکنون `Build` هر موضوع `external_knowledge` که AI در Rubric جا انداخته را خودکار با `handling: do_not_penalize` اضافه می‌کند (مقایسه بدون حساسیت به حروف، بدون تکرار) ⇒ این ناهماهنگی دیگر retry نمی‌خواهد؛ تب «تمرین‌ها»: برچسب «دانش خارج از درس» + فهرست موضوع/توضیح از `exercises.external_deps` (`topics.Exercise.External`)؛ مهارت `answer-evaluator` (v1.1.0) قاعده صریح «بدون کسر نمره برای `out_of_scope_knowledge`» دارد و چون Rubric ورودی ارزیابی است، در Prompt ارزیابی تکرار می‌شود — تست: Rubric تکمیل‌شده در یک اجرا (بدون retry) و ثبت `external_deps`؛ برچسب فقط روی تمرین دارای وابستگی
+  - ⏭️ تزریق صریح فهرست `out_of_scope_knowledge` در متن Prompt هر تمرین با T5.2 (Handler ارزیابی هنوز وجود ندارد)؛ بررسی دستی در مرورگر انجام نشده
 
 ---
 
