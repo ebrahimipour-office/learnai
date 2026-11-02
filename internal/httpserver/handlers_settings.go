@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"learninghub/internal/config"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -18,6 +19,8 @@ type Settings struct {
 	DB      *store.DB
 	Adapter ai.Adapter
 	Model   string // configured adapter.model; "" = the tool's default
+
+	Exercises config.ExercisesConfig // count bounds for the exercises form
 }
 
 // Doctor is one Probe result as shown on the settings page.

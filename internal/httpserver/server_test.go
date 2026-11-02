@@ -16,10 +16,12 @@ import (
 	"time"
 
 	"learninghub/internal/ai/fake"
+	"learninghub/internal/config"
 	"learninghub/internal/domain"
 	"learninghub/internal/fsx"
 	"learninghub/internal/httpserver"
 	"learninghub/internal/jobs"
+	"learninghub/internal/services/exercises"
 	"learninghub/internal/services/lessons"
 	"learninghub/internal/services/roadmaps"
 	"learninghub/internal/services/topics"
@@ -63,12 +65,15 @@ func newEnv(t *testing.T) *env {
 	runner.Poll, runner.Heartbeat, runner.Files = 20*time.Millisecond, time.Hour, root
 	runner.Register(domain.JobKindLesson, (&lessons.Service{DB: db, Root: root, Adapter: ad, Model: "m1",
 		Language: "fa", Timeout: time.Minute, Stall: time.Minute}).Handle)
+	exCfg := config.DefaultConfig(base).Exercises
+	runner.Register(domain.JobKindExercises, (&exercises.Service{DB: db, Root: root, Adapter: ad, Model: "m1",
+		Language: "fa", Timeout: time.Minute, Stall: time.Minute, Config: exCfg}).Handle)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { defer close(done); runner.Run(ctx) }()
 	t.Cleanup(func() { cancel(); <-done })
 	srv := httpserver.NewServer("127.0.0.1:8787", sm, roadmaps.NewService(db, root), topics.NewService(db), runner, root,
-		httpserver.Settings{DB: db, Adapter: ad, Model: "m1"})
+		httpserver.Settings{DB: db, Adapter: ad, Model: "m1", Exercises: exCfg})
 	if srv.ReadHeaderTimeout == 0 || srv.IdleTimeout == 0 {
 		t.Error("server timeouts must be set (Section 8)")
 	}

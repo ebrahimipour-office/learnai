@@ -4,9 +4,14 @@
 <p class="note"><bdi>{{.Panel.Roadmap}}</bdi>{{with .Panel.Group}} › <bdi>{{.}}</bdi>{{end}}
   <span class="badge">{{statusLabel .Panel.Status}}</span>
   {{if eq .Panel.State "archived"}}<span class="badge">بایگانی‌شده</span>{{end}}</p>
-<nav class="tabs"><a href="/topics/{{.Panel.ID}}/lesson" aria-current="page">درس</a></nav>
+<nav class="tabs">
+  <a href="/topics/{{.Panel.ID}}/lesson"{{if eq .Tab ""}} aria-current="page"{{end}}>درس</a>
+  <a href="/topics/{{.Panel.ID}}/exercises"{{if eq .Tab "exercises"}} aria-current="page"{{end}}>تمرین‌ها</a>
+  <a href="/topics/{{.Panel.ID}}/answers"{{if eq .Tab "answers"}} aria-current="page"{{end}}>فایل‌های پاسخ</a>
+</nav>
 {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
 {{template "job-area" .}}
+{{if .Tab}}{{template "set-tab" .}}{{else}}
 <section class="lesson">
 {{if .Panel.Lessons}}
   <details class="versions"><summary>نسخه‌ها ({{len .Panel.Lessons}})</summary>
@@ -23,11 +28,60 @@
 {{end}}
 </section>
 {{end}}
+{{end}}
+
+{{define "set-tab"}}
+<section class="set">
+{{if .Set}}
+  {{if gt (len .Sets) 1}}<details class="versions"><summary>مجموعه‌ها ({{len .Sets}})</summary>
+    <ul>{{range .Sets}}
+      <li><a href="/topics/{{$.Panel.ID}}/{{$.Tab}}?v={{.Version}}"{{if eq $.Set.Version .Version}} aria-current="true"{{end}}>مجموعه v{{.Version}}</a>
+        {{if .Current}}<span class="badge">جاری</span>{{end}}
+        <span class="note"><bdi>{{.CreatedAt}}</bdi>{{with .Model}} · <bdi>{{.}}</bdi>{{end}}</span></li>{{end}}
+    </ul>
+  </details>{{end}}
+  {{if not .Set.Current}}<p class="note">در حال مشاهده مجموعه قدیمی v{{.Set.Version}}. <a href="/topics/{{.Panel.ID}}/{{.Tab}}">مجموعه جاری</a></p>{{end}}
+  {{if eq .Tab "exercises"}}
+  <table class="grid"><thead><tr><th>شناسه</th><th>عنوان</th><th>نوع</th><th>دشواری</th><th>وزن</th></tr></thead>
+    <tbody>{{range .Exercises}}<tr><td><code>{{.ExID}}</code></td><td><bdi>{{.Title}}</bdi></td><td>{{exType .Type}}</td><td>{{difficulty .Difficulty}}</td><td>{{.Weight}}</td></tr>{{end}}</tbody>
+  </table>
+  <article class="md" dir="auto">{{.ExercisesMD}}</article>
+  {{else}}
+  <table class="grid"><thead><tr><th>شناسه</th><th>عنوان</th><th>فایل</th><th>مسیر کامل</th><th>وضعیت</th></tr></thead>
+    <tbody>{{range .Exercises}}<tr>
+      <td><code>{{.ExID}}</code></td><td><bdi>{{.Title}}</bdi></td>
+      <td>{{if eq .Status "missing"}}<code>{{base .AnswerRel}}</code>{{else}}<a href="/files/{{.AnswerFileID}}"><code>{{base .AnswerRel}}</code></a>{{end}}</td>
+      <td class="path"><input type="text" readonly dir="ltr" value="{{.FullPath}}" aria-label="مسیر کامل {{.ExID}}">
+        <button type="button" data-copy="{{.FullPath}}">کپی مسیر</button></td>
+      <td><span class="badge status-{{.Status}}">{{answerLabel .Status}}</span></td>
+    </tr>{{end}}</tbody>
+  </table>
+  {{end}}
+{{else}}
+  <p class="note">هنوز مجموعه تمرینی برای این موضوع ساخته نشده است.</p>
+{{end}}
+</section>
+{{end}}
 
 {{define "job-area"}}
-<div id="job-area" aria-live="polite"{{if and .Job .Job.Active}} hx-get="/jobs/{{.Job.ID}}/card?poll=1" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
+<div id="job-area" aria-live="polite"{{if and .Job .Job.Active}} hx-get="/jobs/{{.Job.ID}}/card?poll=1&amp;tab={{.Tab}}" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
   {{with .Notice}}<p class="error" role="alert">{{.}}</p>{{end}}
   {{$busy := and .Job .Job.Active}}
+  {{if .Tab}}
+  {{if .Panel.Lessons}}
+  <form method="post" action="/topics/{{.Panel.ID}}/jobs/exercises" hx-post="/topics/{{.Panel.ID}}/jobs/exercises" hx-target="#job-area" hx-swap="outerHTML">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}"><input type="hidden" name="tab" value="{{.Tab}}">
+    <label>تعداد تمرین <input type="number" name="count" min="{{.CountMin}}" max="{{.CountMax}}" placeholder="پیش‌فرض"{{if $busy}} disabled{{end}}></label>
+    {{if .Sets}}
+    <label><input type="checkbox" name="confirm_new_version" value="1" required{{if $busy}} disabled{{end}}>
+      مجموعه فعلی و پاسخ‌هایم دست‌نخورده بمانند و مجموعه جدید ساخته شود</label>
+    <button type="submit"{{if $busy}} disabled{{end}}>مجموعه جدید</button>
+    {{else}}
+    <button type="submit"{{if $busy}} disabled{{end}}>تولید تمرین</button>
+    {{end}}
+  </form>
+  {{else}}<p class="note">برای ساخت تمرین ابتدا درس این موضوع را تولید کنید.</p>{{end}}
+  {{else}}
   <form method="post" action="/topics/{{.Panel.ID}}/jobs/lesson" hx-post="/topics/{{.Panel.ID}}/jobs/lesson" hx-target="#job-area" hx-swap="outerHTML">
     <input type="hidden" name="csrf_token" value="{{.CSRF}}">
     {{if .Panel.Lessons}}
@@ -38,6 +92,7 @@
     <button type="submit"{{if $busy}} disabled{{end}}>تولید درس</button>
     {{end}}
   </form>
+  {{end}}
   {{with .Job}}
   <div class="job-card job-{{.Status}}">
     <strong>{{jobKind .Kind}}</strong> <span class="badge">{{jobStatus .Status}}</span>
@@ -48,11 +103,11 @@
       {{if or (eq .ErrorCode "auth_required") (eq .ErrorCode "adapter_missing")}}<a href="/settings">تنظیمات</a>{{end}}</p>
     {{if $msg}}<details><summary>جزئیات فنی</summary><pre>{{.ErrorMessage}}</pre> <code>{{.ErrorCode}}</code></details>{{end}}
     <form method="post" action="/jobs/{{.ID}}/retry" hx-post="/jobs/{{.ID}}/retry" hx-target="#job-area" hx-swap="outerHTML">
-      <input type="hidden" name="csrf_token" value="{{$.CSRF}}"><button type="submit">تلاش مجدد</button>
+      <input type="hidden" name="csrf_token" value="{{$.CSRF}}"><input type="hidden" name="tab" value="{{$.Tab}}"><button type="submit">تلاش مجدد</button>
     </form>{{end}}
     {{if .Active}}
     <form method="post" action="/jobs/{{.ID}}/cancel" hx-post="/jobs/{{.ID}}/cancel" hx-target="#job-area" hx-swap="outerHTML">
-      <input type="hidden" name="csrf_token" value="{{$.CSRF}}"><button type="submit"{{if .CancelRequested}} disabled{{end}}>{{if .CancelRequested}}در حال لغو…{{else}}لغو{{end}}</button>
+      <input type="hidden" name="csrf_token" value="{{$.CSRF}}"><input type="hidden" name="tab" value="{{$.Tab}}"><button type="submit"{{if .CancelRequested}} disabled{{end}}>{{if .CancelRequested}}در حال لغو…{{else}}لغو{{end}}</button>
     </form>{{end}}
   </div>
   {{end}}

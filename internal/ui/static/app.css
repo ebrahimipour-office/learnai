@@ -34,3 +34,9 @@ summary.group-title { cursor: pointer; }
 .md table { border-collapse: collapse; }
 .md th, .md td { padding: .25rem .5rem; border: 1px solid var(--line); }
 header .nav { font-weight: normal; margin-inline-start: 1rem; }
+table.grid { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+.grid th, .grid td { text-align: start; padding: .25rem .5rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.path input { width: 100%; min-width: 12rem; font: .85em ui-monospace, monospace; }
+.path { min-width: 16rem; }
+.badge.status-missing, .badge.status-changed { color: var(--err); border-color: currentColor; }
+@media (max-width: 40rem) { table.grid { display: block; overflow-x: auto; } }

@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -60,6 +61,14 @@ type pageData struct {
 	Job     *jobs.Info            // latest job of the topic; nil = none
 	Notice  string                // job action feedback inside the job area
 
+	Tab         string // "" (lesson) | "exercises" | "answers"
+	Sets        []topics.SetVersion
+	Set         *topics.SetVersion // set shown; nil = none
+	Exercises   []exerciseRow
+	ExercisesMD template.HTML // sanitized by render.Markdown
+	CountMin    int
+	CountMax    int
+
 	Doctor              *Doctor
 	Adapter, Model      string
 	Privacy, PrivacyAck string // notice text; RFC3339 time of acknowledgement or ""
@@ -88,6 +97,10 @@ func newApp(sm *SecurityManager, drafts *roadmaps.Service, topicList *topics.Ser
 		"jobPhase":    func(s string) string { return jobPhaseLabels[s] },
 		"jobKind":     func(s string) string { return jobKindLabels[s] },
 		"aiMessage":   ai.Message,
+		"base":        path.Base,
+		"answerLabel": func(s string) string { return answerStatusLabels[s] },
+		"exType":      func(s string) string { return exerciseTypeLabels[s] },
+		"difficulty":  func(s string) string { return difficultyLabels[s] },
 	}
 	for _, p := range []string{"new", "draft", "topics", "topic", "settings"} {
 		a.pages[p] = template.Must(template.New(p).Funcs(funcs).ParseFS(ui.FS, "templates/layout.html", "templates/"+p+".html"))

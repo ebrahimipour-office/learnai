@@ -41,7 +41,8 @@ func (a *app) panelData(r *http.Request, id int64, job *jobs.Info) (*pageData, e
 			return nil, err
 		}
 	}
-	return &pageData{Title: p.Title, Panel: p, Job: job}, nil
+	c := a.settings.Exercises
+	return &pageData{Title: p.Title, Panel: p, Job: job, Tab: tabOf(r), CountMin: c.CountMin, CountMax: c.CountMax}, nil
 }
 
 func (a *app) showTopic(w http.ResponseWriter, r *http.Request) {
@@ -105,7 +106,13 @@ func (a *app) respond(w http.ResponseWriter, r *http.Request, status int, topicI
 		return
 	}
 	d.Error = notice
-	a.fillLesson(r, d)
+	if d.Tab != "" {
+		if err := a.fillSet(r, d); err != nil {
+			slog.Error("loading exercise set", "topic", topicID, "error", err)
+		}
+	} else {
+		a.fillLesson(r, d)
+	}
 	a.render(w, status, "topic", "layout", d)
 }
 
