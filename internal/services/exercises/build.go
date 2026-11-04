@@ -146,6 +146,22 @@ func Build(raw json.RawMessage, m Meta) (*Set, error) {
 
 var headingRe = regexp.MustCompile(`(?m)^## \[(q[0-9]{2,3})\] (.*)$`)
 
+// Section returns exercise id's part of exercises.md, from its "## [id]" heading up to the next one; nil if absent.
+func Section(md []byte, id string) []byte {
+	locs := headingRe.FindAllSubmatchIndex(md, -1)
+	for i, l := range locs {
+		if string(md[l[2]:l[3]]) != id {
+			continue
+		}
+		end := len(md)
+		if i+1 < len(locs) {
+			end = locs[i+1][0]
+		}
+		return md[l[0]:end]
+	}
+	return nil
+}
+
 // CheckHeadings re-parses the built exercises.md: every manifest id exactly once, in order,
 // as "## [qNN] <title>" (a statement that smuggles in its own "## [qNN]" heading fails here).
 func CheckHeadings(md []byte, m *schema.Manifest) error {

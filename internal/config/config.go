@@ -193,6 +193,7 @@ func (c *Config) Validate() error {
 	if c.Jobs.EvaluateParallelism < 1 {
 		c.Jobs.EvaluateParallelism = 1
 	}
+	c.Jobs.EvaluateParallelism = min(c.Jobs.EvaluateParallelism, 3) // TDD §6.5: at most 3 agy processes per evaluation
 
 	return nil
 }

@@ -40,6 +40,7 @@ type Composer struct {
 // Input holds file contents, not paths: the sandbox only ever gets copies, so the AI cannot touch real files.
 type Input struct {
 	JobID   int64
+	Step    string // optional sandbox subdir (.app/work/<job>/<step>) for jobs that run several AI calls at once
 	Task    ai.Task
 	Skill   []byte            // SKILL.md with frontmatter (name, version)
 	Agents  []byte            // AGENTS.md
@@ -82,7 +83,13 @@ func (c *Composer) Compose(in Input) (ai.Request, error) {
 
 	// Start from an empty dir so leftovers from a crashed run can never reach the AI.
 	work := WorkRel(in.JobID)
-	if err := c.Cleanup(in.JobID); err != nil {
+	if in.Step != "" {
+		if err := fsx.ValidateSegment(in.Step); err != nil {
+			return ai.Request{}, err
+		}
+		work = path.Join(work, in.Step)
+	}
+	if err := c.Root.RemoveAll(work); err != nil {
 		return ai.Request{}, err
 	}
 	if err := c.Root.MkdirAll(path.Join(work, "inputs"), 0o755); err != nil {
@@ -90,7 +97,7 @@ func (c *Composer) Compose(in Input) (ai.Request, error) {
 	}
 	for rel, b := range files {
 		if err := c.Root.WriteNew(path.Join(work, rel), b, 0o644); err != nil {
-			c.Cleanup(in.JobID)
+			c.Root.RemoveAll(work)
 			return ai.Request{}, err
 		}
 	}

@@ -9,8 +9,8 @@
 | مشخصه | وضعیت |
 |---|---|
 | **فاز فعال کنونی** | **فاز ۵ — موتور ارزیابی، نمره‌دهی و گزارش‌ها (Phase 5)** — فاز ۴ کامل شد ✅ |
-| **کار بعدی برای اجرا** | **Task T5.2 — Handler ارزیابی تمرین‌به‌تمرین با نقطه‌بازیابی `job_steps` (D10)** |
-| **آخرین کامیت Git** | `feat(evaluation): T5.1 select answers to evaluate; unanswered never sent, oversized/binary flagged, 422 nothing_to_evaluate` |
+| **کار بعدی برای اجرا** | **Task T5.3 — پکیج نمره‌دهی قطعی `scoring` (میانگین وزنی، «ناقص»، نمره = جمع معیارها)** |
+| **آخرین کامیت Git** | `feat(evaluation): T5.2 per-exercise evaluation with job_steps checkpoints; retry runs only unfinished` |
 | **✅ بسته‌شده از T3.1** | **۲۰۲۶-۱۱-۰۱:** اجرای واقعی دستی با `agy` 1.4.12 (`gemini-3.8-flash-high`، `--json-schema`، `--sandbox`) موفق بود. تأیید شد: خروجی ساختاریافته در `result.structured_output` است؛ `response` متن آزاد + JSON است (fallback فقط برای JSON خالص)؛ رویدادهای میانی `init` و `step_update` درست‌اند. خط واقعی در `TestRealSuccessEnvelope` ثبت شد. |
 | **وضعیت آزمون‌های خودکار** | **۱۰۰٪ سبز و موفق** (`go test ./...` روی همه پکیج‌ها) |
 | **مسیر دایرکتوری پایه** | `C:\Users\Asus\Desktop\Leaning-appication\prj` |
@@ -99,7 +99,8 @@
 ### فاز ۵ — موتور ارزیابی، نمره‌دهی و گزارش‌ها (در حال اجرا)
 - [x] **T5.1**: انتخاب ورودی‌های ارزیابی — `topics.SelectForEvaluation(root, list, mode, maxBytes)`: افزایشی = هرگز ارزیابی‌نشده یا تغییرکرده؛ کامل = همه پاسخ‌داده‌شده‌ها؛ «بدون پاسخ» (hash برابر قالب) و گم‌شده هرگز در `Send` نیستند؛ بزرگ‌تر از `limits.max_answer_bytes` یا دارای بایت NUL ⇒ `Review` («نیازمند بازبینی دستی»، RK17)؛ `Send` خالی ⇒ `domain.ErrNothingToEvaluate`. هر `Pick` بدنه و hash را یک‌بار می‌خواند (آنچه ارسال می‌شود همان است که hash شده). مسیر `POST /topics/{id}/jobs/evaluate` با `mode=incremental|full` (پیش‌فرض افزایشی) ⇒ `202` یا `422` (با تعداد موارد بازبینی دستی) — تست واحد انتخاب + تست HTTP (بدون Job و بدون فراخوانی Adapter در ردها)
   - ⏭️ Handler ارزیابی هنوز ثبت نشده (T5.2)؛ Job ارزیابی فعلاً با «no handler» شکست می‌خورد. آزمون «شمارش فراخوانی Adapter جعلی» برای ارسال‌نشدن بدون‌پاسخ‌ها با T5.2 تکمیل می‌شود (Handler باید هنگام اجرا دوباره `SelectForEvaluation` را صدا بزند). مقایسه فقط روی «محتوای پس از نشانگر پاسخ» هنوز نیست (hash کل فایل، مثل T4.5)؛ دکمه UI با T5.7
-- [ ] **T5.2**: ارزیابی تمرین‌به‌تمرین با چک‌پوینت‌های `job_steps`
+- [x] **T5.2**: ارزیابی تمرین‌به‌تمرین با چک‌پوینت‌های `job_steps` — پکیج `services/evaluation` (ثبت‌شده در `main` برای `JobKindEvaluate`): هنگام اجرا دوباره `SelectForEvaluation`؛ برای هر تمرین یک فراخوانی AI در sandbox جدا (`prompt.Input.Step` ⇒ `.app/work/<job>/<qNN>`) با `question.md` (فقط بخش همان تمرین، `exercises.Section`)، `rubric.json` (فقط Rubric همان تمرین)، `answer<ext>` و `task.json` که `out_of_scope_knowledge` را صریحاً تکرار می‌کند؛ اعتبارسنجی `evaluation.Check` (اسکیما + شناسه تمرین + هر معیار دقیقاً یک‌بار و ≤ `max_points`) با یک تلاش خودکار؛ خروجی هر مرحله در `.app/staging/<job>/<qNN>.json` (`{exercise_id, answer_sha256, evaluation}`)؛ `job_steps` با `exercise:qNN` و `progress_done/total`؛ موازی‌سازی `jobs.evaluate_parallelism` (تحدید به ۳)؛ سقف کل Job ۳۰ دقیقه ⇒ `timeout`. شکست یک تمرین بقیه را متوقف نمی‌کند ولی Job را `failed` می‌کند؛ تلاش مجدد با `inputs_fingerprint` یکسان مراحل `done` و فایل staging آن‌ها را به ارث می‌برد، با fingerprint متفاوت دور ریخته می‌شوند — تست با Adapter شمارنده (بدون‌پاسخ ۰ فراخوانی، retry فقط ناتمام، تغییر پاسخ ⇒ ارزیابی دوباره، موازی/ترتیبی) + تست جدولی `Check`
+  - ⏭️ هنوز commit ندارد (attempt، گزارش‌ها، `result.json` با T5.3–T5.5)؛ تا آن زمان Job موفق فقط `job_steps` می‌گذارد و staging را runner پاک می‌کند. تطبیق `score` با جمع معیارها و پرچم تزریق با T5.6. اجرای واقعی با `agy` انجام نشده (T5.8)
 - [ ] **T5.3**: پکیج نمره‌دهی قطعی `scoring` بر اساس میانگین وزنی
 - [ ] **T5.4**: تولید گزارش‌های `qNN-report.md`, `summary.md`, `result.json` با وفاداری بایت‌به‌بایت به پاسخ کاربر
 - [ ] **T5.5**: ثبت تلاش جدید در `reports/vN/attempt-K` با برچسب تغییرناپذیر
