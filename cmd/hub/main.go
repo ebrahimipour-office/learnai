@@ -251,7 +251,7 @@ func runServe(args []string) {
 		Timeout: cfg.Jobs.TimeoutExercises, Stall: cfg.Jobs.StallTimeout, Config: cfg.Exercises,
 	}).Handle)
 	srv := httpserver.NewServer(cfg.Listen, sm, drafts, topics.NewService(db), runner, root,
-		httpserver.Settings{DB: db, Adapter: adapter, Model: cfg.Adapter.Model, Exercises: cfg.Exercises})
+		httpserver.Settings{DB: db, Adapter: adapter, Model: cfg.Adapter.Model, Exercises: cfg.Exercises, MaxAnswerBytes: cfg.Limits.MaxAnswerBytes})
 	runnerDone := make(chan struct{})
 	go func() {
 		defer close(runnerDone)

@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -200,4 +201,50 @@ func (a *app) serveFile(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", ctype)
 	w.Header().Set("Content-Disposition", mime.FormatMediaType(disp, map[string]string{"filename": name}))
 	_, _ = w.Write(b)
+}
+
+// evaluate enqueues an evaluation of the current set (R3.4); 422 when no answer would go to the AI.
+// The job handler (T5.2) selects again at run time, since answers can change while it is queued.
+func (a *app) evaluate(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	mode := cmp.Or(r.FormValue("mode"), topics.ModeIncremental)
+	if mode != topics.ModeIncremental && mode != topics.ModeFull {
+		a.respond(w, r, http.StatusUnprocessableEntity, id, nil, "حالت ارزیابی باید «افزایشی» یا «کامل» باشد.")
+		return
+	}
+	if _, err := a.topics.Panel(r.Context(), id); errors.Is(err, domain.ErrNotFound) {
+		http.NotFound(w, r)
+		return
+	}
+	var list []topics.Exercise
+	sets, err := a.topics.Sets(r.Context(), id)
+	for _, s := range sets {
+		if err == nil && s.Current {
+			list, err = a.topics.Exercises(r.Context(), s.ID)
+		}
+	}
+	var sel *topics.Selection
+	if err == nil {
+		sel, err = topics.SelectForEvaluation(a.root, list, mode, a.settings.MaxAnswerBytes)
+	}
+	if errors.Is(err, domain.ErrNothingToEvaluate) {
+		msg := "پاسخ جدید یا تغییرکرده‌ای برای ارزیابی نیست."
+		if n := len(sel.Review); n > 0 {
+			msg += " " + strconv.Itoa(n) + " پاسخ بزرگ‌تر از سقف یا غیرمتنی است و نیازمند بازبینی دستی است."
+		}
+		a.respond(w, r, http.StatusUnprocessableEntity, id, nil, msg)
+		return
+	}
+	if err != nil {
+		slog.Error("selecting answers", "topic", id, "error", err)
+		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
+		return
+	}
+	params, _ := json.Marshal(map[string]string{"mode": mode})
+	_, err = a.runner.Enqueue(r.Context(), jobs.Job{Kind: domain.JobKindEvaluate, Scope: topics.Scope(id), TopicID: id, Params: params})
+	a.afterEnqueue(w, r, id, err)
 }

@@ -215,3 +215,59 @@ func TestServeFile(t *testing.T) {
 		t.Errorf("deleted file: want 404, got %d", rec.Code)
 	}
 }
+
+func TestEvaluateEnqueue(t *testing.T) {
+	e := newEnv(t)
+	e.exerciseSet()
+	calls := len(e.ad.Calls())
+	evalJobs := func() (n int) {
+		_ = e.db.Writer().QueryRow(`SELECT COUNT(*) FROM jobs WHERE kind = 'evaluate'`).Scan(&n)
+		return
+	}
+
+	// Every answer is still its template: nothing to evaluate, no job, no AI call.
+	if rec := e.post("/topics/1/jobs/evaluate", nil, true); rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "برای ارزیابی نیست") {
+		t.Errorf("templates only: want 422 nothing_to_evaluate, got %d", rec.Code)
+	}
+	// An oversized answer is not sent and is reported for manual review.
+	_, big := e.answerID("q02")
+	if err := os.WriteFile(big, []byte(strings.Repeat("x", 2048)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if rec := e.post("/topics/1/jobs/evaluate", url.Values{"mode": {"full"}}, true); rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "بازبینی دستی") {
+		t.Errorf("oversized only: want 422 with manual review, got %d", rec.Code)
+	}
+	if rec := e.post("/topics/1/jobs/evaluate", url.Values{"mode": {"partial"}}, true); rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("bad mode: want 422, got %d", rec.Code)
+	}
+	if rec := e.post("/topics/99/jobs/evaluate", nil, true); rec.Code != http.StatusNotFound {
+		t.Errorf("unknown topic: want 404, got %d", rec.Code)
+	}
+	if n := evalJobs(); n != 0 || len(e.ad.Calls()) != calls {
+		t.Fatalf("rejected requests must not enqueue or call the AI; jobs=%d calls=%d", n, len(e.ad.Calls())-calls)
+	}
+
+	_, abs := e.answerID("q01")
+	if err := os.WriteFile(abs, []byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if rec := e.post("/topics/1/jobs/evaluate", nil, true); rec.Code != http.StatusAccepted {
+		t.Fatalf("answered: want 202, got %d %s", rec.Code, rec.Body.String())
+	}
+	var mode string
+	_ = e.db.Writer().QueryRow(`SELECT json_extract(params, '$.mode') FROM jobs WHERE kind = 'evaluate'`).Scan(&mode)
+	if mode != "incremental" {
+		t.Errorf("default mode = %q, want incremental", mode)
+	}
+	id, _ := e.lastJob()
+	e.pollUntilDone(id) // no evaluate handler until T5.2; the job just has to finish so the scope frees up
+
+	// Evaluated and unchanged: incremental has nothing new, full re-sends it.
+	e.evaluate("q01")
+	if rec := e.post("/topics/1/jobs/evaluate", nil, true); rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("unchanged incremental: want 422, got %d", rec.Code)
+	}
+	if rec := e.post("/topics/1/jobs/evaluate", url.Values{"mode": {"full"}}, true); rec.Code != http.StatusAccepted {
+		t.Errorf("unchanged full: want 202, got %d", rec.Code)
+	}
+}
