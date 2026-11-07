@@ -42,7 +42,7 @@ type exerciseRow struct {
 
 // tabOf keeps the job area on the tab it was rendered for (forms and polls carry ?tab=).
 func tabOf(r *http.Request) string {
-	if t := r.FormValue("tab"); t == "exercises" || t == "answers" || t == "reports" {
+	if t := r.FormValue("tab"); t == "exercises" || t == "answers" || t == "reports" || t == "suggestions" {
 		return t
 	}
 	return ""

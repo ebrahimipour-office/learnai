@@ -165,12 +165,12 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 				continue
 			}
 			seq++
-			slug := slugOr(t.Title, "topic", maxDirSlugRunes)
+			slug, dir := TopicDir(seq, t.Title)
 			_, err := tx.ExecContext(ctx,
 				`INSERT INTO topics (roadmap_id, group_id, stable_key, title, title_norm, outline, ord, slug, dir_name, source_rev_id)
 				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				roadmapID, group, t.StableKey, t.Title, roadmap.Normalize(t.Title), outline,
-				float64(i+1), slug, fmt.Sprintf("%02d-%s", seq, slug), revID)
+				float64(i+1), slug, dir, revID)
 			if err != nil {
 				return fmt.Errorf("inserting topic %q: %w", t.Title, err)
 			}
@@ -213,6 +213,13 @@ func (s *Service) freeRoadmapSlug(ctx context.Context, tx *sql.Tx, title string)
 			return slug, nil
 		}
 	}
+}
+
+// TopicDir returns the slug and dir_name (NN-slug) of the seq-th topic ever created. seq must be
+// COUNT(*) of topics + 1 inside the inserting transaction: topics are never deleted, so it is unique.
+func TopicDir(seq int, title string) (slug, dir string) {
+	slug = slugOr(title, "topic", maxDirSlugRunes)
+	return slug, fmt.Sprintf("%02d-%s", seq, slug)
 }
 
 // slugOr returns fsx.SanitizeSlug(s) cut to maxRunes (0 = no cut), or fallback when s has no usable characters.

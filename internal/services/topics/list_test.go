@@ -16,6 +16,13 @@ const md = "# کتاب Go\n## مبانی\n### نوع‌ها\n### کتابخان�
 
 func setup(t *testing.T, contents ...string) (*topics.Service, *store.DB) {
 	t.Helper()
+	s, db, _ := setupRS(t, contents...)
+	return s, db
+}
+
+// setupRS also returns the roadmaps service, for re-imports.
+func setupRS(t *testing.T, contents ...string) (*topics.Service, *store.DB, *roadmaps.Service) {
+	t.Helper()
 	base := t.TempDir()
 	db, err := store.Open(filepath.Join(base, "app.db"))
 	if err != nil {
@@ -38,7 +45,7 @@ func setup(t *testing.T, contents ...string) (*topics.Service, *store.DB) {
 			t.Fatal(err)
 		}
 	}
-	return topics.NewService(db), db
+	return topics.NewService(db), db, rs
 }
 
 func titles(nodes []*topics.Node) (out []string) {

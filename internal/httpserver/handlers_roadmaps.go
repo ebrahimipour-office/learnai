@@ -61,7 +61,7 @@ type pageData struct {
 	Job     *jobs.Info            // latest job of the topic; nil = none
 	Notice  string                // job action feedback inside the job area
 
-	Tab         string // "" (lesson) | "exercises" | "answers" | "reports"
+	Tab         string // "" (lesson) | "exercises" | "answers" | "reports" | "suggestions"
 	Sets        []topics.SetVersion
 	Set         *topics.SetVersion // set shown; nil = none
 	Exercises   []exerciseRow
@@ -74,6 +74,8 @@ type pageData struct {
 	AttemptItems []topics.AttemptItem
 	ReportItem   *topics.AttemptItem // exercise whose report is shown; nil = none
 	ReportMD     template.HTML       // sanitized by render.Markdown
+
+	Suggestions []topics.Suggestion
 
 	Doctor              *Doctor
 	Adapter, Model      string
@@ -110,6 +112,8 @@ func newApp(sm *SecurityManager, drafts *roadmaps.Service, topicList *topics.Ser
 		"itemStatus":  func(s string) string { return itemStatusLabels[s] },
 		"evalMode":    func(s string) string { return evalModeLabels[s] },
 		"num":         func(f float64) string { return strconv.FormatFloat(f, 'f', -1, 64) },
+		"sugKind":     func(s string) string { return suggestionKindLabels[s] },
+		"sugStatus":   func(s string) string { return suggestionStatusLabels[s] },
 	}
 	for _, p := range []string{"new", "draft", "topics", "topic", "settings"} {
 		a.pages[p] = template.Must(template.New(p).Funcs(funcs).ParseFS(ui.FS, "templates/layout.html", "templates/"+p+".html"))

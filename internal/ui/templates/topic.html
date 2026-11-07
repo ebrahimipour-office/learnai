@@ -3,16 +3,18 @@
 <h1><bdi>{{.Panel.Title}}</bdi></h1>
 <p class="note"><bdi>{{.Panel.Roadmap}}</bdi>{{with .Panel.Group}} › <bdi>{{.}}</bdi>{{end}}
   <span class="badge">{{statusLabel .Panel.Status}}</span>
-  {{if eq .Panel.State "archived"}}<span class="badge">بایگانی‌شده</span>{{end}}</p>
+  {{if eq .Panel.State "archived"}}<span class="badge">بایگانی‌شده</span>{{end}}
+  {{if eq .Panel.Origin "suggested"}}<span class="badge suggested">پیشنهادی</span>{{end}}</p>
 <nav class="tabs">
   <a href="/topics/{{.Panel.ID}}/lesson"{{if eq .Tab ""}} aria-current="page"{{end}}>درس</a>
   <a href="/topics/{{.Panel.ID}}/exercises"{{if eq .Tab "exercises"}} aria-current="page"{{end}}>تمرین‌ها</a>
   <a href="/topics/{{.Panel.ID}}/answers"{{if eq .Tab "answers"}} aria-current="page"{{end}}>فایل‌های پاسخ</a>
   <a href="/topics/{{.Panel.ID}}/reports"{{if eq .Tab "reports"}} aria-current="page"{{end}}>گزارش‌ها</a>
+  <a href="/topics/{{.Panel.ID}}/suggestions"{{if eq .Tab "suggestions"}} aria-current="page"{{end}}>پیشنهادها</a>
 </nav>
 {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
 {{template "job-area" .}}
-{{if .Tab}}{{template "set-tab" .}}{{else}}
+{{if eq .Tab "suggestions"}}{{template "suggestions" .}}{{else if .Tab}}{{template "set-tab" .}}{{else}}
 <section class="lesson">
 {{if .Panel.Lessons}}
   <details class="versions"><summary>نسخه‌ها ({{len .Panel.Lessons}})</summary>
@@ -66,6 +68,26 @@
 </section>
 {{end}}
 
+{{define "suggestions"}}
+<section class="suggestions">
+{{if .Suggestions}}
+  <p class="note">موضوع تأییدشده با برچسب «پیشنهادی» کنار همین موضوع در فهرست می‌آید؛ ترتیب نقشه راه اصلی تغییر نمی‌کند.</p>
+  <table class="grid"><thead><tr><th>نوع</th><th>عنوان</th><th>دلیل</th><th>وضعیت</th><th>تصمیم</th></tr></thead>
+    <tbody>{{range .Suggestions}}<tr>
+      <td>{{sugKind .Kind}}</td><td><bdi>{{.Title}}</bdi></td><td><bdi>{{.Reason}}</bdi></td>
+      <td><span class="badge">{{sugStatus .Status}}</span>{{if .AcceptedTopicID}} <a href="/topics/{{.AcceptedTopicID}}">موضوع ساخته‌شده</a>{{end}}</td>
+      <td>{{if eq .Status "pending"}}
+        <form method="post" action="/suggestions/{{.ID}}/accept" class="inline"><input type="hidden" name="csrf_token" value="{{$.CSRF}}"><button type="submit">تأیید</button></form>
+        <form method="post" action="/suggestions/{{.ID}}/reject" class="inline"><input type="hidden" name="csrf_token" value="{{$.CSRF}}"><button type="submit">رد</button></form>
+      {{end}}</td>
+    </tr>{{end}}</tbody>
+  </table>
+{{else}}
+  <p class="note">هوش مصنوعی هنوز پیشنهادی برای این موضوع نداده است.</p>
+{{end}}
+</section>
+{{end}}
+
 {{define "reports"}}
 {{if .Attempts}}
   <h2>تاریخچه تلاش‌ها</h2>
@@ -105,7 +127,8 @@
 <div id="job-area" aria-live="polite"{{if and .Job .Job.Active}} hx-get="/jobs/{{.Job.ID}}/card?poll=1&amp;tab={{.Tab}}" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
   {{with .Notice}}<p class="error" role="alert">{{.}}</p>{{end}}
   {{$busy := and .Job .Job.Active}}
-  {{if eq .Tab "reports"}}
+  {{if eq .Tab "suggestions"}}
+  {{else if eq .Tab "reports"}}
   {{if .Sets}}
   <form method="post" action="/topics/{{.Panel.ID}}/jobs/evaluate" hx-post="/topics/{{.Panel.ID}}/jobs/evaluate" hx-target="#job-area" hx-swap="outerHTML">
     <input type="hidden" name="csrf_token" value="{{.CSRF}}"><input type="hidden" name="tab" value="reports">

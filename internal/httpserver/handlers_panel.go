@@ -106,7 +106,11 @@ func (a *app) respond(w http.ResponseWriter, r *http.Request, status int, topicI
 		return
 	}
 	d.Error = notice
-	if d.Tab != "" {
+	if d.Tab == "suggestions" {
+		if d.Suggestions, err = a.topics.Suggestions(r.Context(), topicID); err != nil {
+			slog.Error("loading suggestions", "topic", topicID, "error", err)
+		}
+	} else if d.Tab != "" {
 		if err := a.fillSet(r, d); err != nil {
 			slog.Error("loading exercise set", "topic", topicID, "error", err)
 		}
