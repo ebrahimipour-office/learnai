@@ -42,4 +42,5 @@
   {{if eq .Origin "suggested"}}<span class="badge suggested">پیشنهادی</span>{{end}}
   {{if eq .State "archived"}}<span class="badge">بایگانی‌شده</span>{{end}}
   {{if .Busy}}<span class="badge busy">در حال اجرا</span>{{end}}
+  {{if .Missing}}<a class="badge warn" href="/sync">{{.Missing}} فایل گم‌شده</a>{{end}}
 </li>{{end}}{{end}}

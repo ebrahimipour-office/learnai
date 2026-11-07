@@ -1,5 +1,5 @@
 // Package syncsvc compares the files table with the disk (R5.3, T6.3). A scan never deletes or
-// rewrites a file or a record: it only updates files.presence and files.observed_*, and stores
+// rewrites a file or a record: it only updates files.presence, files.observed_* and the topics.status cache, and stores
 // its findings in sync_runs. A move is recorded only when the user applies it.
 package syncsvc
 
@@ -18,6 +18,7 @@ import (
 
 	"learninghub/internal/domain"
 	"learninghub/internal/fsx"
+	"learninghub/internal/services/status"
 	"learninghub/internal/store"
 )
 
@@ -140,6 +141,9 @@ func (s *Service) Scan(ctx context.Context) (*Run, error) {
 			if _, err := tx.ExecContext(ctx, `UPDATE files SET presence = 'missing', observed_at = `+nowSQL+` WHERE id = ?`, r.FileID); err != nil {
 				return err
 			}
+		}
+		if _, err := status.Recompute(ctx, tx); err != nil {
+			return err
 		}
 		res, err := tx.ExecContext(ctx, `INSERT INTO sync_runs (started_at, finished_at, report) VALUES (?, `+nowSQL+`, ?)`, started, string(raw))
 		if err != nil {
@@ -404,6 +408,9 @@ func (s *Service) ApplyMoves(ctx context.Context, runID int64, fileIDs []int64) 
 				m.FileID, string(detail)); err != nil {
 				return err
 			}
+		}
+		if _, err := status.Recompute(ctx, tx); err != nil {
+			return err
 		}
 		res, err := tx.ExecContext(ctx, `UPDATE sync_runs SET applied = ? WHERE id = ? AND applied IS NULL`, string(applied), runID)
 		if err != nil {

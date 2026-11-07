@@ -138,10 +138,14 @@ func TestListShowsLatestAttemptOfCurrentSet(t *testing.T) {
 		exec(`INSERT INTO attempts (set_id, attempt_no, mode, rubric_version, topic_score, answered_count, total_count, is_partial,
 			result_file, summary_file, started_at, finished_at) VALUES (1, ?, 'full', 1, ?, 1, 2, ?, 4, 5, 'x', 'x')`, a.no, a.score, a.partial)
 	}
+	exec(`UPDATE files SET presence = 'missing' WHERE id IN (1, 2)`)
 	tree, _, _ := list(t, s, topics.Filter{})
 	topic := tree[0].Items[0].Items[0]
 	if !topic.Score.Valid || topic.Score.Float64 != 40 || !topic.Partial {
 		t.Errorf("want latest attempt 40 partial, got %+v", topic)
+	}
+	if topic.Missing != 2 {
+		t.Errorf("Missing = %d, want 2", topic.Missing)
 	}
 }
 

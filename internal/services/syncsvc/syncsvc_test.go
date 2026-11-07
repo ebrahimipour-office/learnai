@@ -270,3 +270,66 @@ func TestAmbiguousHashStaysMissingAndNew(t *testing.T) {
 		t.Errorf("report = %+v", run.Report)
 	}
 }
+
+// T6.4: sync recomputes every topic's status; a missing file lowers it and its return restores it.
+func TestSyncRecomputesStatus(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	e.exec(`UPDATE exercises SET template_sha256 = (SELECT sha256 FROM files WHERE id = answer_file_id)`)
+	e.exec(`INSERT INTO lesson_versions (topic_id, version, file_id, keywords, is_current) VALUES (1, 1, 1, '[]', 1)`)
+	e.exec(`INSERT INTO topics (id, roadmap_id, stable_key, title, title_norm, ord, slug, dir_name, status)
+		VALUES (2, 1, 'empty', 'Empty', 'empty', 2, 'empty', '02-empty', 'evaluated')`)
+	status := func(id int) string {
+		t.Helper()
+		var s string
+		if err := e.db.Writer().QueryRow(`SELECT status FROM topics WHERE id = ?`, id).Scan(&s); err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	scan := func() *syncsvc.Run {
+		t.Helper()
+		run, err := e.svc.Scan(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return run
+	}
+	steps := []struct {
+		name string
+		do   func()
+		want string
+	}{
+		{"templates only", func() {}, "exercises_ready"},
+		{"answer edited", func() { e.write(ans1Rel, "package main // mine\n") }, "answered"},
+		{"lesson deleted", func() { e.move(lessonRel, "../lesson.bak") }, "created"},
+		{"lesson back", func() { e.move("../lesson.bak", lessonRel) }, "answered"},
+		{"attempt", func() {
+			e.exec(`INSERT INTO attempts (set_id, attempt_no, mode, rubric_version, topic_score, answered_count, total_count, is_partial,
+				result_file, summary_file, started_at, finished_at) VALUES (1, 1, 'full', 1, 50, 1, 2, 1, 6, 6, 'x', 'x')`)
+		}, "evaluated"},
+	}
+	for _, s := range steps {
+		s.do()
+		scan()
+		if got := status(1); got != s.want {
+			t.Errorf("%s: status = %s, want %s", s.name, got, s.want)
+		}
+	}
+	if got := status(2); got != "created" {
+		t.Errorf("topic without records: status = %s, want created", got)
+	}
+
+	// A moved exercises.md lowers the status until the user applies the move.
+	e.move("topics/01-http/exercises/v1/exercises.md", "topics/01-http/ex.md")
+	run := scan()
+	if got := status(1); got != "content_ready" {
+		t.Errorf("moved exercises.md: status = %s, want content_ready", got)
+	}
+	if _, err := e.svc.ApplyMoves(ctx, run.ID, []int64{5}); err != nil {
+		t.Fatal(err)
+	}
+	if got := status(1); got != "evaluated" {
+		t.Errorf("after apply: status = %s, want evaluated", got)
+	}
+}

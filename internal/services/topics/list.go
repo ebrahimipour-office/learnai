@@ -28,6 +28,7 @@ type Node struct {
 	Score                 sql.NullFloat64 // latest attempt of the current exercise set
 	Partial               bool
 	Busy                  bool // has a queued or running job
+	Missing               int  // registered files last seen missing by sync
 }
 
 type Service struct{ db *store.DB }
@@ -72,7 +73,8 @@ func (s *Service) List(ctx context.Context, f Filter) (tree []*Node, matched, to
 		         ROW_NUMBER() OVER (PARTITION BY s.topic_id ORDER BY a.attempt_no DESC) AS rn
 		  FROM attempts a JOIN exercise_sets s ON s.id = a.set_id AND s.is_current = 1)
 		SELECT r.id, r.title, t.id, t.group_id, t.title, t.status, t.state, t.origin, l.topic_score, COALESCE(l.is_partial, 0),
-		       EXISTS (SELECT 1 FROM jobs j WHERE j.topic_id = t.id AND j.status IN ('queued','running'))
+		       EXISTS (SELECT 1 FROM jobs j WHERE j.topic_id = t.id AND j.status IN ('queued','running')),
+		       (SELECT COUNT(*) FROM files f WHERE f.topic_id = t.id AND f.presence = 'missing')
 		FROM topics t
 		JOIN roadmaps r ON r.id = t.roadmap_id
 		LEFT JOIN latest l ON l.topic_id = t.id AND l.rn = 1
@@ -104,7 +106,7 @@ func (s *Service) List(ctx context.Context, f Filter) (tree []*Node, matched, to
 		var rtitle string
 		var gid sql.NullInt64
 		t := &Node{Kind: "topic"}
-		if err := rows.Scan(&rid, &rtitle, &t.ID, &gid, &t.Title, &t.Status, &t.State, &t.Origin, &t.Score, &t.Partial, &t.Busy); err != nil {
+		if err := rows.Scan(&rid, &rtitle, &t.ID, &gid, &t.Title, &t.Status, &t.State, &t.Origin, &t.Score, &t.Partial, &t.Busy, &t.Missing); err != nil {
 			return nil, 0, 0, err
 		}
 		rm := roadmaps[rid]
