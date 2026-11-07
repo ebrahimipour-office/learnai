@@ -34,7 +34,8 @@ import (
 	"github.com/gofrs/flock"
 )
 
-const (
+// Set at release time: make release (-ldflags -X).
+var (
 	Version   = "1.0.0"
 	BuildDate = "2026-10-31"
 )
