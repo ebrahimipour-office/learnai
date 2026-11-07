@@ -9,8 +9,8 @@
 | مشخصه | وضعیت |
 |---|---|
 | **فاز فعال کنونی** | **فاز ۵ — موتور ارزیابی، نمره‌دهی و گزارش‌ها (Phase 5)** — فاز ۴ کامل شد ✅ |
-| **کار بعدی برای اجرا** | **Task T5.4 — سازنده گزارش‌ها `qNN-report.md`، `summary.md`، `result.json` (متن خام بایت‌به‌بایت)** |
-| **آخرین کامیت Git** | `feat(scoring): T5.3 deterministic scoring package; topic score never from AI` |
+| **کار بعدی برای اجرا** | **Task T5.5 — commit تلاش در `reports/vN/attempt-K` و حفظ تاریخچه (R11.2-۶)** |
+| **آخرین کامیت Git** | `feat(evaluation): T5.4 report builders; raw answer byte-exact in qNN-report.md` |
 | **✅ بسته‌شده از T3.1** | **۲۰۲۶-۱۱-۰۱:** اجرای واقعی دستی با `agy` 1.4.12 (`gemini-3.8-flash-high`، `--json-schema`، `--sandbox`) موفق بود. تأیید شد: خروجی ساختاریافته در `result.structured_output` است؛ `response` متن آزاد + JSON است (fallback فقط برای JSON خالص)؛ رویدادهای میانی `init` و `step_update` درست‌اند. خط واقعی در `TestRealSuccessEnvelope` ثبت شد. |
 | **وضعیت آزمون‌های خودکار** | **۱۰۰٪ سبز و موفق** (`go test ./...` روی همه پکیج‌ها) |
 | **مسیر دایرکتوری پایه** | `C:\Users\Asus\Desktop\Leaning-appication\prj` |
@@ -103,7 +103,8 @@
   - ⏭️ هنوز commit ندارد (attempt، گزارش‌ها، `result.json` با T5.3–T5.5)؛ تا آن زمان Job موفق فقط `job_steps` می‌گذارد و staging را runner پاک می‌کند. تطبیق `score` با جمع معیارها و پرچم تزریق با T5.6. اجرای واقعی با `agy` انجام نشده (T5.8)
 - [x] **T5.3**: پکیج نمره‌دهی قطعی `internal/scoring` (توابع خالص، بدون I/O): `ExerciseScore(criteria, aiReported)` ⇒ نمره رسمی = جمع `awarded` معیارها + پرچم `mismatch` برای ثبت `ai_reported_score`؛ `Aggregate(items)` ⇒ `schema.ResultAggregate` با `sum(w·s)/sum(w)` گرد به ۲ رقم اعشار، بدون‌پاسخ همیشه ۰ (حتی اگر `Score` چیز دیگری باشد)، `answered/total` و `partial`، `formula` و `computed_by=app`. نمره موضوع هرگز از AI گرفته نمی‌شود — تست جدولی ۱۶ حالت تجمیع (وزن‌های مختلف/کسری، همه بی‌پاسخ، carried-over، گرد کردن بالا/پایین) + ۵ حالت عدم تطابق AI + تطابق با `schema.CrossCheckResult`
   - ⏭️ `CrossCheckResult` عمداً محاسبه مستقل خودش را نگه داشته (بررسی مستقل طبق بخش ۵.۳؛ import از `scoring` چرخه می‌ساخت). فراخوانی در مسیر ارزیابی با T5.4/T5.5
-- [ ] **T5.4**: تولید گزارش‌های `qNN-report.md`, `summary.md`, `result.json` با وفاداری بایت‌به‌بایت به پاسخ کاربر
+- [x] **T5.4**: سازنده‌های خالص گزارش در `services/evaluation/report.go`: `Report(ReportInput)` ⇒ `qNN-report.md` (شناسه/تلاش/تاریخ/نسخه Rubric و Skill، صورت تمرین از `exercises.Section`، **متن خام پاسخ + sha256** در fence با طول بیشتر از طولانی‌ترین رشته backtick پاسخ، جدول معیارها، خطاها دسته‌بندی‌شده، نقاط قوت، پاسخ اصلاح‌شده، توضیح آموزشی؛ حذف BiDi از متن AI) + `schema.ResultItem` با نمره رسمی از `scoring.ExerciseScore` (عدم تطابق با نمره AI در گزارش ذکر می‌شود)؛ `RawAnswer(report)` استخراج بایت‌به‌بایت؛ `Summary(res, titles)` ⇒ `summary.md` با نمره موضوع، برچسب «ناقص (X از Y پاسخ‌داده‌شده)» و جدول تمرین‌ها (carried-over با شماره تلاش مبدأ)؛ `ResultJSON(res, manifest)` ⇒ aggregate همیشه از `scoring.Aggregate` + `ValidateResult` + `CrossCheckResult` — آزمون property معیار R11.2-۵ (۵۰۵ محتوای تصادفی با backtick، CRLF، BOM، فارسی، NUL و فایل خالی؛ با جهش fence شکست می‌خورد) + بخش‌های گزارش + result.json/summary
+  - ⏭️ هنوز به Handler وصل نشده: نوشتن فایل‌ها در `reports/vN/attempt-K` و ردیف‌های DB با T5.5. شماره‌ها در summary با ارقام لاتین‌اند
 - [ ] **T5.5**: ثبت تلاش جدید در `reports/vN/attempt-K` با برچسب تغییرناپذیر
 - [ ] **T5.6**: محافظ‌های تقلب و ناهنجاری نمره
 - [ ] **T5.7**: رابط کاربری تب کارنامه و نمرات
