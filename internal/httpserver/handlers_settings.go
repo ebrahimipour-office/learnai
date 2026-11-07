@@ -113,5 +113,25 @@ func (a *app) ackPrivacy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/settings", http.StatusSeeOther)
+	http.Redirect(w, r, "/topics", http.StatusSeeOther)
+}
+
+// requireAck is the first-run gate (T6.7): until the privacy notice is acknowledged, the topic
+// list and every action that sends content to the AI go to the settings page (doctor + notice).
+func (a *app) requireAck(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ack, err := a.privacyAck(r.Context())
+		switch {
+		case err != nil:
+			slog.Error("reading privacy_ack", "error", err)
+			http.Error(w, "خطای داخلی", http.StatusInternalServerError)
+		case ack != "":
+			h(w, r)
+		case r.Header.Get("HX-Request") == "true":
+			w.Header().Set("HX-Redirect", "/settings")
+			http.Error(w, "ابتدا متن حریم خصوصی را در تنظیمات تأیید کنید.", http.StatusConflict)
+		default:
+			http.Redirect(w, r, "/settings", http.StatusSeeOther)
+		}
+	}
 }

@@ -82,6 +82,10 @@ func newEnv(t *testing.T, opts ...func(*httpserver.Settings)) *env {
 	for _, o := range opts {
 		o(&settings)
 	}
+	// Most tests are past first run; TestFirstRunGate removes the ack.
+	if _, err := db.Writer().Exec(`INSERT INTO meta (key, value) VALUES ('privacy_ack', '2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
 	srv := httpserver.NewServer("127.0.0.1:8787", sm, drafts, topics.NewService(db), runner, root, settings)
 	if srv.ReadHeaderTimeout == 0 || srv.IdleTimeout == 0 {
 		t.Error("server timeouts must be set (Section 8)")

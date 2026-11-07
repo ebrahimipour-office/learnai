@@ -5,6 +5,7 @@
 <section>
 <h2>حریم خصوصی</h2>
 <p>{{.Privacy}}</p>
+{{if not .PrivacyAck}}<p class="note">راه‌اندازی اولیه: نتیجه بررسی ابزار هوش مصنوعی را پایین همین صفحه ببینید و پس از تأیید این متن، فهرست موضوعات باز می‌شود.</p>{{end}}
 {{if .PrivacyAck}}<p class="note">تأییدشده در <bdi>{{.PrivacyAck}}</bdi></p>
 {{else}}
 <form method="post" action="/settings/privacy">

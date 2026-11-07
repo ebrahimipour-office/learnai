@@ -1,4 +1,4 @@
-// Package skills embeds the default AGENTS.md, profile.md and skills, and installs them into the
+// Package skills embeds the default AGENTS.md, profile.md, suggested .gitignore and skills, and installs them into the
 // base dir on first run (TDD §6.3). Files the user already has are never overwritten.
 package skills
 
@@ -26,6 +26,9 @@ func Install(root *fsx.Root) (int, error) {
 			return err
 		}
 		dst := strings.TrimSuffix(p, ".tmpl") // AGENTS.md.tmpl → AGENTS.md
+		if dst == "gitignore" {
+			dst = ".gitignore" // a dotfile is not matched by //go:embed *.tmpl
+		}
 		if path.Base(p) == "SKILL.md" {
 			dst = SkillRel(path.Dir(p))
 		}
