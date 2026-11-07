@@ -256,6 +256,9 @@ func runServe(args []string) {
 		Timeout: cfg.Jobs.TimeoutEvaluateItem, Stall: cfg.Jobs.StallTimeout, Parallel: cfg.Jobs.EvaluateParallelism,
 		MaxAnswerBytes: cfg.Limits.MaxAnswerBytes,
 	}).Handle)
+	runner.Register(domain.JobKindRoadmapAnalyze, (&roadmaps.Analyzer{
+		Drafts: drafts, Adapter: adapter, Model: cfg.Adapter.Model, Timeout: cfg.Jobs.TimeoutAnalyze, Stall: cfg.Jobs.StallTimeout,
+	}).Handle)
 	srv := httpserver.NewServer(cfg.Listen, sm, drafts, topics.NewService(db), runner, root,
 		httpserver.Settings{DB: db, Adapter: adapter, Model: cfg.Adapter.Model, Exercises: cfg.Exercises, MaxAnswerBytes: cfg.Limits.MaxAnswerBytes})
 	runnerDone := make(chan struct{})

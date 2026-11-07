@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -14,6 +15,7 @@ import (
 	"sync"
 
 	"learninghub/internal/ai"
+	"learninghub/internal/domain"
 	"learninghub/internal/fsx"
 	"learninghub/internal/jobs"
 	"learninghub/internal/roadmap"
@@ -48,7 +50,8 @@ type pageData struct {
 	SuggestItems    bool
 	Diff            *roadmaps.Diff
 	Roadmaps        []roadmaps.RoadmapRef
-	RoadmapID       int64 // re-import target preselected in the upload form
+	RoadmapID       int64  // re-import target preselected in the upload form
+	AIRule, AILabel string // T6.2 suggested rule as form value and label; "" = no suggestion
 
 	Query, Status       string
 	Statuses            []ruleOption
@@ -317,11 +320,85 @@ func (a *app) renderDraft(w http.ResponseWriter, r *http.Request, status int, d 
 		SuggestItems: len(sel.Topics) == 0 && d.Choice.Rule.Kind != roadmap.RuleItems,
 		Diff:         diff,
 	}
+	if err := a.draftAI(r, d, data); err != nil {
+		slog.Error("loading draft analysis", "error", err)
+		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
+		return
+	}
 	name := "layout"
 	if r.Header.Get("HX-Request") == "true" {
 		name = "draft-form"
 	}
 	a.render(w, status, "draft", name, data)
+}
+
+// draftAI fills the AI-suggestion section: the suggestion and the draft's latest analysis job.
+func (a *app) draftAI(r *http.Request, d *roadmaps.Draft, data *pageData) error {
+	data.Draft, data.RuleValue = d, ruleValue(d.Choice.Rule)
+	if d.AI != nil {
+		data.AIRule = ruleValue(d.AI.Rule)
+		for _, o := range ruleOptions(data.AIRule) {
+			if o.Selected {
+				data.AILabel = o.Label
+			}
+		}
+	}
+	j, err := a.runner.Latest(r.Context(), roadmaps.DraftScope(d.ID))
+	data.Job = j
+	return err
+}
+
+// renderDraftAI serves only the AI-suggestion section (htmx swap and polling).
+func (a *app) renderDraftAI(w http.ResponseWriter, r *http.Request, status int, d *roadmaps.Draft, notice string) {
+	data := &pageData{Notice: notice}
+	if err := a.draftAI(r, d, data); err != nil {
+		slog.Error("loading draft analysis", "error", err)
+		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
+		return
+	}
+	a.render(w, status, "draft", "draft-ai", data)
+}
+
+// draftAIStatus is polled every 2s while the analysis runs; once it ends the page reloads to show the result.
+func (a *app) draftAIStatus(w http.ResponseWriter, r *http.Request) {
+	d := a.loadDraft(w, r)
+	if d == nil {
+		return
+	}
+	if r.URL.Query().Get("poll") == "1" {
+		if j, err := a.runner.Latest(r.Context(), roadmaps.DraftScope(d.ID)); err == nil && (j == nil || !j.Active()) {
+			w.Header().Set("HX-Refresh", "true")
+		}
+	}
+	a.renderDraftAI(w, r, http.StatusOK, d, "")
+}
+
+// analyzeDraft queues a roadmap_analyze job (T6.2). Its result is only a suggestion the user may apply.
+func (a *app) analyzeDraft(w http.ResponseWriter, r *http.Request) {
+	d := a.loadDraft(w, r)
+	if d == nil {
+		return
+	}
+	params, _ := json.Marshal(roadmaps.AnalyzeParams{DraftID: d.ID})
+	_, err := a.runner.Enqueue(r.Context(), jobs.Job{Kind: domain.JobKindRoadmapAnalyze, Scope: roadmaps.DraftScope(d.ID), Params: params})
+	status, notice := http.StatusAccepted, ""
+	switch {
+	case errors.Is(err, domain.ErrScopeBusy):
+		status, notice = http.StatusConflict, "تحلیل دیگری روی این پیش‌نویس در جریان است."
+	case err != nil:
+		slog.Error("enqueueing roadmap analysis", "error", err)
+		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
+		return
+	}
+	if r.Header.Get("HX-Request") != "true" {
+		if err == nil {
+			http.Redirect(w, r, "/roadmaps/drafts/"+d.ID, http.StatusSeeOther)
+			return
+		}
+		a.renderDraft(w, r, status, d, notice)
+		return
+	}
+	a.renderDraftAI(w, r, status, d, notice)
 }
 
 // buildTree nests topics under their groups. Topics arrive in document order and a group is

@@ -52,6 +52,8 @@ func NewServer(addr string, sm *SecurityManager, drafts *roadmaps.Service, topic
 	mux.HandleFunc("GET /roadmaps/drafts/{id}", a.showDraft)
 	mux.HandleFunc("POST /roadmaps/drafts/{id}/selection", a.updateSelection)
 	mux.HandleFunc("POST /roadmaps/drafts/{id}/confirm", a.confirmDraft)
+	mux.HandleFunc("POST /roadmaps/drafts/{id}/ai-assist", a.analyzeDraft)
+	mux.HandleFunc("GET /roadmaps/drafts/{id}/ai", a.draftAIStatus)
 
 	return &http.Server{
 		Addr:              addr,

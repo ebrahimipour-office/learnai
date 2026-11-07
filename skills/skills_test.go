@@ -19,8 +19,8 @@ func TestInstallKeepsUserFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n != 4 { // AGENTS.md + 3 skills; profile.md already there
-		t.Errorf("installed %d files, want 4", n)
+	if n != 5 { // AGENTS.md + 4 skills; profile.md already there
+		t.Errorf("installed %d files, want 5", n)
 	}
 	for _, rel := range []string{"AGENTS.md", SkillRel("lesson-generator"), SkillRel("exercise-generator"), SkillRel("answer-evaluator")} {
 		if !root.Exists(rel) {

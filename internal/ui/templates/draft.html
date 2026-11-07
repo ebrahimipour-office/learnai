@@ -1,6 +1,7 @@
 {{define "content"}}
 <h1>{{if .Draft.RoadmapID}}پیش‌نمایش ورود مجدد{{else}}پیش‌نمایش ورود{{end}}: <bdi>{{.Draft.SourceName}}</bdi></h1>
 <p class="note">تا پیش از تأیید هیچ موضوع، گروه یا فایلی ثبت نمی‌شود. این پیش‌نویس تا <bdi>{{.Expires}}</bdi> نگه داشته می‌شود.</p>
+{{template "draft-ai" .}}
 {{template "draft-form" .}}
 <form method="post" action="/roadmaps/drafts/{{.Draft.ID}}/confirm">
   <input type="hidden" name="csrf_token" value="{{.CSRF}}">
@@ -26,6 +27,31 @@
   {{with .Diff}}{{template "diff" .}}{{end}}
   <ul class="tree">{{range .Items}}{{template "node" .}}{{end}}</ul>
 </form>
+{{end}}
+
+{{define "draft-ai"}}
+<section id="draft-ai" class="ai-suggestion" aria-label="پیشنهاد AI"{{if and .Job .Job.Active}}
+         hx-get="/roadmaps/drafts/{{.Draft.ID}}/ai?poll=1" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
+  <h2>پیشنهاد AI</h2>
+  <p class="note">برای ساختارهای مبهم؛ جدا از قاعده قطعی بالا و تا وقتی اعمالش نکنید هیچ اثری ندارد.</p>
+  {{if .AIRule}}
+  <p>قاعده پیشنهادی: <strong>{{.AILabel}}</strong></p>
+  <p dir="auto">{{.Draft.AI.Reason}}</p>
+  {{if ne .AIRule .RuleValue}}<form method="post" action="/roadmaps/drafts/{{.Draft.ID}}/selection">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <input type="hidden" name="rule" value="{{.AIRule}}">
+    <button type="submit">اعمال پیشنهاد</button>
+  </form>{{end}}
+  {{end}}
+  {{with .Job}}{{if .Active}}<p aria-live="polite">در حال تحلیل… ({{jobStatus .Status}})</p>
+  {{else if eq .Status "failed"}}<p class="error" role="alert">تحلیل ناموفق بود: {{or (aiMessage .ErrorCode) .ErrorMessage}}</p>{{end}}{{end}}
+  {{if not (and .Job .Job.Active)}}<form method="post" action="/roadmaps/drafts/{{.Draft.ID}}/ai-assist"
+        hx-post="/roadmaps/drafts/{{.Draft.ID}}/ai-assist" hx-target="#draft-ai" hx-swap="outerHTML">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <button type="submit">{{if .AIRule}}تحلیل دوباره با AI{{else}}تحلیل ساختار با AI{{end}}</button>
+  </form>{{end}}
+  {{with .Notice}}<p class="error" role="alert">{{.}}</p>{{end}}
+</section>
 {{end}}
 
 {{define "diff"}}

@@ -23,6 +23,7 @@ var (
 	aiLessonSchema     *jsonschema.Schema
 	aiExercisesSchema  *jsonschema.Schema
 	aiEvaluationSchema *jsonschema.Schema
+	aiAnalyzeSchema    *jsonschema.Schema
 )
 
 func initSchemas() error {
@@ -39,6 +40,7 @@ func initSchemas() error {
 		{"https://learninghub.local/schemas/ai-lesson-output-1.json", "ai-lesson-output.schema.json", &aiLessonSchema},
 		{"https://learninghub.local/schemas/ai-exercises-output-1.json", "ai-exercises-output.schema.json", &aiExercisesSchema},
 		{"https://learninghub.local/schemas/ai-evaluation-output-1.json", "ai-evaluation-output.schema.json", &aiEvaluationSchema},
+		{"https://learninghub.local/schemas/ai-roadmap-analyze-output-1.json", "ai-roadmap-analyze-output.schema.json", &aiAnalyzeSchema},
 	}
 
 	// 1. Add all resources to compiler so cross-references resolve
@@ -141,6 +143,14 @@ func ValidateAIEvaluationOutput(data []byte) error {
 		return err
 	}
 	return validateData(aiEvaluationSchema, data)
+}
+
+// ValidateAIRoadmapAnalyzeOutput validates the AI roadmap-analysis JSON (T6.2) against its schema.
+func ValidateAIRoadmapAnalyzeOutput(data []byte) error {
+	if err := ensureInitialized(); err != nil {
+		return err
+	}
+	return validateData(aiAnalyzeSchema, data)
 }
 
 // GetSchemaBytes returns the raw JSON schema bytes for a given schema filename.

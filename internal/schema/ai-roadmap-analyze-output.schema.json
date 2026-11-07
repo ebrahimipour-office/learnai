@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://learninghub.local/schemas/ai-roadmap-analyze-output-1.json",
+  "title": "AIRoadmapAnalyzeOutput",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["rule", "reason"],
+  "properties": {
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["deepest", "level", "items"] },
+        "level": { "type": "integer", "minimum": 1, "maximum": 6 }
+      }
+    },
+    "reason": { "type": "string", "minLength": 1 }
+  }
+}

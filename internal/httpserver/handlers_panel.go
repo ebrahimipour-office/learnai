@@ -160,8 +160,7 @@ func (a *app) afterEnqueue(w http.ResponseWriter, r *http.Request, topicID int64
 	}
 }
 
-// loadJob returns the job in {id}; only topic jobs have a card so far.
-// shortcut: roadmap_analyze jobs (topic_id NULL) get no card; T6.2 adds one on the draft page.
+// loadJob returns the job in {id}; only topic jobs have a card (roadmap_analyze shows on its draft page).
 func (a *app) loadJob(w http.ResponseWriter, r *http.Request) *jobs.Info {
 	id, ok := pathID(r)
 	if !ok {

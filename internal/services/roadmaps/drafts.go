@@ -46,6 +46,7 @@ type Draft struct {
 	Content    []byte
 	Choice     Choice
 	ExpiresAt  time.Time
+	AI         *Suggestion // T6.2: shown in the preview only; nil = never analyzed
 }
 
 // Preview applies c to the draft content. Parsing is deterministic, so the content is the source of truth.
@@ -138,10 +139,11 @@ func (s *Service) createDraft(ctx context.Context, roadmapID int64, name string,
 func (s *Service) Draft(ctx context.Context, id string) (*Draft, error) {
 	var content, choice, expires string
 	var roadmapID sql.NullInt64
+	var suggestion sql.NullString
 	d := &Draft{ID: id}
 	err := s.db.Writer().QueryRowContext(ctx,
-		`SELECT roadmap_id, source_name, content, selection, expires_at FROM import_drafts WHERE id = ? AND expires_at > ?`,
-		id, s.ts(s.Now())).Scan(&roadmapID, &d.SourceName, &content, &choice, &expires)
+		`SELECT roadmap_id, source_name, content, selection, expires_at, ai_suggestion FROM import_drafts WHERE id = ? AND expires_at > ?`,
+		id, s.ts(s.Now())).Scan(&roadmapID, &d.SourceName, &content, &choice, &expires, &suggestion)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrDraftNotFound
 	}
@@ -150,6 +152,11 @@ func (s *Service) Draft(ctx context.Context, id string) (*Draft, error) {
 	}
 	if err := json.Unmarshal([]byte(choice), &d.Choice); err != nil {
 		return nil, fmt.Errorf("decoding draft selection: %w", err)
+	}
+	if suggestion.Valid {
+		if err := json.Unmarshal([]byte(suggestion.String), &d.AI); err != nil {
+			return nil, fmt.Errorf("decoding draft ai_suggestion: %w", err)
+		}
 	}
 	d.Content = []byte(content)
 	d.RoadmapID = roadmapID.Int64

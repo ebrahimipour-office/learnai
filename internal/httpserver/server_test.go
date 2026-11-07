@@ -71,11 +71,14 @@ func newEnv(t *testing.T) *env {
 		Language: "fa", Timeout: time.Minute, Stall: time.Minute, Config: exCfg}).Handle)
 	runner.Register(domain.JobKindEvaluate, (&evaluation.Service{DB: db, Root: root, Adapter: ad, Model: "m1",
 		Language: "fa", Timeout: time.Minute, Stall: time.Minute, MaxAnswerBytes: 1024}).Handle)
+	drafts := roadmaps.NewService(db, root)
+	runner.Register(domain.JobKindRoadmapAnalyze, (&roadmaps.Analyzer{Drafts: drafts, Adapter: ad, Model: "m1",
+		Timeout: time.Minute, Stall: time.Minute}).Handle)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { defer close(done); runner.Run(ctx) }()
 	t.Cleanup(func() { cancel(); <-done })
-	srv := httpserver.NewServer("127.0.0.1:8787", sm, roadmaps.NewService(db, root), topics.NewService(db), runner, root,
+	srv := httpserver.NewServer("127.0.0.1:8787", sm, drafts, topics.NewService(db), runner, root,
 		httpserver.Settings{DB: db, Adapter: ad, Model: "m1", Exercises: exCfg, MaxAnswerBytes: 1024})
 	if srv.ReadHeaderTimeout == 0 || srv.IdleTimeout == 0 {
 		t.Error("server timeouts must be set (Section 8)")
