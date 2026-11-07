@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -24,6 +25,7 @@ import (
 	"learninghub/internal/services/exercises"
 	"learninghub/internal/services/lessons"
 	"learninghub/internal/services/maintenance"
+	"learninghub/internal/services/rebuild"
 	"learninghub/internal/services/roadmaps"
 	"learninghub/internal/services/topics"
 	"learninghub/internal/store"
@@ -53,6 +55,8 @@ func main() {
 		runDoctor(args)
 	case "migrate":
 		runMigrate(args)
+	case "rebuild":
+		runRebuild(args)
 	case "version":
 		runVersion()
 	default:
@@ -61,7 +65,7 @@ func main() {
 			runServe(os.Args[1:])
 			return
 		}
-		fmt.Fprintf(os.Stderr, "Unknown command: %s\nUsage: hub [serve | doctor | migrate | version]\n", subcommand)
+		fmt.Fprintf(os.Stderr, "Unknown command: %s\nUsage: hub [serve | doctor | migrate | rebuild | version]\n", subcommand)
 		os.Exit(1)
 	}
 }
@@ -151,6 +155,64 @@ func runMigrate(args []string) {
 	}
 
 	fmt.Printf("Database schema is up to date (user_version = %d).\n", version)
+}
+
+// runRebuild recreates the tables from the files (T6.8) into an empty database; files are only read.
+func runRebuild(args []string) {
+	fs := flag.NewFlagSet("rebuild", flag.ExitOnError)
+	configPath := fs.String("config", "", "Path to config.toml")
+	dbPath := fs.String("db", "", "Database to create (default <base_dir>/app.db; must be new or empty)")
+	_ = fs.Parse(args)
+
+	cwd, _ := os.Getwd()
+	cfg, err := config.Load(*configPath, cwd)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+		os.Exit(1)
+	}
+	if *dbPath == "" {
+		*dbPath = filepath.Join(cfg.BaseDir, "app.db")
+	}
+	// The server must not write while we rebuild (D13).
+	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, ".app"), 0o755); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	lock := flock.New(filepath.Join(cfg.BaseDir, ".app", "hub.lock"))
+	if ok, err := lock.TryLock(); err != nil || !ok {
+		fmt.Fprintln(os.Stderr, "Error: LearningHub is running; stop it before rebuilding.")
+		os.Exit(1)
+	}
+	defer lock.Unlock()
+
+	db, err := store.Open(*dbPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error opening %s: %v\n", *dbPath, err)
+		os.Exit(1)
+	}
+	root, err := fsx.OpenRoot(cfg.BaseDir)
+	if err != nil {
+		db.Close()
+		fmt.Fprintf(os.Stderr, "Error opening base directory: %v\n", err)
+		os.Exit(1)
+	}
+	rep, err := rebuild.Run(context.Background(), db, root)
+	root.Close()
+	db.Close()
+	if errors.Is(err, rebuild.ErrNotEmpty) {
+		fmt.Fprintf(os.Stderr, "Error: %s already has records. Move it aside (or pass --db new.db) and run again.\n", *dbPath)
+		os.Exit(1)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Rebuild failed, nothing was recorded: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Rebuilt %s: %d roadmaps, %d topics, %d lessons, %d exercise sets, %d attempts, %d files.\n",
+		*dbPath, rep.Roadmaps, rep.Topics, rep.Lessons, rep.Sets, rep.Attempts, rep.Files)
+	fmt.Println("Not recoverable from files: roadmap selection rules (set to default), lesson keywords, suggestions, jobs, audit log.")
+	for _, w := range rep.Warnings {
+		fmt.Println("  [WARN] " + w)
+	}
 }
 
 func runServe(args []string) {

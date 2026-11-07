@@ -9,8 +9,8 @@
 | مشخصه | وضعیت |
 |---|---|
 | **فاز فعال کنونی** | **فاز ۶ — پیشنهادها، همگام‌سازی و انتشار نهایی (Phase 6)** — فاز ۵ کامل شد ✅ (اجرای واقعی T5.8 معوق) |
-| **کار بعدی برای اجرا** | **Task T6.8 — دستور `hub rebuild` جهت بازسازی دیتابیس از روی فایل‌ها** |
-| **آخرین کامیت Git** | `feat(setup): T6.7 first-run gate on privacy ack and suggested .gitignore` |
+| **کار بعدی برای اجرا** | **Task T6.9 — تست سرتاسری معیارهای ۹‌گانه R11.2 و ساخت باینری مستقل** |
+| **آخرین کامیت Git** | `feat(rebuild): T6.8 hub rebuild recreates the database from files` |
 | **✅ بسته‌شده از T3.1** | **۲۰۲۶-۱۱-۰۱:** اجرای واقعی دستی با `agy` 1.4.12 (`gemini-3.8-flash-high`، `--json-schema`، `--sandbox`) موفق بود. تأیید شد: خروجی ساختاریافته در `result.structured_output` است؛ `response` متن آزاد + JSON است (fallback فقط برای JSON خالص)؛ رویدادهای میانی `init` و `step_update` درست‌اند. خط واقعی در `TestRealSuccessEnvelope` ثبت شد. |
 | **وضعیت آزمون‌های خودکار** | **۱۰۰٪ سبز و موفق** (`go test ./...` روی همه پکیج‌ها) |
 | **مسیر دایرکتوری پایه** | `C:\Users\Asus\Desktop\Leaning-appication\prj` |
@@ -131,7 +131,8 @@
   - ⏭️ `editor.command` فقط مسیر برنامه است (بدون آرگومان اضافه مثل `code -r`)؛ باز کردن پوشه ندارد؛ آزمون روی ویندوز skip می‌شود؛ بررسی دستی در مرورگر انجام نشده
 - [x] **T6.7**: راه‌اندازی اولیه — ساخت دایرکتوری پایه/`.app` و نصب `AGENTS.md`/`profile.md`/`.agent/` از قبل در `serve` بود؛ اکنون `skills.Install` یک `.gitignore` پیشنهادی (`.app/`، `.internal/`، `app.db*`) هم با `WriteNew` نصب می‌کند (نسخه کاربر هرگز بازنویسی نمی‌شود). دروازه `requireAck`: تا `meta.privacy_ack` ثبت نشده، `GET /topics` و همه اقدام‌های AI (درس، تمرین، ارزیابی، retry، تحلیل نقشه راه) به `/settings` هدایت می‌شوند (فرم ⇒ ۳۰۳، htmx ⇒ ۴۰۹ + `HX-Redirect`) و هیچ Jobی ساخته نمی‌شود؛ صفحه تنظیمات متن «راه‌اندازی اولیه» + doctor + تأیید را نشان می‌دهد و تأیید به `/topics` می‌برد — تست `TestFirstRunGate`، `Install` (۶ فایل، اجرای دوم ۰)؛ آزمون دود باینری واقعی (۳۰۳ به `/settings`، `.gitignore` ویرایش‌شده کاربر پس از راه‌اندازی دوباره دست‌نخورده)
   - ⏭️ ویرایش پیکربندی/`profile.md` از UI، `GET/POST /api/v1/doctor`، گزینه ارقام فارسی/تقویم جلالی (O7) انجام نشد؛ بررسی دستی در مرورگر انجام نشده
-- [ ] **T6.8**: دستور `hub rebuild` جهت بازسازی دیتابیس از روی فایل‌ها
+- [x] **T6.8**: `hub rebuild [--db path]` (`services/rebuild`): فقط روی DB خالی (وگرنه `ErrNotEmpty`)، در یک تراکنش، فایل‌ها فقط خوانده می‌شوند؛ قفل `hub.lock` مانع اجرای هم‌زمان با سرور. `roadmaps/<slug>/rev-NNN.md` ← roadmap + revisionها + گروه‌ها؛ موضوعات با قاعده پیش‌فرض (deepest) از همه revisionها؛ هر `topics/NN-slug` با `stable_key` (از manifest/result.json) وگرنه با slug پوشه تطبیق می‌یابد؛ پوشه بی‌تطبیق ⇐ موضوع `suggested` با هشدار؛ موضوع بدون پوشه ⇐ شماره بعد از بیشترین NN. درس جاری + `history/lesson.NNNN.md`، مجموعه‌ها از manifest (معتبرسازی اسکیما)، تمرین‌ها، attemptها/آیتم‌ها/گزارش‌ها دقیقاً از `result.json` (نمره، carried_from)، سپس `status.Recompute` — آزمون `TestRebuildFromFiles` (hash همه فایل‌ها قبل/بعد برابر، نمره‌ها برابر result.json، اجرای دوم رد)؛ آزمون دود باینری
+  - ⏭️ غیرقابل بازیابی از فایل: `select_rule` (پیش‌فرض)، عنوان roadmap (= slug)، کلیدواژه‌های درس، پیشنهادها، Jobها، audit_log، `ai_reported_score`، `flags`؛ `template_sha256` با قالب بدون کد آغازین بازسازی می‌شود (پاسخ دست‌نخورده با starter code «پاسخ‌داده‌شده» دیده می‌شود)، `template_norm_sha256` = NULL؛ موضوع پیشنهادی در اولین roadmap ثبت می‌شود
 - [ ] **T6.9**: تست سرتاسری معیارهای ۹‌گانه R11.2 و ساخت باینری مستقل `hub.exe`
 
 ---
