@@ -9,8 +9,8 @@
 | مشخصه | وضعیت |
 |---|---|
 | **فاز فعال کنونی** | **فاز ۵ — موتور ارزیابی، نمره‌دهی و گزارش‌ها (Phase 5)** — فاز ۴ کامل شد ✅ |
-| **کار بعدی برای اجرا** | **Task T5.5 — commit تلاش در `reports/vN/attempt-K` و حفظ تاریخچه (R11.2-۶)** |
-| **آخرین کامیت Git** | `feat(evaluation): T5.4 report builders; raw answer byte-exact in qNN-report.md` |
+| **کار بعدی برای اجرا** | **Task T5.6 — محافظ‌های تقلب و ناهنجاری نمره** |
+| **آخرین کامیت Git** | `feat(evaluation): T5.5 commit attempt-K with carried-over items; history never overwritten` |
 | **✅ بسته‌شده از T3.1** | **۲۰۲۶-۱۱-۰۱:** اجرای واقعی دستی با `agy` 1.4.12 (`gemini-3.8-flash-high`، `--json-schema`، `--sandbox`) موفق بود. تأیید شد: خروجی ساختاریافته در `result.structured_output` است؛ `response` متن آزاد + JSON است (fallback فقط برای JSON خالص)؛ رویدادهای میانی `init` و `step_update` درست‌اند. خط واقعی در `TestRealSuccessEnvelope` ثبت شد. |
 | **وضعیت آزمون‌های خودکار** | **۱۰۰٪ سبز و موفق** (`go test ./...` روی همه پکیج‌ها) |
 | **مسیر دایرکتوری پایه** | `C:\Users\Asus\Desktop\Leaning-appication\prj` |
@@ -105,7 +105,8 @@
   - ⏭️ `CrossCheckResult` عمداً محاسبه مستقل خودش را نگه داشته (بررسی مستقل طبق بخش ۵.۳؛ import از `scoring` چرخه می‌ساخت). فراخوانی در مسیر ارزیابی با T5.4/T5.5
 - [x] **T5.4**: سازنده‌های خالص گزارش در `services/evaluation/report.go`: `Report(ReportInput)` ⇒ `qNN-report.md` (شناسه/تلاش/تاریخ/نسخه Rubric و Skill، صورت تمرین از `exercises.Section`، **متن خام پاسخ + sha256** در fence با طول بیشتر از طولانی‌ترین رشته backtick پاسخ، جدول معیارها، خطاها دسته‌بندی‌شده، نقاط قوت، پاسخ اصلاح‌شده، توضیح آموزشی؛ حذف BiDi از متن AI) + `schema.ResultItem` با نمره رسمی از `scoring.ExerciseScore` (عدم تطابق با نمره AI در گزارش ذکر می‌شود)؛ `RawAnswer(report)` استخراج بایت‌به‌بایت؛ `Summary(res, titles)` ⇒ `summary.md` با نمره موضوع، برچسب «ناقص (X از Y پاسخ‌داده‌شده)» و جدول تمرین‌ها (carried-over با شماره تلاش مبدأ)؛ `ResultJSON(res, manifest)` ⇒ aggregate همیشه از `scoring.Aggregate` + `ValidateResult` + `CrossCheckResult` — آزمون property معیار R11.2-۵ (۵۰۵ محتوای تصادفی با backtick، CRLF، BOM، فارسی، NUL و فایل خالی؛ با جهش fence شکست می‌خورد) + بخش‌های گزارش + result.json/summary
   - ⏭️ هنوز به Handler وصل نشده: نوشتن فایل‌ها در `reports/vN/attempt-K` و ردیف‌های DB با T5.5. شماره‌ها در summary با ارقام لاتین‌اند
-- [ ] **T5.5**: ثبت تلاش جدید در `reports/vN/attempt-K` با برچسب تغییرناپذیر
+- [x] **T5.5**: commit تلاش در `services/evaluation/commit.go` (پس از `done` شدن همه مراحل، داخل `jobs.Commit`): K = بیشینه `attempt_no` مجموعه + ۱؛ برای **هر** تمرین manifest یک آیتم: `evaluated` (گزارش از خروجی staging با همان بایت‌هایی که AI دید)، `carried_over` (پاسخ روی دیسک = hash آخرین ارزیابی؛ نمره، `error_types` و `carried_from_attempt` از آخرین آیتم ارزیابی‌شده) یا `unanswered` (قالب، گم‌شده یا «بازبینی دستی»)؛ فایل‌ها با `WriteNew` در `reports/vN/attempt-K/` + `commit_journal`؛ تراکنش: `files` (`report`/`summary`/`result` همه `immutable=1`)، `attempts` (نمره از `scoring`)، `attempt_items` (`ai_reported_score`)، وضعیت موضوع `evaluated`، `jobs.result_ref`. برخورد نام ⇒ commit رد، فایل موجود دست‌نخورده، فایل‌های همین job حذف، بدون ردیف. `Output.skill_version` در staging تا retry ارث‌بر هم نسخه Skill داشته باشد — آزمون: تلاش کامل (result.json معتبر، نمره ۵٫۲۵، متن خام برابر، DB)، معیار R11.2-۶ (attempt-2 با q01 ارزیابی‌شده، q02 carried از تلاش ۱، hash فایل‌های attempt-1 ثابت)، برخورد نام
+  - ⏭️ پاسخ «بازبینی دستی» (بزرگ/باینری) در result.json فعلاً `unanswered` ثبت می‌شود (اسکیما وضعیت جداگانه ندارد). بازیابی `commit_journal` پس از crash با T6.3
 - [ ] **T5.6**: محافظ‌های تقلب و ناهنجاری نمره
 - [ ] **T5.7**: رابط کاربری تب کارنامه و نمرات
 - [ ] **T5.8**: کالیبراسیون و سنجش دقت مهارت ارزیابی با ۵ نمونه پاسخ متنوع

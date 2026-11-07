@@ -71,6 +71,9 @@ type env struct {
 
 const tpl = "// answer below\n"
 
+const manifestJSON = `{"schema_version":1,"topic":{"stable_key":"a3f9c2d41b7e8f06","title":"HTTP"},"set":{"version":1,"rubric_version":1},
+	"exercises":[{"id":"q01","weight":1},{"id":"q02","weight":2},{"id":"q03","weight":1}]}`
+
 func setup(t *testing.T, parallel int) *env {
 	t.Helper()
 	dir := t.TempDir()
@@ -99,7 +102,7 @@ func setup(t *testing.T, parallel int) *env {
 	rubJSON, _ := json.Marshal(rub)
 	files := map[string]string{
 		"topics/02-http/exercises/v1/exercises.md":  "# Ex\n\n## [q01] One\n\nfirst statement\n\n## [q02] Two\n\nsecond statement\n\n## [q03] Three\n\nthird\n",
-		"topics/02-http/exercises/v1/manifest.json": "{}",
+		"topics/02-http/exercises/v1/manifest.json": manifestJSON,
 		"topics/02-http/.internal/rubric-v1.json":   string(rubJSON),
 		"topics/02-http/answers/v1/q01-one.go":      tpl + "answer one\n",
 		"topics/02-http/answers/v1/q02-two.md":      tpl + "answer two\n",
@@ -320,5 +323,120 @@ func TestCheck(t *testing.T) {
 		if err := evaluation.Check(tc.raw, "q01", rub); (err == nil) != tc.ok {
 			t.Errorf("%s: err = %v", name, err)
 		}
+	}
+}
+
+func (e *env) read(rel string) []byte {
+	e.t.Helper()
+	b, err := os.ReadFile(filepath.Join(e.dir, rel))
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return b
+}
+
+func TestEvaluateCommitsAttempt(t *testing.T) {
+	e := setup(t, 1)
+	if st, code := e.wait(e.enqueue("full")); st != "succeeded" {
+		t.Fatalf("status %s (%s)", st, code)
+	}
+	dir := evaluation.AttemptRel("02-http", 1, 1)
+	var res schema.Result
+	b := e.read(dir + "/result.json")
+	if err := schema.ValidateResult(b); err != nil {
+		t.Fatal(err)
+	}
+	json.Unmarshal(b, &res)
+	// q01=7 (w1), q02=7 (w2), q03 unanswered (w1): 21/4
+	if a := res.Aggregate; a.WeightedScore != 5.25 || a.AnsweredCount != 2 || !a.Partial || res.AttemptNo != 1 || res.Evaluator.SkillVersion == "" {
+		t.Errorf("result = %+v", res)
+	}
+	got, ok := evaluation.RawAnswer(e.read(dir + "/q01-report.md"))
+	if !ok || string(got) != string(e.read("topics/02-http/answers/v1/q01-one.go")) {
+		t.Errorf("raw answer in report = %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(e.dir, dir, "q03-report.md")); err == nil {
+		t.Error("report written for an unanswered exercise")
+	}
+	var score float64
+	var partial, mutable, items int
+	var status string
+	e.db.Writer().QueryRow(`SELECT topic_score, is_partial FROM attempts WHERE set_id = 1 AND attempt_no = 1`).Scan(&score, &partial)
+	e.db.Writer().QueryRow(`SELECT COUNT(*) FROM files WHERE kind IN ('report','summary','result') AND immutable = 0`).Scan(&mutable)
+	e.db.Writer().QueryRow(`SELECT COUNT(*) FROM attempt_items`).Scan(&items)
+	e.db.Writer().QueryRow(`SELECT status FROM topics WHERE id = 2`).Scan(&status)
+	if score != 5.25 || partial != 1 || mutable != 0 || items != 3 || status != "evaluated" {
+		t.Errorf("db: score %v partial %d mutable %d items %d status %s", score, partial, mutable, items, status)
+	}
+}
+
+// R11.2-6: re-evaluation makes attempt-(K+1), attempt-K stays byte-identical, unchanged answers carry over.
+func TestEvaluateNewAttemptKeepsHistory(t *testing.T) {
+	e := setup(t, 1)
+	if st, _ := e.wait(e.enqueue("full")); st != "succeeded" {
+		t.Fatal(st)
+	}
+	first := evaluation.AttemptRel("02-http", 1, 1)
+	before := map[string]string{}
+	for _, f := range []string{"q01-report.md", "q02-report.md", "summary.md", "result.json"} {
+		before[f] = fsx.HashBytes(e.read(first + "/" + f))
+	}
+	if err := os.WriteFile(filepath.Join(e.dir, "topics/02-http/answers/v1/q01-one.go"), []byte(tpl+"better\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if st, code := e.wait(e.enqueue("incremental")); st != "succeeded" {
+		t.Fatalf("status %s (%s)", st, code)
+	}
+	for f, h := range before {
+		if fsx.HashBytes(e.read(first+"/"+f)) != h {
+			t.Errorf("attempt-1 %s changed", f)
+		}
+	}
+	var res schema.Result
+	json.Unmarshal(e.read(evaluation.AttemptRel("02-http", 1, 2)+"/result.json"), &res)
+	st := map[string]string{}
+	for _, it := range res.Items {
+		st[it.ExerciseID] = it.Status
+		if it.ExerciseID == "q02" && (it.CarriedFromAttempt == nil || *it.CarriedFromAttempt != 1 || it.Score != 7) {
+			t.Errorf("q02 carried item = %+v", it)
+		}
+	}
+	if st["q01"] != "evaluated" || st["q02"] != "carried_over" || st["q03"] != "unanswered" || res.Aggregate.WeightedScore != 5.25 {
+		t.Errorf("attempt 2 = %v, score %v", st, res.Aggregate.WeightedScore)
+	}
+	if c := e.calls(); c["q01"] != 2 || c["q02"] != 1 {
+		t.Errorf("calls = %v, want only the changed q01 sent again", c)
+	}
+	var carriedFrom int64
+	e.db.Writer().QueryRow(`SELECT i.carried_from_attempt FROM attempt_items i JOIN attempts a ON a.id = i.attempt_id
+		JOIN exercises x ON x.id = i.exercise_id WHERE a.attempt_no = 2 AND x.ex_id = 'q02'`).Scan(&carriedFrom)
+	var firstID int64
+	e.db.Writer().QueryRow(`SELECT id FROM attempts WHERE attempt_no = 1`).Scan(&firstID)
+	if carriedFrom != firstID {
+		t.Errorf("carried_from_attempt = %d, want attempt id %d", carriedFrom, firstID)
+	}
+}
+
+// A name collision rejects the commit: nothing is overwritten and no attempt row is recorded.
+func TestEvaluateCommitCollisionNeverOverwrites(t *testing.T) {
+	e := setup(t, 1)
+	dir := filepath.Join(e.dir, evaluation.AttemptRel("02-http", 1, 1))
+	os.MkdirAll(dir, 0o755)
+	if err := os.WriteFile(filepath.Join(dir, "summary.md"), []byte("mine"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := e.wait(e.enqueue("full")); st != "failed" {
+		t.Fatalf("status %s, want failed", st)
+	}
+	if string(e.read(evaluation.AttemptRel("02-http", 1, 1)+"/summary.md")) != "mine" {
+		t.Error("existing file overwritten")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "q01-report.md")); err == nil {
+		t.Error("partial commit left q01-report.md behind")
+	}
+	var n int
+	e.db.Writer().QueryRow(`SELECT COUNT(*) FROM attempts`).Scan(&n)
+	if n != 0 {
+		t.Errorf("%d attempts recorded", n)
 	}
 }

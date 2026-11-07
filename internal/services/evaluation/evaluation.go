@@ -1,7 +1,6 @@
 // Package evaluation is the evaluate job handler (R3.4, D10): one AI call per exercise, each a
 // job_steps checkpoint whose output is kept in staging, so a retry only runs what is unfinished.
-// shortcut: no commit yet — attempts, reports and result.json come with T5.3–T5.5; until then a
-// succeeded job's staging is removed by the runner.
+// When every step is done, the commit writes reports/vN/attempt-K and its rows (T5.5).
 package evaluation
 
 import (
@@ -56,6 +55,7 @@ type Output struct {
 	ExerciseID   string          `json:"exercise_id"`
 	AnswerSHA256 string          `json:"answer_sha256"` // hash of the exact bytes the AI saw
 	Evaluation   json.RawMessage `json:"evaluation"`    // validated ai-evaluation-output
+	SkillVersion string          `json:"skill_version"`
 }
 
 func StepKey(exID string) string { return "exercise:" + exID }
@@ -88,18 +88,21 @@ type shared struct {
 
 func (s *Service) run(ctx context.Context, j jobs.Job, mode string) error {
 	s.phase(ctx, j.ID, "prepare")
-	var setID int64
+	var set setInfo
 	var exRel, rubricRel string
-	err := s.DB.Writer().QueryRowContext(ctx, `SELECT x.id, fe.rel_path, fr.rel_path FROM exercise_sets x
-		JOIN files fe ON fe.id = x.exercises_file JOIN files fr ON fr.id = x.rubric_file
-		WHERE x.topic_id = ? AND x.is_current = 1`, j.TopicID).Scan(&setID, &exRel, &rubricRel)
+	err := s.DB.Writer().QueryRowContext(ctx, `SELECT x.id, x.version, x.rubric_version, fe.rel_path, fr.rel_path, fm.rel_path,
+		t.dir_name, t.stable_key, t.title FROM exercise_sets x
+		JOIN files fe ON fe.id = x.exercises_file JOIN files fr ON fr.id = x.rubric_file JOIN files fm ON fm.id = x.manifest_file
+		JOIN topics t ON t.id = x.topic_id
+		WHERE x.topic_id = ? AND x.is_current = 1`, j.TopicID).Scan(&set.ID, &set.Version, &set.RubricVersion, &exRel, &rubricRel,
+		&set.ManifestRel, &set.TopicDir, &set.StableKey, &set.TopicTitle)
 	if errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("%w: topic %d has no exercise set", domain.ErrInvalidState, j.TopicID)
 	}
 	if err != nil {
 		return err
 	}
-	list, err := topics.NewService(s.DB).Exercises(ctx, setID)
+	list, err := topics.NewService(s.DB).Exercises(ctx, set.ID)
 	if err != nil {
 		return err
 	}
@@ -203,7 +206,10 @@ func (s *Service) run(ctx context.Context, j jobs.Job, mode string) error {
 	if first == nil && ctx.Err() != nil {
 		first = fmt.Errorf("%w: %v", ai.ErrCanceled, ctx.Err())
 	}
-	return first
+	if first != nil {
+		return first
+	}
+	return j.Commit(ctx, func(ctx context.Context) error { return s.commit(ctx, j, mode, set, list, sel, sh) })
 }
 
 // inherit copies the done steps of the job this one retries, if its inputs are unchanged.
@@ -319,7 +325,7 @@ func (s *Service) step(ctx context.Context, j jobs.Job, sh shared, pk topics.Pic
 	if err != nil {
 		return err
 	}
-	b, err := json.Marshal(Output{ExerciseID: pk.ExID, AnswerSHA256: pk.SHA, Evaluation: out})
+	b, err := json.Marshal(Output{ExerciseID: pk.ExID, AnswerSHA256: pk.SHA, Evaluation: out, SkillVersion: req.Skill.Version})
 	if err != nil {
 		return err
 	}
