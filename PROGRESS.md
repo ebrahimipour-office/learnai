@@ -9,8 +9,8 @@
 | مشخصه | وضعیت |
 |---|---|
 | **فاز فعال کنونی** | **فاز ۵ — موتور ارزیابی، نمره‌دهی و گزارش‌ها (Phase 5)** — فاز ۴ کامل شد ✅ |
-| **کار بعدی برای اجرا** | **Task T5.3 — پکیج نمره‌دهی قطعی `scoring` (میانگین وزنی، «ناقص»، نمره = جمع معیارها)** |
-| **آخرین کامیت Git** | `feat(evaluation): T5.2 per-exercise evaluation with job_steps checkpoints; retry runs only unfinished` |
+| **کار بعدی برای اجرا** | **Task T5.4 — سازنده گزارش‌ها `qNN-report.md`، `summary.md`، `result.json` (متن خام بایت‌به‌بایت)** |
+| **آخرین کامیت Git** | `feat(scoring): T5.3 deterministic scoring package; topic score never from AI` |
 | **✅ بسته‌شده از T3.1** | **۲۰۲۶-۱۱-۰۱:** اجرای واقعی دستی با `agy` 1.4.12 (`gemini-3.8-flash-high`، `--json-schema`، `--sandbox`) موفق بود. تأیید شد: خروجی ساختاریافته در `result.structured_output` است؛ `response` متن آزاد + JSON است (fallback فقط برای JSON خالص)؛ رویدادهای میانی `init` و `step_update` درست‌اند. خط واقعی در `TestRealSuccessEnvelope` ثبت شد. |
 | **وضعیت آزمون‌های خودکار** | **۱۰۰٪ سبز و موفق** (`go test ./...` روی همه پکیج‌ها) |
 | **مسیر دایرکتوری پایه** | `C:\Users\Asus\Desktop\Leaning-appication\prj` |
@@ -101,7 +101,8 @@
   - ⏭️ Handler ارزیابی هنوز ثبت نشده (T5.2)؛ Job ارزیابی فعلاً با «no handler» شکست می‌خورد. آزمون «شمارش فراخوانی Adapter جعلی» برای ارسال‌نشدن بدون‌پاسخ‌ها با T5.2 تکمیل می‌شود (Handler باید هنگام اجرا دوباره `SelectForEvaluation` را صدا بزند). مقایسه فقط روی «محتوای پس از نشانگر پاسخ» هنوز نیست (hash کل فایل، مثل T4.5)؛ دکمه UI با T5.7
 - [x] **T5.2**: ارزیابی تمرین‌به‌تمرین با چک‌پوینت‌های `job_steps` — پکیج `services/evaluation` (ثبت‌شده در `main` برای `JobKindEvaluate`): هنگام اجرا دوباره `SelectForEvaluation`؛ برای هر تمرین یک فراخوانی AI در sandbox جدا (`prompt.Input.Step` ⇒ `.app/work/<job>/<qNN>`) با `question.md` (فقط بخش همان تمرین، `exercises.Section`)، `rubric.json` (فقط Rubric همان تمرین)، `answer<ext>` و `task.json` که `out_of_scope_knowledge` را صریحاً تکرار می‌کند؛ اعتبارسنجی `evaluation.Check` (اسکیما + شناسه تمرین + هر معیار دقیقاً یک‌بار و ≤ `max_points`) با یک تلاش خودکار؛ خروجی هر مرحله در `.app/staging/<job>/<qNN>.json` (`{exercise_id, answer_sha256, evaluation}`)؛ `job_steps` با `exercise:qNN` و `progress_done/total`؛ موازی‌سازی `jobs.evaluate_parallelism` (تحدید به ۳)؛ سقف کل Job ۳۰ دقیقه ⇒ `timeout`. شکست یک تمرین بقیه را متوقف نمی‌کند ولی Job را `failed` می‌کند؛ تلاش مجدد با `inputs_fingerprint` یکسان مراحل `done` و فایل staging آن‌ها را به ارث می‌برد، با fingerprint متفاوت دور ریخته می‌شوند — تست با Adapter شمارنده (بدون‌پاسخ ۰ فراخوانی، retry فقط ناتمام، تغییر پاسخ ⇒ ارزیابی دوباره، موازی/ترتیبی) + تست جدولی `Check`
   - ⏭️ هنوز commit ندارد (attempt، گزارش‌ها، `result.json` با T5.3–T5.5)؛ تا آن زمان Job موفق فقط `job_steps` می‌گذارد و staging را runner پاک می‌کند. تطبیق `score` با جمع معیارها و پرچم تزریق با T5.6. اجرای واقعی با `agy` انجام نشده (T5.8)
-- [ ] **T5.3**: پکیج نمره‌دهی قطعی `scoring` بر اساس میانگین وزنی
+- [x] **T5.3**: پکیج نمره‌دهی قطعی `internal/scoring` (توابع خالص، بدون I/O): `ExerciseScore(criteria, aiReported)` ⇒ نمره رسمی = جمع `awarded` معیارها + پرچم `mismatch` برای ثبت `ai_reported_score`؛ `Aggregate(items)` ⇒ `schema.ResultAggregate` با `sum(w·s)/sum(w)` گرد به ۲ رقم اعشار، بدون‌پاسخ همیشه ۰ (حتی اگر `Score` چیز دیگری باشد)، `answered/total` و `partial`، `formula` و `computed_by=app`. نمره موضوع هرگز از AI گرفته نمی‌شود — تست جدولی ۱۶ حالت تجمیع (وزن‌های مختلف/کسری، همه بی‌پاسخ، carried-over، گرد کردن بالا/پایین) + ۵ حالت عدم تطابق AI + تطابق با `schema.CrossCheckResult`
+  - ⏭️ `CrossCheckResult` عمداً محاسبه مستقل خودش را نگه داشته (بررسی مستقل طبق بخش ۵.۳؛ import از `scoring` چرخه می‌ساخت). فراخوانی در مسیر ارزیابی با T5.4/T5.5
 - [ ] **T5.4**: تولید گزارش‌های `qNN-report.md`, `summary.md`, `result.json` با وفاداری بایت‌به‌بایت به پاسخ کاربر
 - [ ] **T5.5**: ثبت تلاش جدید در `reports/vN/attempt-K` با برچسب تغییرناپذیر
 - [ ] **T5.6**: محافظ‌های تقلب و ناهنجاری نمره
