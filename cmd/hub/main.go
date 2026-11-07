@@ -23,6 +23,7 @@ import (
 	"learninghub/internal/services/evaluation"
 	"learninghub/internal/services/exercises"
 	"learninghub/internal/services/lessons"
+	"learninghub/internal/services/maintenance"
 	"learninghub/internal/services/roadmaps"
 	"learninghub/internal/services/topics"
 	"learninghub/internal/store"
@@ -224,12 +225,6 @@ func runServe(args []string) {
 	}
 	defer root.Close()
 	drafts := roadmaps.NewService(db, root)
-	if n, err := drafts.PurgeExpired(ctx); err != nil {
-		slog.Error("Failed to purge expired import drafts", "error", err)
-	} else if n > 0 {
-		slog.Info("Purged expired import drafts", "count", n)
-	}
-	// shortcut: expired drafts are purged at startup and on each upload, not on a timer; T6.5 maintenance can add one.
 
 	if n, err := skills.Install(root); err != nil {
 		slog.Error("Failed to install default skills", "error", err)
@@ -261,6 +256,28 @@ func runServe(args []string) {
 	}).Handle)
 	srv := httpserver.NewServer(cfg.Listen, sm, drafts, topics.NewService(db), runner, root,
 		httpserver.Settings{DB: db, Adapter: adapter, Model: cfg.Adapter.Model, Exercises: cfg.Exercises, MaxAnswerBytes: cfg.Limits.MaxAnswerBytes})
+	// Maintenance at startup and hourly: expired job dirs/logs, daily DB backup, expired import drafts.
+	maint := &maintenance.Service{DB: db, Root: root, LogRetention: time.Duration(cfg.LogRetentionDays) * 24 * time.Hour}
+	go func() {
+		for t := time.NewTicker(time.Hour); ; {
+			if res, err := maint.Run(ctx, time.Now()); err != nil {
+				slog.Error("Maintenance failed", "error", err)
+			} else if len(res.Removed) > 0 || res.Backup != "" {
+				slog.Info("Maintenance done", "removed", len(res.Removed), "backup", res.Backup)
+			}
+			if n, err := drafts.PurgeExpired(ctx); err != nil {
+				slog.Error("Failed to purge expired import drafts", "error", err)
+			} else if n > 0 {
+				slog.Info("Purged expired import drafts", "count", n)
+			}
+			select {
+			case <-ctx.Done():
+				t.Stop()
+				return
+			case <-t.C:
+			}
+		}
+	}()
 	runnerDone := make(chan struct{})
 	go func() {
 		defer close(runnerDone)
