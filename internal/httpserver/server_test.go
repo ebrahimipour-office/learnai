@@ -21,6 +21,7 @@ import (
 	"learninghub/internal/fsx"
 	"learninghub/internal/httpserver"
 	"learninghub/internal/jobs"
+	"learninghub/internal/services/evaluation"
 	"learninghub/internal/services/exercises"
 	"learninghub/internal/services/lessons"
 	"learninghub/internal/services/roadmaps"
@@ -68,6 +69,8 @@ func newEnv(t *testing.T) *env {
 	exCfg := config.DefaultConfig(base).Exercises
 	runner.Register(domain.JobKindExercises, (&exercises.Service{DB: db, Root: root, Adapter: ad, Model: "m1",
 		Language: "fa", Timeout: time.Minute, Stall: time.Minute, Config: exCfg}).Handle)
+	runner.Register(domain.JobKindEvaluate, (&evaluation.Service{DB: db, Root: root, Adapter: ad, Model: "m1",
+		Language: "fa", Timeout: time.Minute, Stall: time.Minute, MaxAnswerBytes: 1024}).Handle)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { defer close(done); runner.Run(ctx) }()

@@ -35,6 +35,7 @@ func NewServer(addr string, sm *SecurityManager, drafts *roadmaps.Service, topic
 	mux.HandleFunc("GET /topics/{id}/exercises", a.showExercises)
 	mux.HandleFunc("GET /topics/{id}/answers", a.showAnswers)
 	mux.HandleFunc("POST /topics/{id}/jobs/exercises", a.generateExercises)
+	mux.HandleFunc("GET /topics/{id}/reports", a.showReports)
 	mux.HandleFunc("POST /topics/{id}/jobs/evaluate", a.evaluate)
 	mux.HandleFunc("GET /files/{id}", a.serveFile)
 	mux.HandleFunc("GET /jobs/{id}/card", a.jobCard)

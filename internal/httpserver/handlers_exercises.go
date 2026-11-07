@@ -27,6 +27,10 @@ var exerciseTypeLabels = map[string]string{
 	"coding": "کدنویسی", "conceptual": "مفهومی", "code_analysis": "تحلیل کد", "problem_solving": "حل مسئله",
 }
 
+var itemStatusLabels = map[string]string{"evaluated": "ارزیابی‌شده", "carried_over": "منتقل‌شده", "unanswered": "بدون پاسخ"}
+
+var evalModeLabels = map[string]string{topics.ModeIncremental: "افزایشی", topics.ModeFull: "کامل"}
+
 var difficultyLabels = map[string]string{"easy": "آسان", "medium": "متوسط", "hard": "دشوار"}
 
 // exerciseRow is one exercise with the state of its answer file on disk.
@@ -38,7 +42,7 @@ type exerciseRow struct {
 
 // tabOf keeps the job area on the tab it was rendered for (forms and polls carry ?tab=).
 func tabOf(r *http.Request) string {
-	if t := r.FormValue("tab"); t == "exercises" || t == "answers" {
+	if t := r.FormValue("tab"); t == "exercises" || t == "answers" || t == "reports" {
 		return t
 	}
 	return ""
@@ -50,6 +54,10 @@ func (a *app) showExercises(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) showAnswers(w http.ResponseWriter, r *http.Request) {
 	a.showSetTab(w, r, "answers")
+}
+
+func (a *app) showReports(w http.ResponseWriter, r *http.Request) {
+	a.showSetTab(w, r, "reports")
 }
 
 func (a *app) showSetTab(w http.ResponseWriter, r *http.Request, tab string) {
@@ -92,6 +100,9 @@ func (a *app) fillSet(r *http.Request, d *pageData) error {
 	if d.Set == nil {
 		return nil
 	}
+	if d.Tab == "reports" {
+		return a.fillReports(r, d)
+	}
 	list, err := a.topics.Exercises(r.Context(), d.Set.ID)
 	if err != nil {
 		return err
@@ -116,6 +127,39 @@ func (a *app) fillSet(r *http.Request, d *pageData) error {
 			return nil
 		}
 		d.ExercisesMD = render.Markdown(b)
+	}
+	return nil
+}
+
+// fillReports loads the attempts of the set, the one in ?attempt= (default: latest) and,
+// with ?ex=, that exercise's report. Paths come only from the DB rows of this set.
+func (a *app) fillReports(r *http.Request, d *pageData) error {
+	var err error
+	if d.Attempts, err = a.topics.Attempts(r.Context(), d.Set.ID); err != nil || len(d.Attempts) == 0 {
+		return err
+	}
+	want, _ := strconv.ParseInt(r.URL.Query().Get("attempt"), 10, 64)
+	d.Attempt = &d.Attempts[0]
+	for i := range d.Attempts {
+		if d.Attempts[i].No == want {
+			d.Attempt = &d.Attempts[i]
+		}
+	}
+	if d.AttemptItems, err = a.topics.AttemptItems(r.Context(), d.Attempt.ID); err != nil {
+		return err
+	}
+	ex := r.URL.Query().Get("ex")
+	for i := range d.AttemptItems {
+		if x := &d.AttemptItems[i]; ex != "" && x.ExID == ex && x.ReportRel != "" {
+			d.ReportItem = x
+			b, err := a.root.ReadFile(x.ReportRel)
+			if err != nil {
+				slog.Warn("reading report file", "path", x.ReportRel, "error", err)
+				d.Error = "فایل گزارش روی دیسک پیدا نشد: " + x.ReportRel
+				return nil
+			}
+			d.ReportMD = render.Markdown(b)
+		}
 	}
 	return nil
 }

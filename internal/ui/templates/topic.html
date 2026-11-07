@@ -8,6 +8,7 @@
   <a href="/topics/{{.Panel.ID}}/lesson"{{if eq .Tab ""}} aria-current="page"{{end}}>درس</a>
   <a href="/topics/{{.Panel.ID}}/exercises"{{if eq .Tab "exercises"}} aria-current="page"{{end}}>تمرین‌ها</a>
   <a href="/topics/{{.Panel.ID}}/answers"{{if eq .Tab "answers"}} aria-current="page"{{end}}>فایل‌های پاسخ</a>
+  <a href="/topics/{{.Panel.ID}}/reports"{{if eq .Tab "reports"}} aria-current="page"{{end}}>گزارش‌ها</a>
 </nav>
 {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
 {{template "job-area" .}}
@@ -41,7 +42,8 @@
     </ul>
   </details>{{end}}
   {{if not .Set.Current}}<p class="note">در حال مشاهده مجموعه قدیمی v{{.Set.Version}}. <a href="/topics/{{.Panel.ID}}/{{.Tab}}">مجموعه جاری</a></p>{{end}}
-  {{if eq .Tab "exercises"}}
+  {{if eq .Tab "reports"}}{{template "reports" .}}
+  {{else if eq .Tab "exercises"}}
   <table class="grid"><thead><tr><th>شناسه</th><th>عنوان</th><th>نوع</th><th>دشواری</th><th>وزن</th></tr></thead>
     <tbody>{{range .Exercises}}<tr><td><code>{{.ExID}}</code></td><td><bdi>{{.Title}}</bdi>{{if .External}} <span class="badge warn">دانش خارج از درس</span>
         <ul class="note">{{range .External}}<li><bdi>{{.Topic}}</bdi> — <bdi>{{.Note}}</bdi></li>{{end}}</ul>{{end}}</td><td>{{exType .Type}}</td><td>{{difficulty .Difficulty}}</td><td>{{.Weight}}</td></tr>{{end}}</tbody>
@@ -64,11 +66,56 @@
 </section>
 {{end}}
 
+{{define "reports"}}
+{{if .Attempts}}
+  <h2>تاریخچه تلاش‌ها</h2>
+  <table class="grid"><thead><tr><th>تلاش</th><th>تاریخ</th><th>حالت</th><th>نمره موضوع</th><th>پاسخ‌داده‌شده</th></tr></thead>
+    <tbody>{{range .Attempts}}<tr>
+      <td><a href="/topics/{{$.Panel.ID}}/reports?v={{$.Set.Version}}&amp;attempt={{.No}}"{{if eq $.Attempt.No .No}} aria-current="true"{{end}}>تلاش {{.No}}</a></td>
+      <td><bdi>{{.FinishedAt}}</bdi></td><td>{{evalMode .Mode}}</td>
+      <td class="score">{{num .Score}}</td>
+      <td>{{if .Partial}}<span class="badge warn">ناقص ({{.Answered}} از {{.Total}} پاسخ‌داده‌شده)</span>{{else}}{{.Answered}} از {{.Total}}{{end}}</td>
+    </tr>{{end}}</tbody>
+  </table>
+  {{with .Attempt}}
+  <h2>تلاش {{.No}} — نمره موضوع <span class="score">{{num .Score}}</span>
+    {{if .Partial}}<span class="badge warn">ناقص ({{.Answered}} از {{.Total}} پاسخ‌داده‌شده)</span>{{end}}</h2>
+  <p class="note"><a href="/files/{{.SummaryFileID}}">summary.md</a> · <a href="/files/{{.ResultFileID}}">result.json</a></p>
+  {{end}}
+  <table class="grid"><thead><tr><th>شناسه</th><th>عنوان</th><th>وضعیت</th><th>نمره</th><th>گزارش</th></tr></thead>
+    <tbody>{{range .AttemptItems}}<tr>
+      <td><code>{{.ExID}}</code></td><td><bdi>{{.Title}}</bdi>{{if .Flags}} <span class="badge warn">⚠ نیازمند بازبینی</span>{{end}}</td>
+      <td>{{itemStatus .Status}}{{if .CarriedFrom}} (از تلاش {{.CarriedFrom}}){{end}}</td>
+      <td class="score" data-ex="{{.ExID}}">{{.Score}}</td>
+      <td>{{if .ReportRel}}<a href="/topics/{{$.Panel.ID}}/reports?v={{$.Set.Version}}&amp;attempt={{$.Attempt.No}}&amp;ex={{.ExID}}">گزارش</a>
+        {{else if .CarriedFrom}}<a href="/topics/{{$.Panel.ID}}/reports?v={{$.Set.Version}}&amp;attempt={{.CarriedFrom}}&amp;ex={{.ExID}}">گزارش تلاش {{.CarriedFrom}}</a>{{end}}</td>
+    </tr>{{end}}</tbody>
+  </table>
+  {{with .ReportItem}}
+  <h2 id="report">گزارش <code>{{.ExID}}</code> — تلاش {{$.Attempt.No}}</h2>
+  <p class="note"><a href="/files/{{.ReportFileID}}">{{base .ReportRel}}</a></p>
+  <article class="md" dir="auto">{{$.ReportMD}}</article>
+  {{end}}
+{{else}}
+  <p class="note">هنوز ارزیابی‌ای برای این مجموعه ثبت نشده است.</p>
+{{end}}
+{{end}}
+
 {{define "job-area"}}
 <div id="job-area" aria-live="polite"{{if and .Job .Job.Active}} hx-get="/jobs/{{.Job.ID}}/card?poll=1&amp;tab={{.Tab}}" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
   {{with .Notice}}<p class="error" role="alert">{{.}}</p>{{end}}
   {{$busy := and .Job .Job.Active}}
-  {{if .Tab}}
+  {{if eq .Tab "reports"}}
+  {{if .Sets}}
+  <form method="post" action="/topics/{{.Panel.ID}}/jobs/evaluate" hx-post="/topics/{{.Panel.ID}}/jobs/evaluate" hx-target="#job-area" hx-swap="outerHTML">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}"><input type="hidden" name="tab" value="reports">
+    <label>حالت <select name="mode"{{if $busy}} disabled{{end}}>
+      <option value="incremental">افزایشی (فقط پاسخ‌های جدید یا تغییرکرده)</option>
+      <option value="full">کامل (همه پاسخ‌ها)</option></select></label>
+    <button type="submit"{{if $busy}} disabled{{end}}>ارزیابی</button>
+  </form>
+  {{else}}<p class="note">برای ارزیابی ابتدا تمرین‌های این موضوع را بسازید.</p>{{end}}
+  {{else if .Tab}}
   {{if .Panel.Lessons}}
   <form method="post" action="/topics/{{.Panel.ID}}/jobs/exercises" hx-post="/topics/{{.Panel.ID}}/jobs/exercises" hx-target="#job-area" hx-swap="outerHTML">
     <input type="hidden" name="csrf_token" value="{{.CSRF}}"><input type="hidden" name="tab" value="{{.Tab}}">

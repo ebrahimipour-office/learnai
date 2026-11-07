@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -260,7 +261,7 @@ func TestEvaluateEnqueue(t *testing.T) {
 		t.Errorf("default mode = %q, want incremental", mode)
 	}
 	id, _ := e.lastJob()
-	e.pollUntilDone(id) // no evaluate handler until T5.2; the job just has to finish so the scope frees up
+	e.pollUntilDone(id) // fake output is not an evaluation, so the job fails; it just has to free the scope
 
 	// Evaluated and unchanged: incremental has nothing new, full re-sends it.
 	e.evaluate("q01")
@@ -269,5 +270,82 @@ func TestEvaluateEnqueue(t *testing.T) {
 	}
 	if rec := e.post("/topics/1/jobs/evaluate", url.Values{"mode": {"full"}}, true); rec.Code != http.StatusAccepted {
 		t.Errorf("unchanged full: want 202, got %d", rec.Code)
+	}
+}
+
+// TestReportsTab: what the tab shows equals result.json of the same attempt (T5.7).
+func TestReportsTab(t *testing.T) {
+	e := newEnv(t)
+	e.exerciseSet()
+	page := e.get("/topics/1/reports").Body.String()
+	if !strings.Contains(page, "هنوز ارزیابی‌ای") || !strings.Contains(page, `action="/topics/1/jobs/evaluate"`) || !strings.Contains(page, `value="full"`) {
+		t.Fatal("empty reports tab must show the evaluate form with a mode choice")
+	}
+
+	_, abs := e.answerID("q01")
+	if err := os.WriteFile(abs, []byte("package main\n\nfunc main() { /* RAW-ANSWER */ }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	e.ad.Output = json.RawMessage(`{"exercise_id":"q01","criteria_scores":[{"criterion_id":"c1","awarded":70,"comment":"ok"}],
+		"score":70,"errors":[],"strengths":[],"corrected_answer":{"format":"text","content":"x"},"teaching_notes_markdown":"n"}`)
+	if rec := e.post("/topics/1/jobs/evaluate", url.Values{"tab": {"reports"}, "mode": {"full"}}, true); rec.Code != http.StatusAccepted || !strings.Contains(rec.Body.String(), "tab=reports") {
+		t.Fatalf("enqueue evaluate: %d %s", rec.Code, rec.Body.String())
+	}
+	id, _ := e.lastJob()
+	e.pollUntilDone(id)
+	if _, st := e.lastJob(); st != "succeeded" {
+		t.Fatalf("evaluate job %s", st)
+	}
+
+	var rel string
+	if err := e.db.Writer().QueryRow(`SELECT f.rel_path FROM attempts a JOIN files f ON f.id = a.result_file`).Scan(&rel); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(e.base, filepath.FromSlash(rel)))
+	var res struct {
+		AttemptNo int `json:"attempt_no"`
+		Items     []struct {
+			ExerciseID string `json:"exercise_id"`
+			Score      int    `json:"score"`
+		} `json:"items"`
+		Aggregate struct {
+			WeightedScore float64 `json:"weighted_score"`
+			AnsweredCount int     `json:"answered_count"`
+			TotalCount    int     `json:"total_count"`
+			Partial       bool    `json:"partial"`
+		} `json:"aggregate"`
+	}
+	if err := json.Unmarshal(b, &res); err != nil || len(res.Items) != 3 || !res.Aggregate.Partial {
+		t.Fatalf("result.json: %v %s", err, b)
+	}
+
+	page = e.get("/topics/1/reports").Body.String()
+	a := res.Aggregate
+	for _, want := range []string{
+		"تلاش " + strconv.Itoa(res.AttemptNo),
+		`<td class="score">` + strconv.FormatFloat(a.WeightedScore, 'f', -1, 64) + "</td>",
+		"ناقص (" + strconv.Itoa(a.AnsweredCount) + " از " + strconv.Itoa(a.TotalCount) + " پاسخ‌داده‌شده)",
+		`aria-current="page">گزارش‌ها`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("reports tab missing %q", want)
+		}
+	}
+	for _, it := range res.Items {
+		if want := `data-ex="` + it.ExerciseID + `">` + strconv.Itoa(it.Score) + "<"; !strings.Contains(page, want) {
+			t.Errorf("score of %s: want %q in page", it.ExerciseID, want)
+		}
+	}
+	if strings.Contains(page, "RAW-ANSWER") {
+		t.Error("report body must show only on the exercise report page")
+	}
+
+	// Exercise report page: the committed qNN-report.md with the raw answer.
+	rep := e.get("/topics/1/reports?attempt=1&ex=q01").Body.String()
+	if !strings.Contains(rep, "RAW-ANSWER") || !strings.Contains(rep, "q01-report.md") {
+		t.Error("exercise report page must render q01-report.md")
+	}
+	if strings.Contains(e.get("/topics/1/reports?attempt=1&ex=q02").Body.String(), `id="report"`) {
+		t.Error("unanswered exercise has no report")
 	}
 }
