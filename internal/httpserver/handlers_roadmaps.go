@@ -20,6 +20,7 @@ import (
 	"learninghub/internal/jobs"
 	"learninghub/internal/roadmap"
 	"learninghub/internal/services/roadmaps"
+	"learninghub/internal/services/syncsvc"
 	"learninghub/internal/services/topics"
 	"learninghub/internal/ui"
 )
@@ -30,6 +31,7 @@ type app struct {
 	topics *topics.Service
 	runner *jobs.Runner
 	root   *fsx.Root
+	sync   *syncsvc.Service
 	pages  map[string]*template.Template
 
 	settings  Settings
@@ -80,6 +82,8 @@ type pageData struct {
 
 	Suggestions []topics.Suggestion
 
+	Sync *syncsvc.Run // latest scan; nil = none
+
 	Doctor              *Doctor
 	Adapter, Model      string
 	Privacy, PrivacyAck string // notice text; RFC3339 time of acknowledgement or ""
@@ -101,7 +105,8 @@ type treeNode struct {
 }
 
 func newApp(sm *SecurityManager, drafts *roadmaps.Service, topicList *topics.Service, runner *jobs.Runner, root *fsx.Root, settings Settings) *app {
-	a := &app{sm: sm, drafts: drafts, topics: topicList, runner: runner, root: root, settings: settings, pages: map[string]*template.Template{}}
+	a := &app{sm: sm, drafts: drafts, topics: topicList, runner: runner, root: root, settings: settings, pages: map[string]*template.Template{},
+		sync: &syncsvc.Service{DB: settings.DB, Root: root}}
 	funcs := template.FuncMap{
 		"statusLabel": func(s string) string { return statusLabels[s] },
 		"jobStatus":   func(s string) string { return jobStatusLabels[s] },
@@ -117,8 +122,9 @@ func newApp(sm *SecurityManager, drafts *roadmaps.Service, topicList *topics.Ser
 		"num":         func(f float64) string { return strconv.FormatFloat(f, 'f', -1, 64) },
 		"sugKind":     func(s string) string { return suggestionKindLabels[s] },
 		"sugStatus":   func(s string) string { return suggestionStatusLabels[s] },
+		"fileKind":    func(s string) string { return fileKindLabels[s] },
 	}
-	for _, p := range []string{"new", "draft", "topics", "topic", "settings"} {
+	for _, p := range []string{"new", "draft", "topics", "topic", "settings", "sync"} {
 		a.pages[p] = template.Must(template.New(p).Funcs(funcs).ParseFS(ui.FS, "templates/layout.html", "templates/"+p+".html"))
 	}
 	return a

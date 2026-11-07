@@ -10,7 +10,7 @@
 <script src="/static/app.js" defer></script>
 </head>
 <body hx-headers='{"X-CSRF-Token":"{{.CSRF}}"}'>
-<header><a href="/topics">Learning Hub</a> <a href="/settings" class="nav">تنظیمات</a></header>
+<header><a href="/topics">Learning Hub</a> <a href="/sync" class="nav">همگام‌سازی</a> <a href="/settings" class="nav">تنظیمات</a></header>
 <main>{{template "content" .}}</main>
 </body>
 </html>{{end}}
