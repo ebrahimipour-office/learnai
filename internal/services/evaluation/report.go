@@ -39,15 +39,16 @@ type Evaluation struct {
 
 // ReportInput is everything one qNN-report.md is built from (R3.5).
 type ReportInput struct {
-	Weight        float64
-	Question      []byte // the exercise's exercises.md section, "## [qNN] title" included
-	Answer        []byte // the answer file's exact bytes
-	Rubric        schema.RubricExercise
-	Eval          Evaluation
-	AttemptNo     int
-	RubricVersion int
-	SkillVersion  string
-	Date          string // RFC 3339
+	Weight          float64
+	Question        []byte // the exercise's exercises.md section, "## [qNN] title" included
+	Answer          []byte // the answer file's exact bytes
+	TemplateNormSHA string // topics.Exercise.TemplateNormSHA; "" = skip the template check
+	Rubric          schema.RubricExercise
+	Eval            Evaluation
+	AttemptNo       int
+	RubricVersion   int
+	SkillVersion    string
+	Date            string // RFC 3339
 }
 
 func ReportFile(exID string) string { return exID + "-report.md" }
@@ -58,9 +59,9 @@ var errorCategories = []struct{ key, label string }{
 	{"conceptual", "مفهومی"}, {"logical", "منطقی"}, {"technical", "فنی"}, {"style", "سبک"}, {"omission", "جاافتادگی"},
 }
 
-// Report builds qNN-report.md and its result.json item. The official score is the sum of awarded
+// Report builds qNN-report.md, its result.json item and its review flags (Flags). The official score is the sum of awarded
 // points (scoring), never the AI's own score; the answer is embedded byte-for-byte (R11.2-5).
-func Report(in ReportInput) ([]byte, schema.ResultItem) {
+func Report(in ReportInput) ([]byte, schema.ResultItem, []string) {
 	id := in.Rubric.ID
 	maxPts := map[string]int{}
 	for _, c := range in.Rubric.Criteria {
@@ -77,10 +78,18 @@ func Report(in ReportInput) ([]byte, schema.ResultItem) {
 	}
 	score, mismatch := scoring.ExerciseScore(cs, in.Eval.Score)
 	sha := fsx.HashBytes(in.Answer)
+	flags := Flags(in.Answer, in.TemplateNormSHA, score)
 
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "# گزارش تصحیح %s\n\n", id)
 	fmt.Fprintf(&b, "- تلاش: %d\n- تاریخ: %s\n- نسخه Rubric: %d\n- نسخه Skill: %s\n\n", in.AttemptNo, in.Date, in.RubricVersion, in.SkillVersion)
+	if len(flags) > 0 {
+		b.WriteString("> **⚠ نیازمند بازبینی**\n")
+		for _, f := range flags {
+			fmt.Fprintf(&b, "> - %s\n", flagText[f])
+		}
+		b.WriteString("\n")
+	}
 	b.Write(bytes.TrimRight(in.Question, "\n"))
 	b.WriteString("\n\n## پاسخ شما (متن خام)\n\n")
 	fmt.Fprintf(&b, "sha256: `%s`\n\n%s%s -->\n", sha, rawMarker, sha)
@@ -145,7 +154,7 @@ func Report(in ReportInput) ([]byte, schema.ResultItem) {
 
 	rf := ReportFile(id)
 	return b.Bytes(), schema.ResultItem{ExerciseID: id, Weight: in.Weight, Status: "evaluated", Score: score,
-		AnswerSHA256: &sha, ReportFile: &rf, CriteriaScores: cs, ErrorTypes: types}
+		AnswerSHA256: &sha, ReportFile: &rf, CriteriaScores: cs, ErrorTypes: types}, flags
 }
 
 // RawAnswer returns the answer bytes embedded in a report built by Report.
@@ -175,7 +184,8 @@ func RawAnswer(report []byte) ([]byte, bool) {
 }
 
 // Summary builds summary.md: topic score, the «ناقص» label and the exercise table.
-func Summary(res *schema.Result, titles map[string]string) []byte {
+// flagged marks the exercises needing review.
+func Summary(res *schema.Result, titles map[string]string, flagged map[string]bool) []byte {
 	a := res.Aggregate
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "# خلاصه ارزیابی — %s\n\n", oneLine(res.Topic.Title))
@@ -195,6 +205,9 @@ func Summary(res *schema.Result, titles map[string]string) []byte {
 		st := status[it.Status]
 		if it.CarriedFromAttempt != nil {
 			st = fmt.Sprintf("%s از تلاش %d", st, *it.CarriedFromAttempt)
+		}
+		if flagged[it.ExerciseID] {
+			st += " ⚠ نیازمند بازبینی"
 		}
 		fmt.Fprintf(&b, "| %s | %s | %s | %s | %d |\n", id, cell(titles[it.ExerciseID]), trimFloat(it.Weight), st, it.Score)
 	}

@@ -90,3 +90,9 @@ func ExtractAnswerContent(raw []byte) string {
 	}
 	return strings.TrimSpace(afterMarker)
 }
+
+// NormalizedAnswerSHA hashes the answer content (after the marker) with whitespace collapsed, so an
+// answer that only re-spaced its template has the template's value (T5.6).
+func NormalizedAnswerSHA(raw []byte) string {
+	return HashString(strings.Join(strings.Fields(ExtractAnswerContent(raw)), " "))
+}

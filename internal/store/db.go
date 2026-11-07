@@ -124,19 +124,20 @@ func (d *DB) migrate() error {
 		return fmt.Errorf("reading user_version: %w", err)
 	}
 
-	// Migration 1: 0001_init.sql
-	if currentVersion < 1 {
-		sqlContent, err := migrationsFS.ReadFile("migrations/0001_init.sql")
-		if err != nil {
-			return fmt.Errorf("reading migration 0001_init.sql: %w", err)
+	for i, name := range []string{"0001_init.sql", "0002_eval_guards.sql"} {
+		v := i + 1
+		if currentVersion >= v {
+			continue
 		}
-
-		ctx := context.Background()
-		err = d.WithTx(ctx, func(tx *sql.Tx) error {
+		sqlContent, err := migrationsFS.ReadFile("migrations/" + name)
+		if err != nil {
+			return fmt.Errorf("reading migration %s: %w", name, err)
+		}
+		err = d.WithTx(context.Background(), func(tx *sql.Tx) error {
 			if _, err := tx.Exec(string(sqlContent)); err != nil {
-				return fmt.Errorf("executing 0001_init.sql: %w", err)
+				return fmt.Errorf("executing %s: %w", name, err)
 			}
-			if _, err := tx.Exec("PRAGMA user_version = 1;"); err != nil {
+			if _, err := tx.Exec(fmt.Sprintf("PRAGMA user_version = %d;", v)); err != nil {
 				return fmt.Errorf("updating user_version: %w", err)
 			}
 			return nil

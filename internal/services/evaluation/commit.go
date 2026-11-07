@@ -35,7 +35,8 @@ type itemRow struct {
 	aiScore   sql.NullInt64
 	fromID    sql.NullInt64 // attempts.id the score was carried from
 	errTypes  string        // JSON
-	reportIdx int           // index in files, -1 = none
+	flags     []string
+	reportIdx int // index in files, -1 = none
 }
 
 type outFile struct {
@@ -104,12 +105,13 @@ func (s *Service) commit(ctx context.Context, j jobs.Job, mode string, set setIn
 				return err
 			}
 			skillVersion = out.SkillVersion
-			md, item := Report(ReportInput{Weight: me.Weight, Question: exercises.Section(sh.exercisesMD, me.ID), Answer: pk.Body,
-				Rubric: sh.rubric[me.ID], Eval: ev, AttemptNo: k, RubricVersion: set.RubricVersion, SkillVersion: out.SkillVersion, Date: now})
+			md, item, flags := Report(ReportInput{Weight: me.Weight, Question: exercises.Section(sh.exercisesMD, me.ID), Answer: pk.Body,
+				TemplateNormSHA: x.TemplateNormSHA,
+				Rubric:          sh.rubric[me.ID], Eval: ev, AttemptNo: k, RubricVersion: set.RubricVersion, SkillVersion: out.SkillVersion, Date: now})
 			et, _ := json.Marshal(nonNil(item.ErrorTypes))
 			files = append(files, outFile{path.Join(dir, *item.ReportFile), "report", "attempt_item", md})
 			rows = append(rows, itemRow{item: item, aiScore: sql.NullInt64{Int64: int64(ev.Score), Valid: true},
-				errTypes: string(et), reportIdx: len(files) - 1})
+				errTypes: string(et), flags: flags, reportIdx: len(files) - 1})
 			continue
 		}
 		row, err := s.carried(ctx, x, me.Weight)
@@ -122,15 +124,17 @@ func (s *Service) commit(ctx context.Context, j jobs.Job, mode string, set setIn
 	res := &schema.Result{Topic: schema.ManifestTopic{StableKey: set.StableKey, Title: set.TopicTitle}, SetVersion: set.Version,
 		AttemptNo: k, Mode: mode, RubricVersion: set.RubricVersion, StartedAt: started, FinishedAt: now, JobID: j.ID,
 		Evaluator: schema.ManifestGenerator{Adapter: s.Adapter.Name(), Model: s.Model, Skill: skillName, SkillVersion: skillVersion, JobID: j.ID}}
+	flagged := map[string]bool{}
 	for _, r := range rows {
 		res.Items = append(res.Items, r.item)
+		flagged[r.item.ExerciseID] = len(r.flags) > 0
 	}
 	resultJSON, err := ResultJSON(res, &m)
 	if err != nil {
 		return fmt.Errorf("%w: result.json: %v", domain.ErrInvalidState, err)
 	}
 	files = append(files,
-		outFile{path.Join(dir, "summary.md"), "summary", "attempt", Summary(res, titles)},
+		outFile{path.Join(dir, "summary.md"), "summary", "attempt", Summary(res, titles, flagged)},
 		outFile{path.Join(dir, "result.json"), "result", "attempt", resultJSON})
 
 	journal := make([]map[string]string, len(files))
@@ -193,9 +197,10 @@ func (s *Service) commit(ctx context.Context, j jobs.Job, mode string, set setIn
 				reportID = sql.NullInt64{Int64: ids[row.reportIdx], Valid: true}
 			}
 			r, err := tx.ExecContext(ctx, `INSERT INTO attempt_items (attempt_id, exercise_id, status, answer_sha256, score, ai_reported_score,
-				carried_from_attempt, report_file, error_types)
-				SELECT ?, id, ?, ?, ?, ?, ?, ?, ? FROM exercises WHERE set_id = ? AND ex_id = ?`,
+				carried_from_attempt, report_file, error_types, flags)
+				SELECT ?, id, ?, ?, ?, ?, ?, ?, ?, ? FROM exercises WHERE set_id = ? AND ex_id = ?`,
 				attemptID, row.item.Status, row.item.AnswerSHA256, row.item.Score, row.aiScore, row.fromID, reportID, row.errTypes,
+				jsonList(row.flags),
 				set.ID, row.item.ExerciseID)
 			if err != nil {
 				return err
@@ -239,11 +244,11 @@ func (s *Service) carried(ctx context.Context, x topics.Exercise, weight float64
 	}
 	var attemptID int64
 	var attemptNo, score int
-	var et string
-	err = s.DB.Writer().QueryRowContext(ctx, `SELECT a.id, a.attempt_no, i.score, i.error_types FROM attempt_items i
+	var et, flags string
+	err = s.DB.Writer().QueryRowContext(ctx, `SELECT a.id, a.attempt_no, i.score, i.error_types, i.flags FROM attempt_items i
 		JOIN attempts a ON a.id = i.attempt_id JOIN exercises e ON e.id = i.exercise_id
 		WHERE e.answer_file_id = ? AND i.status = 'evaluated' ORDER BY a.attempt_no DESC LIMIT 1`, x.AnswerFileID).
-		Scan(&attemptID, &attemptNo, &score, &et)
+		Scan(&attemptID, &attemptNo, &score, &et, &flags)
 	if errors.Is(err, sql.ErrNoRows) {
 		return row, nil
 	}
@@ -255,7 +260,15 @@ func (s *Service) carried(ctx context.Context, x topics.Exercise, weight float64
 	if err := json.Unmarshal([]byte(et), &row.item.ErrorTypes); err != nil {
 		return row, err
 	}
+	if err := json.Unmarshal([]byte(flags), &row.flags); err != nil { // the carried score keeps its warning
+		return row, err
+	}
 	return row, nil
+}
+
+func jsonList(s []string) string {
+	b, _ := json.Marshal(nonNil(s))
+	return string(b)
 }
 
 func nonNil(s []string) []string {

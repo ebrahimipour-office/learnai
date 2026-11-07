@@ -23,12 +23,12 @@ func TestDB_OpenAndMigrate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get user_version: %v", err)
 	}
-	if version != 1 {
-		t.Errorf("Expected user_version 1, got %d", version)
+	if version != 2 {
+		t.Errorf("Expected user_version 2, got %d", version)
 	}
 	db.Close()
 
-	// 2. Second open: should safely recognize version 1 without re-running
+	// 2. Second open: should safely recognize version 2 without re-running
 	db2, err := store.Open(dbPath)
 	if err != nil {
 		t.Fatalf("Failed to re-open store: %v", err)
@@ -39,8 +39,8 @@ func TestDB_OpenAndMigrate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get user_version: %v", err)
 	}
-	if version2 != 1 {
-		t.Errorf("Expected user_version 1, got %d", version2)
+	if version2 != 2 {
+		t.Errorf("Expected user_version 2, got %d", version2)
 	}
 }
 

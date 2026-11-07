@@ -194,6 +194,9 @@ func TestFirstSet(t *testing.T) {
 	if n := e.count(`SELECT COUNT(*) FROM files WHERE owner_type = 'exercise_set' AND owner_id = (SELECT id FROM exercise_sets WHERE topic_id = 2)`); n != 3 {
 		t.Errorf("set files = %d, want 3", n)
 	}
+	if n := e.count(`SELECT COUNT(*) FROM exercises WHERE template_norm_sha256 IS NOT NULL AND template_norm_sha256 != template_sha256`); n != 3 {
+		t.Errorf("exercises with a normalized template hash = %d, want 3", n)
+	}
 	if n := e.count(`SELECT COUNT(*) FROM topics WHERE id = 2 AND status = 'exercises_ready'`); n != 1 {
 		t.Error("topic status not exercises_ready")
 	}

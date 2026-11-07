@@ -9,8 +9,8 @@
 | مشخصه | وضعیت |
 |---|---|
 | **فاز فعال کنونی** | **فاز ۵ — موتور ارزیابی، نمره‌دهی و گزارش‌ها (Phase 5)** — فاز ۴ کامل شد ✅ |
-| **کار بعدی برای اجرا** | **Task T5.6 — محافظ‌های تقلب و ناهنجاری نمره** |
-| **آخرین کامیت Git** | `feat(evaluation): T5.5 commit attempt-K with carried-over items; history never overwritten` |
+| **کار بعدی برای اجرا** | **Task T5.7 — UI گزارش‌ها و نمره (تاریخچه تلاش‌ها، برچسب «ناقص»، صفحه گزارش تمرین)** |
+| **آخرین کامیت Git** | `feat(evaluation): T5.6 review flags for injection and re-spaced templates; official score stays criteria sum` |
 | **✅ بسته‌شده از T3.1** | **۲۰۲۶-۱۱-۰۱:** اجرای واقعی دستی با `agy` 1.4.12 (`gemini-3.8-flash-high`، `--json-schema`، `--sandbox`) موفق بود. تأیید شد: خروجی ساختاریافته در `result.structured_output` است؛ `response` متن آزاد + JSON است (fallback فقط برای JSON خالص)؛ رویدادهای میانی `init` و `step_update` درست‌اند. خط واقعی در `TestRealSuccessEnvelope` ثبت شد. |
 | **وضعیت آزمون‌های خودکار** | **۱۰۰٪ سبز و موفق** (`go test ./...` روی همه پکیج‌ها) |
 | **مسیر دایرکتوری پایه** | `C:\Users\Asus\Desktop\Leaning-appication\prj` |
@@ -107,7 +107,8 @@
   - ⏭️ هنوز به Handler وصل نشده: نوشتن فایل‌ها در `reports/vN/attempt-K` و ردیف‌های DB با T5.5. شماره‌ها در summary با ارقام لاتین‌اند
 - [x] **T5.5**: commit تلاش در `services/evaluation/commit.go` (پس از `done` شدن همه مراحل، داخل `jobs.Commit`): K = بیشینه `attempt_no` مجموعه + ۱؛ برای **هر** تمرین manifest یک آیتم: `evaluated` (گزارش از خروجی staging با همان بایت‌هایی که AI دید)، `carried_over` (پاسخ روی دیسک = hash آخرین ارزیابی؛ نمره، `error_types` و `carried_from_attempt` از آخرین آیتم ارزیابی‌شده) یا `unanswered` (قالب، گم‌شده یا «بازبینی دستی»)؛ فایل‌ها با `WriteNew` در `reports/vN/attempt-K/` + `commit_journal`؛ تراکنش: `files` (`report`/`summary`/`result` همه `immutable=1`)، `attempts` (نمره از `scoring`)، `attempt_items` (`ai_reported_score`)، وضعیت موضوع `evaluated`، `jobs.result_ref`. برخورد نام ⇒ commit رد، فایل موجود دست‌نخورده، فایل‌های همین job حذف، بدون ردیف. `Output.skill_version` در staging تا retry ارث‌بر هم نسخه Skill داشته باشد — آزمون: تلاش کامل (result.json معتبر، نمره ۵٫۲۵، متن خام برابر، DB)، معیار R11.2-۶ (attempt-2 با q01 ارزیابی‌شده، q02 carried از تلاش ۱، hash فایل‌های attempt-1 ثابت)، برخورد نام
   - ⏭️ پاسخ «بازبینی دستی» (بزرگ/باینری) در result.json فعلاً `unanswered` ثبت می‌شود (اسکیما وضعیت جداگانه ندارد). بازیابی `commit_journal` پس از crash با T6.3
-- [ ] **T5.6**: محافظ‌های تقلب و ناهنجاری نمره
+- [x] **T5.6**: محافظ‌های کیفیت (`services/evaluation/guard.go`): (۱) `score_mismatch` ⇒ نمره رسمی همیشه جمع معیارها، `ai_reported_score` ثبت و در گزارش ذکر می‌شود؛ (۲) متن شبیه دستور به ارزیاب در محتوای پاسخ (فهرست عبارت انگلیسی/فارسی، فقط پس از نشانگر پاسخ) ⇒ پرچم `injection_suspected` بدون تغییر نمره؛ (۳) پاسخی که جز فاصله‌گذاری با قالب برابر است و نمره ≥ ۵۰ گرفته ⇒ `template_high_score`. پرچم‌ها در ستون جدید `attempt_items.flags` (مهاجرت `0002_eval_guards.sql`؛ حلقه مهاجرت عمومی شد)، بنر «⚠ نیازمند بازبینی» در `qNN-report.md` و علامت در `summary.md`؛ آیتم carried-over پرچمش را نگه می‌دارد. `exercises.template_norm_sha256` (hash محتوای قالب با فاصله‌های فشرده، `fsx.NormalizedAnswerSHA`) هنگام ساخت مجموعه ثبت می‌شود — تست جدولی `Flags` (۱۰ حالت) + تست سرتاسری (q01 تزریق: نمره ۷ با AI=۷۰، q02 قالب: پرچم، q03 بدون پاسخ)
+  - ⏭️ تشخیص تزریق فهرست عبارت است نه طبقه‌بند (RK5 پذیرفته‌شده)؛ مجموعه‌های پیش از این مهاجرت `template_norm_sha256` ندارند و بررسی قالب برایشان رد می‌شود. «retry» خودکار برای نمره بالای قالب انجام نمی‌شود، فقط علامت. پرچم‌ها در `result.json` نیستند (اسکیما فیلد ندارد)
 - [ ] **T5.7**: رابط کاربری تب کارنامه و نمرات
 - [ ] **T5.8**: کالیبراسیون و سنجش دقت مهارت ارزیابی با ۵ نمونه پاسخ متنوع
 

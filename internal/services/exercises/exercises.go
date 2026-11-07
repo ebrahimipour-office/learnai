@@ -300,9 +300,9 @@ func (s *Service) commit(ctx context.Context, j jobs.Job, t topic, curID int64, 
 			if ex.ExternalKnowledge == nil {
 				deps = []byte("[]")
 			}
-			res, err := tx.ExecContext(ctx, `INSERT INTO exercises (set_id, ex_id, ord, title, type, difficulty, weight, answer_file_id, template_sha256, external_deps)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, setID, ex.ID, ex.Order, ex.Title, ex.Type, ex.Difficulty, ex.Weight,
-				fileID, fsx.HashBytes(content), string(deps))
+			res, err := tx.ExecContext(ctx, `INSERT INTO exercises (set_id, ex_id, ord, title, type, difficulty, weight, answer_file_id, template_sha256,
+				template_norm_sha256, external_deps) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, setID, ex.ID, ex.Order, ex.Title, ex.Type,
+				ex.Difficulty, ex.Weight, fileID, fsx.HashBytes(content), fsx.NormalizedAnswerSHA(content), string(deps))
 			if err != nil {
 				return err
 			}
