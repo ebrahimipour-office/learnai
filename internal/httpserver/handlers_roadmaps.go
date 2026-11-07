@@ -42,6 +42,7 @@ type app struct {
 // pageData is shared by all pages; each template uses the fields it needs.
 type pageData struct {
 	Title, CSRF, Error string
+	CanOpen            bool // editor.command is set: show «باز کردن» (T6.6)
 
 	Draft           *roadmaps.Draft
 	Expires         string

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -107,6 +108,7 @@ func (a *app) fillSet(r *http.Request, d *pageData) error {
 	if err != nil {
 		return err
 	}
+	d.CanOpen = a.settings.Editor != ""
 	for _, x := range list {
 		row := exerciseRow{Exercise: x, FullPath: filepath.Join(a.root.BaseDir(), filepath.FromSlash(x.AnswerRel))}
 		if d.Tab == "answers" {
@@ -245,6 +247,42 @@ func (a *app) serveFile(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", ctype)
 	w.Header().Set("Content-Disposition", mime.FormatMediaType(disp, map[string]string{"filename": name}))
 	_, _ = w.Write(b)
+}
+
+// openFile starts the configured editor on a registered file (R13.2): no shell, the program
+// comes only from config and the path only from the DB (Section 8).
+func (a *app) openFile(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok || a.settings.Editor == "" {
+		http.NotFound(w, r)
+		return
+	}
+	f, err := a.topics.File(r.Context(), id)
+	if errors.Is(err, domain.ErrNotFound) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		slog.Error("loading file", "file", id, "error", err)
+		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
+		return
+	}
+	if f.Locked {
+		http.Error(w, "معیار ارزیابی پیش از ارزیابی همه تمرین‌های این مجموعه نمایش داده نمی‌شود.", http.StatusForbidden)
+		return
+	}
+	if !a.root.Exists(f.RelPath) {
+		http.Error(w, "فایل روی دیسک پیدا نشد.", http.StatusNotFound)
+		return
+	}
+	cmd := exec.Command(a.settings.Editor, filepath.Join(a.root.BaseDir(), filepath.FromSlash(f.RelPath)))
+	if err := cmd.Start(); err != nil {
+		slog.Error("starting editor", "editor", a.settings.Editor, "error", err)
+		http.Error(w, "اجرای ویرایشگر پیکربندی‌شده ناموفق بود.", http.StatusInternalServerError)
+		return
+	}
+	go func() { _ = cmd.Wait() }() // reap the editor; it outlives the request
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // evaluate enqueues an evaluation of the current set (R3.4); 422 when no answer would go to the AI.

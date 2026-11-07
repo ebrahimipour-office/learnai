@@ -22,6 +22,7 @@ type Settings struct {
 
 	Exercises      config.ExercisesConfig // count bounds for the exercises form
 	MaxAnswerBytes int64                  // config limits.max_answer_bytes (evaluation selection)
+	Editor         string                 // config editor.command: program run as Editor <abs path>; "" hides «باز کردن»
 }
 
 // Doctor is one Probe result as shown on the settings page.

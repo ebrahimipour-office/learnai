@@ -41,6 +41,7 @@ func NewServer(addr string, sm *SecurityManager, drafts *roadmaps.Service, topic
 	mux.HandleFunc("POST /suggestions/{id}/accept", a.acceptSuggestion)
 	mux.HandleFunc("POST /suggestions/{id}/reject", a.rejectSuggestion)
 	mux.HandleFunc("GET /files/{id}", a.serveFile)
+	mux.HandleFunc("POST /files/{id}/open", a.openFile)
 	mux.HandleFunc("GET /jobs/{id}/card", a.jobCard)
 	mux.HandleFunc("POST /jobs/{id}/cancel", a.cancelJob)
 	mux.HandleFunc("POST /jobs/{id}/retry", a.retryJob)

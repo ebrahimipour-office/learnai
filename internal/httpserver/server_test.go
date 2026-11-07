@@ -41,7 +41,7 @@ type env struct {
 	ad     *fake.Adapter
 }
 
-func newEnv(t *testing.T) *env {
+func newEnv(t *testing.T, opts ...func(*httpserver.Settings)) *env {
 	t.Helper()
 	base := t.TempDir()
 	db, err := store.Open(filepath.Join(base, "app.db"))
@@ -78,8 +78,11 @@ func newEnv(t *testing.T) *env {
 	done := make(chan struct{})
 	go func() { defer close(done); runner.Run(ctx) }()
 	t.Cleanup(func() { cancel(); <-done })
-	srv := httpserver.NewServer("127.0.0.1:8787", sm, drafts, topics.NewService(db), runner, root,
-		httpserver.Settings{DB: db, Adapter: ad, Model: "m1", Exercises: exCfg, MaxAnswerBytes: 1024})
+	settings := httpserver.Settings{DB: db, Adapter: ad, Model: "m1", Exercises: exCfg, MaxAnswerBytes: 1024}
+	for _, o := range opts {
+		o(&settings)
+	}
+	srv := httpserver.NewServer("127.0.0.1:8787", sm, drafts, topics.NewService(db), runner, root, settings)
 	if srv.ReadHeaderTimeout == 0 || srv.IdleTimeout == 0 {
 		t.Error("server timeouts must be set (Section 8)")
 	}

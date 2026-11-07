@@ -6,11 +6,14 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"learninghub/internal/fsx"
+	"learninghub/internal/httpserver"
 )
 
 func exOutput() json.RawMessage {
@@ -347,5 +350,56 @@ func TestReportsTab(t *testing.T) {
 	}
 	if strings.Contains(e.get("/topics/1/reports?attempt=1&ex=q02").Body.String(), `id="report"`) {
 		t.Error("unanswered exercise has no report")
+	}
+}
+
+func TestOpenFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("editor stub is a shell script")
+	}
+	// The stub records its argv; a shell metacharacter in it would show the path went through a shell.
+	out := filepath.Join(t.TempDir(), "argv")
+	editor := filepath.Join(t.TempDir(), "editor")
+	if err := os.WriteFile(editor, []byte("#!/bin/sh\nprintf '%s|' \"$@\" > "+out+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	e := newEnv(t, func(s *httpserver.Settings) { s.Editor = editor })
+	e.exerciseSet()
+	if page := e.get("/topics/1/answers").Body.String(); strings.Count(page, "باز کردن") != 3 {
+		t.Fatal("answers tab must offer «باز کردن» per file when an editor is configured")
+	}
+	id, abs := e.answerID("q01")
+	if rec := e.post("/files/"+id+"/open", nil, false); rec.Code != http.StatusNoContent {
+		t.Fatalf("open: want 204, got %d %s", rec.Code, rec.Body.String())
+	}
+	var got []byte
+	for i := 0; i < 100 && len(got) == 0; i++ {
+		time.Sleep(20 * time.Millisecond)
+		got, _ = os.ReadFile(out)
+	}
+	if string(got) != abs+"|" {
+		t.Fatalf("editor argv = %q, want the absolute path from the DB as one argument", got)
+	}
+
+	var rubric string
+	_ = e.db.Writer().QueryRow(`SELECT rubric_file FROM exercise_sets WHERE is_current = 1`).Scan(&rubric)
+	if rec := e.post("/files/"+rubric+"/open", nil, false); rec.Code != http.StatusForbidden {
+		t.Errorf("locked rubric: want 403, got %d", rec.Code)
+	}
+	_ = os.Remove(abs)
+	for _, p := range []string{"/files/" + id + "/open", "/files/999/open", "/files/abc/open"} {
+		if rec := e.post(p, nil, false); rec.Code != http.StatusNotFound {
+			t.Errorf("%s: want 404, got %d", p, rec.Code)
+		}
+	}
+
+	plain := newEnv(t)
+	plain.exerciseSet()
+	if strings.Contains(plain.get("/topics/1/answers").Body.String(), "باز کردن") {
+		t.Error("no editor configured: the button must be hidden")
+	}
+	id, _ = plain.answerID("q01")
+	if rec := plain.post("/files/"+id+"/open", nil, false); rec.Code != http.StatusNotFound {
+		t.Errorf("no editor configured: want 404, got %d", rec.Code)
 	}
 }
