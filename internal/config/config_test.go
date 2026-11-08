@@ -3,6 +3,7 @@ package config_test
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"learninghub/internal/config"
 )
@@ -35,4 +36,16 @@ func TestConfig_Validation(t *testing.T) {
 			t.Errorf("Expected ErrForbiddenDangerousFlag, got: %v", err)
 		}
 	})
+}
+
+// B4: agy can go silent for >2m while writing a long final answer, so the stall guard must be
+// generous but still fire before the whole-job timeout of lessons and exercises.
+func TestDefaultStallTimeout(t *testing.T) {
+	j := config.DefaultConfig(`C:\LearningHub`).Jobs
+	if j.StallTimeout != 6*time.Minute {
+		t.Fatalf("stall_timeout = %s, want 6m", j.StallTimeout)
+	}
+	if j.StallTimeout >= j.TimeoutLesson || j.StallTimeout >= j.TimeoutExercises {
+		t.Fatalf("stall_timeout %s must be below lesson %s and exercises %s", j.StallTimeout, j.TimeoutLesson, j.TimeoutExercises)
+	}
 }

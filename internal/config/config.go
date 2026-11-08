@@ -88,7 +88,7 @@ func DefaultConfig(defaultBaseDir string) Config {
 			TimeoutExercises:    10 * time.Minute,
 			TimeoutEvaluateItem: 5 * time.Minute,
 			TimeoutAnalyze:      3 * time.Minute,
-			StallTimeout:        2 * time.Minute,
+			StallTimeout:        6 * time.Minute, // agy sends nothing while writing a long final answer (B4); keep below lesson/exercises timeouts
 		},
 		Exercises: ExercisesConfig{
 			CountDefault: 6,

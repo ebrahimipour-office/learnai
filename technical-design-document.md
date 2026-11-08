@@ -1015,7 +1015,7 @@ type Capabilities struct {
 | `ErrAuthRequired` | `auth_required` | خیر | «ابتدا یک‌بار در ترمینال `agy` را اجرا و وارد شوید.» |
 | `ErrBinaryNotFound` | `adapter_missing` | خیر | «فایل `agy` پیدا نشد؛ مسیر را در تنظیمات اصلاح کنید.» |
 | `ErrTimeout` | `timeout` | خیر (کاربر تصمیم می‌گیرد) | «زمان اجرا از ۱۰ دقیقه گذشت.» |
-| `ErrStalled` | `stalled` | خیر | «ابزار AI مدتی پاسخ نداد.» |
+| `ErrStalled` | `stalled` | خیر | «ابزار AI مدتی پاسخ نداد؛ دوباره تلاش کنید. اگر تکرار شد، `jobs.stall_timeout` را در config.toml افزایش دهید.» |
 | `ErrCanceled` | `canceled` | — | — |
 | `ErrRateLimited` | `rate_limited` | خیر | «سهمیه یا محدودیت نرخ؛ بعداً دوباره تلاش کنید.» |
 | `ErrToolFailed` | `tool_error` | یک‌بار (برای خطاهای گذرا) | «ابزار AI با خطا پایان یافت (جزئیات در لاگ).» |
@@ -1118,7 +1118,7 @@ Enqueue ──▶ جدول jobs (queued) ──▶ Dispatcher goroutine ──�
 | **لغو** | `POST /jobs/{id}/cancel`: اگر `queued` ⇒ تراکنش مستقیم به `canceled`. اگر `running` ⇒ `cancel_requested=1`، سپس `cancelFn()` که `context` را لغو می‌کند؛ `procgroup.Kill` درخت پردازش را متوقف می‌کند؛ Handler خروج می‌کند؛ runner وضعیت را `canceled` می‌نویسد. |
 | **kill درخت پردازش** | ویندوز: پردازش فرزند داخل **Job Object** با `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` ساخته می‌شود؛ لغو = بستن handle. یونیکس: `Setpgid` و `kill(-pgid)` (ابتدا SIGTERM و بعد از ۳ ثانیه SIGKILL). همین سازوکار با خاموشی برنامه نیز اجرا می‌شود تا پردازش یتیم نماند. |
 | **دوره commit** | فاز commit با `context.WithoutCancel` اجرا می‌شود (قابل لغو نیست). اگر لغو درست در این لحظه برسد، Job `succeeded` می‌شود و UI توضیح می‌دهد «لغو دیر رسید». این تضمین می‌کند وضعیت «نیمه‌کاره» ثبت نشود. |
-| **نظارت** | هر ۵ ثانیه `heartbeat_at` به‌روز می‌شود؛ `StallTimeout` (پیش‌فرض ۲ دقیقه بدون رویداد از `stream-json`) ⇒ `ErrStalled`. |
+| **نظارت** | هر ۵ ثانیه `heartbeat_at` به‌روز می‌شود؛ `StallTimeout` (پیش‌فرض ۶ دقیقه بدون رویداد از `stream-json`؛ کمتر از سقف درس/تمرین ۱۰ دقیقه، چون `agy` هنگام نوشتن پاسخ نهایی بلند رویدادی نمی‌فرستد — T7.0.b) ⇒ `ErrStalled`. |
 | **timeout پیش‌فرض** (قابل تنظیم) | درس ۱۰ دقیقه، تمرین ۱۰ دقیقه، ارزیابی هر تمرین ۵ دقیقه (کل Job: ۳۰ دقیقه)، تحلیل Roadmap ۳ دقیقه. |
 | **تک‌نمونه** | `.app/hub.lock` (flock) و bind به پورت؛ در صورت وجود نمونه دیگر، برنامه با پیام روشن خارج می‌شود (D13). |
 | **خاموشی ملایم** | روی `SIGINT`/Ctrl+C: قبول نکردن درخواست جدید، لغو Jobهای در حال اجرا (با وضعیت `failed/interrupted`)، بستن DB. |
@@ -1521,7 +1521,7 @@ timeout_lesson        = "10m"
 timeout_exercises     = "10m"
 timeout_evaluate_item = "5m"
 timeout_analyze       = "3m"
-stall_timeout         = "2m"
+stall_timeout         = "6m"
 
 [exercises]
 count_default = 6
