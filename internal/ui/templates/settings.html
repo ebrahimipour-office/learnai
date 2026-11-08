@@ -11,7 +11,7 @@
 <form method="post" action="/settings/privacy">
   <input type="hidden" name="csrf_token" value="{{.CSRF}}">
   <label><input type="checkbox" name="ack" value="1" required> متن بالا را خواندم و می‌پذیرم</label>
-  <button type="submit">تأیید</button>
+  <button type="submit" class="primary">تأیید</button>
 </form>
 {{end}}
 </section>

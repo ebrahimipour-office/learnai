@@ -4,7 +4,7 @@
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 <form method="post" action="/sync/scan">
   <input type="hidden" name="csrf_token" value="{{.CSRF}}">
-  <button type="submit">اسکن اکنون</button>
+  <button type="submit" class="primary">اسکن اکنون</button>
 </form>
 {{with .Sync}}
 <p class="count">آخرین اسکن: <bdi>{{localTime .StartedAt}}</bdi> — {{len .Report.Missing}} گم‌شده، {{len .Report.Moved}} جابه‌جاشده، {{len .Report.New}} جدید، {{len .Report.Modified}} تغییرکرده</p>
@@ -23,7 +23,7 @@
       <td>{{if eq .By "header"}}سربرگ @hub{{else}}hash یکسان{{end}}</td>
     </tr>{{end}}</tbody>
   </table>
-  {{if not .Applied}}<button type="submit">ثبت جابه‌جایی‌های انتخاب‌شده</button>{{end}}
+  {{if not .Applied}}<button type="submit" class="primary">ثبت جابه‌جایی‌های انتخاب‌شده</button>{{end}}
 </form>
 </section>{{end}}
 
@@ -42,5 +42,5 @@
 <h2>جدید (ثبت‌نشده)</h2>
 <ul>{{range .Report.New}}<li><bdi>{{.}}</bdi></li>{{end}}</ul>
 </section>{{end}}
-{{else}}<p>هنوز اسکنی انجام نشده است.</p>{{end}}
+{{else}}<p class="note empty">هنوز اسکنی انجام نشده است.</p>{{end}}
 {{end}}

@@ -1,7 +1,7 @@
 {{define "content"}}
 <h1>موضوعات</h1>
 {{if eq .TopicTotal 0}}
-<p class="note">هنوز موضوعی ثبت نشده است. <a href="/roadmaps/new">یک نقشه راه وارد کنید.</a></p>
+<p class="note empty">هنوز موضوعی ثبت نشده است.<br><a class="button primary" href="/roadmaps/new">یک نقشه راه وارد کنید</a></p>
 {{else}}
 <form method="get" action="/topics" role="search"
       hx-get="/topics" hx-trigger="input delay:300ms" hx-target="#topic-results" hx-swap="outerHTML" hx-push-url="true">
@@ -15,7 +15,7 @@
   <noscript><button type="submit">اعمال</button></noscript>
 </form>
 {{template "topic-results" .}}
-<p><a href="/roadmaps/new">ورود نقشه راه جدید</a></p>
+<p><a href="/roadmaps/new" class="button">ورود نقشه راه جدید</a></p>
 {{end}}
 {{end}}
 
@@ -37,7 +37,7 @@
 </details></li>{{else}}
 <li class="topic{{if eq .State "archived"}} archived{{end}}">
   <a href="/topics/{{.ID}}"><bdi>{{.Title}}</bdi></a>
-  <span class="badge">{{statusLabel .Status}}</span>
+  <span class="badge status-{{.Status}}">{{statusLabel .Status}}</span>
   {{if .Score.Valid}}<span class="score">{{num .Score.Float64}}</span>{{if .Partial}} <span class="badge warn">ناقص</span>{{end}}{{end}}
   {{if eq .Origin "suggested"}}<span class="badge suggested">پیشنهادی</span>{{end}}
   {{if eq .State "archived"}}<span class="badge">بایگانی‌شده</span>{{end}}

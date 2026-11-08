@@ -3,6 +3,7 @@ package httpserver
 import (
 	"io"
 	"io/fs"
+	"mime"
 	"net/http"
 	"time"
 
@@ -21,6 +22,7 @@ func NewServer(addr string, sm *SecurityManager, drafts *roadmaps.Service, topic
 	if err != nil {
 		panic(err) // embedded at build time; cannot fail at runtime
 	}
+	_ = mime.AddExtensionType(".woff2", "font/woff2") // not in Go's built-in table; Windows registry may lack it
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {

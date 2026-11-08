@@ -152,6 +152,17 @@ func TestSecurityMiddlewareIsWired(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "htmx") {
 		t.Errorf("local htmx: want 200, got %d", rec.Code)
 	}
+	// T7.9: the Persian font is embedded locally (CSP forbids remote fonts) and app.css points at it.
+	rec = e.do(httptest.NewRequest(http.MethodGet, "/static/app.css", nil))
+	if !strings.Contains(rec.Body.String(), "url(fonts/vazirmatn-arabic.woff2)") {
+		t.Error("app.css does not load the local Vazirmatn font")
+	}
+	for _, f := range []string{"vazirmatn-arabic.woff2", "vazirmatn-latin.woff2"} {
+		rec = e.do(httptest.NewRequest(http.MethodGet, "/static/fonts/"+f, nil))
+		if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "font/woff2" || !strings.HasPrefix(rec.Body.String(), "wOF2") {
+			t.Errorf("font %s: got %d %q", f, rec.Code, rec.Header().Get("Content-Type"))
+		}
+	}
 }
 
 func TestImportPreviewFlow(t *testing.T) {

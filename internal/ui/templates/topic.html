@@ -2,7 +2,7 @@
 <p><a href="/topics">بازگشت به موضوعات</a></p>
 <h1><bdi>{{.Panel.Title}}</bdi></h1>
 <p class="note"><bdi>{{.Panel.Roadmap}}</bdi>{{with .Panel.Group}} › <bdi>{{.}}</bdi>{{end}}
-  <span class="badge">{{statusLabel .Panel.Status}}</span>
+  <span class="badge status-{{.Panel.Status}}">{{statusLabel .Panel.Status}}</span>
   {{if eq .Panel.State "archived"}}<span class="badge">بایگانی‌شده</span>{{end}}
   {{if eq .Panel.Origin "suggested"}}<span class="badge suggested">پیشنهادی</span>{{end}}</p>
 <nav class="tabs">
@@ -34,7 +34,7 @@
   {{with .Viewing}}{{if not .Current}}<p class="note">در حال مشاهده نسخه قدیمی {{.Version}}. <a href="/topics/{{$.Panel.ID}}/lesson">نسخه جاری</a></p>{{end}}{{end}}
   <article class="md" dir="auto">{{.Lesson}}</article>
 {{else}}
-  <p class="note">هنوز درسی برای این موضوع ساخته نشده است.</p>
+  <p class="note empty">هنوز درسی برای این موضوع ساخته نشده است.</p>
 {{end}}
 </section>
 {{end}}{{end}}
@@ -71,7 +71,7 @@
   </table>
   {{end}}
 {{else}}
-  <p class="note">هنوز مجموعه تمرینی برای این موضوع ساخته نشده است.</p>
+  <p class="note empty">هنوز مجموعه تمرینی برای این موضوع ساخته نشده است.</p>
 {{end}}
 </section>
 {{end}}
@@ -85,8 +85,8 @@
       <td>{{sugKind .Kind}}</td><td><bdi>{{.Title}}</bdi></td><td><bdi>{{.Reason}}</bdi></td>
       <td><span class="badge">{{sugStatus .Status}}</span>{{if .AcceptedTopicID}} <a href="/topics/{{.AcceptedTopicID}}">موضوع ساخته‌شده</a>{{end}}</td>
       <td>{{if eq .Status "pending"}}
-        <form method="post" action="/suggestions/{{.ID}}/accept" class="inline"><input type="hidden" name="csrf_token" value="{{$.CSRF}}"><button type="submit">تأیید</button></form>
-        <form method="post" action="/suggestions/{{.ID}}/reject" class="inline"><input type="hidden" name="csrf_token" value="{{$.CSRF}}"><button type="submit">رد</button></form>
+        <form method="post" action="/suggestions/{{.ID}}/accept" class="inline"><input type="hidden" name="csrf_token" value="{{$.CSRF}}"><button type="submit" class="primary">تأیید</button></form>
+        <form method="post" action="/suggestions/{{.ID}}/reject" class="inline"><input type="hidden" name="csrf_token" value="{{$.CSRF}}"><button type="submit" class="danger">رد</button></form>
       {{end}}</td>
     </tr>{{end}}</tbody>
   </table>
@@ -127,7 +127,7 @@
   <article class="md" dir="auto">{{$.ReportMD}}</article>
   {{end}}
 {{else}}
-  <p class="note">هنوز ارزیابی‌ای برای این مجموعه ثبت نشده است.</p>
+  <p class="note empty">هنوز ارزیابی‌ای برای این مجموعه ثبت نشده است.</p>
 {{end}}
 {{end}}
 
@@ -144,7 +144,7 @@
     <label>حالت <select name="mode"{{if $busy}} disabled{{end}}>
       <option value="incremental">افزایشی (فقط پاسخ‌های جدید یا تغییرکرده)</option>
       <option value="full">کامل (همه پاسخ‌ها)</option></select></label>
-    <button type="submit"{{if $busy}} disabled{{end}}>ارزیابی</button>
+    <button type="submit"{{if $busy}} disabled{{end}} class="primary">ارزیابی</button>
   </form>
   {{else}}<p class="note">برای ارزیابی ابتدا تمرین‌های این موضوع را بسازید.</p>{{end}}
   {{else if .Tab}}
@@ -155,9 +155,9 @@
     {{if .Sets}}
     <label><input type="checkbox" name="confirm_new_version" value="1" required{{if $busy}} disabled{{end}}>
       مجموعه فعلی و پاسخ‌هایم دست‌نخورده بمانند و مجموعه جدید ساخته شود</label>
-    <button type="submit"{{if $busy}} disabled{{end}}>مجموعه جدید</button>
+    <button type="submit"{{if $busy}} disabled{{end}} class="primary">مجموعه جدید</button>
     {{else}}
-    <button type="submit"{{if $busy}} disabled{{end}}>تولید تمرین</button>
+    <button type="submit"{{if $busy}} disabled{{end}} class="primary">تولید تمرین</button>
     {{end}}
   </form>
   {{else}}<p class="note">برای ساخت تمرین ابتدا درس این موضوع را تولید کنید.</p>{{end}}
@@ -167,9 +167,9 @@
     {{if .Panel.Lessons}}
     <label><input type="checkbox" name="confirm_regenerate" value="1" required{{if $busy}} disabled{{end}}>
       درس فعلی در تاریخچه نگه داشته و نسخه جدید ساخته شود</label>
-    <button type="submit"{{if $busy}} disabled{{end}}>بازتولید درس</button>
+    <button type="submit"{{if $busy}} disabled{{end}} class="primary">بازتولید درس</button>
     {{else}}
-    <button type="submit"{{if $busy}} disabled{{end}}>تولید درس</button>
+    <button type="submit"{{if $busy}} disabled{{end}} class="primary">تولید درس</button>
     {{end}}
   </form>
   {{end}}
@@ -187,7 +187,7 @@
     </form>{{end}}
     {{if .Active}}
     <form method="post" action="/jobs/{{.ID}}/cancel" hx-post="/jobs/{{.ID}}/cancel" hx-target="#job-area" hx-swap="outerHTML">
-      <input type="hidden" name="csrf_token" value="{{$.CSRF}}"><input type="hidden" name="tab" value="{{$.Tab}}"><button type="submit"{{if .CancelRequested}} disabled{{end}}>{{if .CancelRequested}}در حال لغو…{{else}}لغو{{end}}</button>
+      <input type="hidden" name="csrf_token" value="{{$.CSRF}}"><input type="hidden" name="tab" value="{{$.Tab}}"><button type="submit" class="danger"{{if .CancelRequested}} disabled{{end}}>{{if .CancelRequested}}در حال لغو…{{else}}لغو{{end}}</button>
     </form>{{end}}
   </div>
   {{end}}
