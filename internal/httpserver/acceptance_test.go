@@ -3,6 +3,7 @@ package httpserver_test
 import (
 	"bytes"
 	"cmp"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -20,6 +21,7 @@ import (
 	"learninghub/internal/ai/fake"
 	"learninghub/internal/config"
 	"learninghub/internal/fsx"
+	"learninghub/internal/roadmap"
 	"learninghub/internal/schema"
 	"learninghub/internal/scoring"
 	"learninghub/internal/services/evaluation"
@@ -352,4 +354,133 @@ func TestAcceptanceR11_2(t *testing.T) {
 			t.Errorf("R11.2-8: %s: want 404 without content, got %d", rel, rec.Code)
 		}
 	}
+}
+
+// TestAcceptanceChapters is T7.10: the chapter journey on the T7.0 sample book over HTTP with the fake adapter —
+// upload ← AI chapter detection ← apply ← confirm ← lesson, exercises and evaluation on every chapter (TDD §12).
+func TestAcceptanceChapters(t *testing.T) {
+	e := newEnv(t)
+	w := e.db.Writer()
+	src, err := os.ReadFile("../../testdata/sample-book.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// the H2 chapters of sample-book.md; chapter 3 has no subsection (B1) and chapter 1 holds a code block and an H3
+	chapters := []struct {
+		title      string
+		start, end int
+	}{{"متغیرها و انواع داده", 5, 19}, {"توابع", 20, 36}, {"برش‌ها", 37, 40}}
+	var out strings.Builder
+	for i, c := range chapters {
+		out.WriteString(map[bool]string{true: "", false: ","}[i == 0])
+		fmt.Fprintf(&out, `{"title":%q,"start_line":%d,"end_line":%d}`, c.title, c.start, c.end)
+	}
+	e.ad.Output = json.RawMessage(`{"title":"آموزش مقدماتی Go","reason":"هر H2 یک فصل","chapters":[` + out.String() + `]}`)
+
+	draft := e.upload("sample-book.md", src).Header().Get("Location")
+	if rec := e.post(draft+"/chapters", nil, true); rec.Code != http.StatusAccepted {
+		t.Fatalf("chapter detection: %d %s", rec.Code, rec.Body.String())
+	}
+	for deadline := time.Now().Add(5 * time.Second); e.get(draft+"/ai?poll=1").Header().Get("HX-Refresh") != "true"; time.Sleep(20 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("chapter detection did not finish")
+		}
+	}
+	if _, st := e.lastJob(); st != "succeeded" {
+		t.Fatalf("chapter detection job %s", st)
+	}
+	if n := count(t, w, `SELECT COUNT(*) FROM topics`) + count(t, w, `SELECT COUNT(*) FROM files`); n != 0 {
+		t.Fatalf("detection must create no record before confirm, got %d", n)
+	}
+	if rec := e.selection(draft, url.Values{"rule": {"ai"}}, false); rec.Code != http.StatusSeeOther {
+		t.Fatalf("apply: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := e.confirm(draft, url.Values{"csrf_token": {e.sm.CSRFToken()}, "confirm": {"1"}}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("confirm: %d %s", rec.Code, rec.Body.String())
+	}
+	var title string
+	_ = w.QueryRow(`SELECT title FROM roadmaps`).Scan(&title)
+	if title != "آموزش مقدماتی Go" {
+		t.Errorf("roadmap title = %q, want the book's H1 (B2)", title)
+	}
+
+	rows, err := w.Query(`SELECT id, title, dir_name, source_start_line, source_end_line, source_sha256 FROM topics ORDER BY ord`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type topic struct {
+		id              int64
+		title, dir, sha string
+		start, end      int
+	}
+	var got []topic
+	for rows.Next() {
+		var tp topic
+		if err := rows.Scan(&tp.id, &tp.title, &tp.dir, &tp.start, &tp.end, &tp.sha); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, tp)
+	}
+	rows.Close()
+	if len(got) != len(chapters) {
+		t.Fatalf("want one topic per chapter (B1: chapter 3 kept), got %+v", got)
+	}
+	for i, c := range chapters {
+		tp := got[i]
+		body, err := os.ReadFile(filepath.Join(e.base, "topics", tp.dir, "source.md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := roadmap.Slice(src, c.start, c.end); tp.title != c.title || tp.start != c.start || tp.end != c.end ||
+			!bytes.Equal(body, want) || fsx.HashBytes(body) != tp.sha {
+			t.Errorf("chapter %d: %+v\nsource.md:\n%s\nwant:\n%s", i+1, tp, body, want)
+		}
+	}
+	if b, _ := os.ReadFile(filepath.Join(e.base, "topics", got[0].dir, "source.md")); !bytes.Contains(b, []byte("### ثابت‌ها")) || !bytes.Contains(b, []byte("y := \"سلام\"")) {
+		t.Error("chapter 1 source.md must keep its H3 and code block (B3)")
+	}
+
+	// each AI job of each chapter is handed that chapter's source.md (B3); TestChaptersRunIndependently checks isolation.
+	runJob := func(tp topic, kind string, form url.Values) {
+		t.Helper()
+		if rec := e.post(fmt.Sprintf("/topics/%d/jobs/%s", tp.id, kind), form, true); rec.Code != http.StatusAccepted {
+			t.Fatalf("%s on %s: %d %s", kind, tp.title, rec.Code, rec.Body.String())
+		}
+		id, _ := e.lastJob()
+		e.pollUntilDone(id)
+		if _, st := e.lastJob(); st != "succeeded" {
+			t.Fatalf("%s on %s: %s", kind, tp.title, st)
+		}
+		if calls := e.ad.Calls(); !strings.Contains(calls[len(calls)-1], "inputs/source.md") {
+			t.Errorf("%s on %s: prompt does not list inputs/source.md", kind, tp.title)
+		}
+	}
+	for _, tp := range got {
+		e.ad.Output = lessonOutput("## " + tp.title + "\n\nمتن درس.")
+		runJob(tp, "lesson", nil)
+		e.ad.Output = exOutput()
+		runJob(tp, "exercises", url.Values{"count": {"3"}})
+		q01 := filepath.Join(e.base, filepath.FromSlash(path.Join(exercises.AnswersRel(tp.dir, 1), "q01-hello.go")))
+		if err := os.WriteFile(q01, []byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		e.ad.Output = evalOutput("q01", 90)
+		runJob(tp, "evaluate", url.Values{"mode": {"full"}})
+		if _, err := os.Stat(filepath.Join(e.base, filepath.FromSlash(evaluation.AttemptRel(tp.dir, 1, 1)), evaluation.ReportFile("q01"))); err != nil {
+			t.Errorf("%s: report: %v", tp.title, err)
+		}
+		if page := e.get(fmt.Sprintf("/topics/%d/reports", tp.id)).Body.String(); !strings.Contains(page, `data-ex="q01">70<`) {
+			t.Errorf("%s: reports tab must show the software score 70, not the AI's 90", tp.title)
+		}
+	}
+}
+
+func count(t *testing.T, w interface {
+	QueryRow(string, ...any) *sql.Row
+}, q string, args ...any) (n int) {
+	t.Helper()
+	if err := w.QueryRow(q, args...).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
 }
