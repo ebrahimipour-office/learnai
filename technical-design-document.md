@@ -242,7 +242,7 @@ LearningHub/                              # دایرکتوری پایه (قاب�
    ├─ hub.lock
    ├─ work/<job-id>/                      # sandbox اجرای AI (پس از پایان حذف می‌شود)
    ├─ staging/<job-id>/                   # خروجی‌های اعتبارسنجی‌شده پیش از commit
-   ├─ logs/jobs/<job-id>/                 # prompt.txt, events.ndjson, response.json, stderr.txt
+   ├─ logs/jobs/<job-id>/                 # prompt.txt, events.ndjson, response.json, stderr.txt, meta.json, validation_error.txt (only on rejection)
    └─ app.log
 ```
 
@@ -1048,7 +1048,7 @@ cwd = WorkDir
 | **مجوزها** | **ممنوع:** `--dangerously-skip-permissions`. این پرچم در `argbuilder` حتی با `extra_args` پیکربندی رد می‌شود. چون خروجی ساختاریافته نیازی به شل یا نوشتن ندارد، پیش‌فرض headless (رد نرم دستورهای شل) کافی است. اگر `T1.1` نشان داد مجوزها در این نسخه رفتار متفاوتی دارند، `--sandbox` در پیکربندی پیش‌فرض فعال می‌شود. |
 | **تنظیمات سراسری** | ما `~/.gemini/antigravity-cli/settings.json` را **تغییر نمی‌دهیم**. مجوزهای مطلق‌مسیر آن سراسری‌اند و روی ابزارهای دیگر کاربر اثر می‌گذارند. |
 | **مدل** | از پیکربندی (`agy models`)؛ نام مدل ناشناخته با خطای روشن رد می‌شود و بی‌صدا به مدل دیگری برنمی‌گردد. |
-| **ثبت لاگ** | `prompt.txt`، `events.ndjson`، `response.json`، `stderr.txt`، `meta.json` (نسخه CLI، مدت، توکن) در `.app/logs/jobs/<id>/`؛ رازها و توکن‌ها پیش از ثبت mask می‌شوند. |
+| **ثبت لاگ** | `prompt.txt`، `events.ndjson`، `response.json`، `stderr.txt`، `meta.json` (نسخه CLI، مدت، توکن) و در صورت رد اعتبارسنجی `validation_error.txt` (دلیل رد؛ هر تلاش جدا، حتی اگر retry موفق شود؛ همراه `WARN` در لاگ سرور) در `.app/logs/jobs/<id>/`؛ رازها و توکن‌ها پیش از ثبت mask می‌شوند. |
 
 **Adapterهای دیگر:** `fake` (تست، بخش ۶.۷). در آینده `geminiapi`/`anthropic` برای فراخوانی مستقیم API با همان interface؛ تنها تفاوت: `WorkDir` را به‌صورت متن در Prompt بسته‌بندی می‌کنند.
 

@@ -260,3 +260,23 @@ func TestRealSuccessEnvelope(t *testing.T) {
 		t.Fatalf("structured() = %s, %v", got, err)
 	}
 }
+
+func TestNoteInvalidWritesNextToResponse(t *testing.T) {
+	base := t.TempDir()
+	logs, err := fsx.OpenRoot(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer logs.Close()
+	a, req := newRun(t, "ok", logs)
+	resp, err := a.Run(context.Background(), req, nil)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	a.NoteInvalid(resp, fmt.Errorf("%w: q01: bad Bearer topsecret", ai.ErrInvalidOutput))
+	b, err := os.ReadFile(filepath.Join(resp.RawLogDir, "validation_error.txt"))
+	if err != nil || !strings.Contains(string(b), "q01") || strings.Contains(string(b), "topsecret") {
+		t.Fatalf("validation_error.txt = %q (%v)", b, err)
+	}
+	a.NoteInvalid(&ai.Response{}, errors.New("x")) // no log dir: no-op, no panic
+}

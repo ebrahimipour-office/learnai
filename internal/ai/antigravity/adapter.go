@@ -181,6 +181,18 @@ func (a *Adapter) Run(ctx context.Context, req ai.Request, events chan<- ai.Even
 	return resp, err
 }
 
+// NoteInvalid writes validation_error.txt into the run's log dir (best-effort, ai.InvalidNoter).
+func (a *Adapter) NoteInvalid(resp *ai.Response, err error) {
+	if a.cfg.Logs == nil || resp.RawLogDir == "" {
+		return
+	}
+	rel, rerr := filepath.Rel(a.cfg.Logs.BaseDir(), resp.RawLogDir)
+	if rerr != nil {
+		return
+	}
+	_ = a.cfg.Logs.WriteNew(filepath.ToSlash(rel)+"/validation_error.txt", []byte(mask(err.Error())+"\n"), 0o644)
+}
+
 func writeSchema(workDir string, schema []byte) error {
 	r, err := fsx.OpenRoot(workDir)
 	if err != nil {
