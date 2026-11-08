@@ -28,6 +28,7 @@ type adapter struct {
 	fail                  map[string]bool
 	award                 map[string]int // awarded points for c1; default 7
 	task, question        map[string]string
+	source                map[string]string // inputs/source.md per exercise; absent = not sent
 	inFlight, maxInFlight int
 }
 
@@ -39,6 +40,7 @@ func (a *adapter) Run(ctx context.Context, req ai.Request, _ chan<- ai.Event) (*
 		return nil, err
 	}
 	q, _ := os.ReadFile(filepath.Join(req.WorkDir, "inputs", "question.md"))
+	src, srcErr := os.ReadFile(filepath.Join(req.WorkDir, "inputs", "source.md"))
 	var t struct {
 		ExerciseID string `json:"exercise_id"`
 	}
@@ -46,6 +48,9 @@ func (a *adapter) Run(ctx context.Context, req ai.Request, _ chan<- ai.Event) (*
 	a.mu.Lock()
 	a.calls[t.ExerciseID]++
 	a.task[t.ExerciseID], a.question[t.ExerciseID] = string(task), string(q)
+	if srcErr == nil {
+		a.source[t.ExerciseID] = string(src)
+	}
 	a.inFlight++
 	a.maxInFlight = max(a.maxInFlight, a.inFlight)
 	fail := a.fail[t.ExerciseID]
@@ -143,11 +148,11 @@ func setup(t *testing.T, parallel int) *env {
 			t.Fatal(err)
 		}
 	}
-	ad := &adapter{calls: map[string]int{}, fail: map[string]bool{}, award: map[string]int{}, task: map[string]string{}, question: map[string]string{}}
+	ad := &adapter{calls: map[string]int{}, fail: map[string]bool{}, award: map[string]int{}, task: map[string]string{}, question: map[string]string{}, source: map[string]string{}}
 	r := jobs.New(db, 1)
 	r.Poll, r.Heartbeat, r.Files = 20*time.Millisecond, time.Hour, root
 	svc := &evaluation.Service{DB: db, Root: root, Adapter: ad, Model: "m1", Language: "fa", Timeout: time.Minute, Stall: time.Minute,
-		Parallel: parallel, MaxAnswerBytes: 1 << 20}
+		Parallel: parallel, MaxAnswerBytes: 1 << 20, MaxSource: 64}
 	r.Register(domain.JobKindEvaluate, svc.Handle)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -497,5 +502,76 @@ func TestEvaluateGuards(t *testing.T) {
 	}
 	if r := string(e.read(dir + "/summary.md")); strings.Count(r, "⚠ نیازمند بازبینی") != 2 {
 		t.Errorf("summary should mark q01 and q02 for review:\n%s", r)
+	}
+}
+
+// withSource gives topic 2 a chapter source.md the way roadmaps.Confirm records it (TDD §12.6).
+func withSource(t *testing.T, db *store.DB, root *fsx.Root, text string) string {
+	t.Helper()
+	rel := "topics/02-http/source.md"
+	if err := root.MkdirAll("topics/02-http", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := root.WriteNew(rel, []byte(text), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sha := fsx.HashString(text)
+	if _, err := db.Writer().Exec(`INSERT INTO files (id, topic_id, kind, owner_type, owner_id, rel_path, sha256, size_bytes, observed_sha256)
+		VALUES (99, 2, 'source', 'topic', 2, ?, ?, ?, ?)`, rel, sha, len(text), sha); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Writer().Exec(`UPDATE topics SET source_file_id = 99, source_sha256 = ? WHERE id = 2`, sha); err != nil {
+		t.Fatal(err)
+	}
+	return rel
+}
+
+func TestEvaluateSendsChapterSource(t *testing.T) {
+	e := setup(t, 1)
+	rel := withSource(t, e.db, e.root, "## HTTP\n\nchapter text\n")
+	e.ad.fail["q02"] = true
+	id := e.enqueue("full")
+	if st, _ := e.wait(id); st != "failed" {
+		t.Fatalf("status %s", st)
+	}
+	if e.ad.source["q01"] != "## HTTP\n\nchapter text\n" || e.ad.source["q02"] != e.ad.source["q01"] {
+		t.Errorf("source.md sent = %v", e.ad.source)
+	}
+	// The chapter text is an input: editing it means q01's checkpoint is not reused by the retry.
+	if err := os.WriteFile(filepath.Join(e.dir, rel), []byte("## HTTP\n\nedited\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	e.ad.mu.Lock()
+	e.ad.fail["q02"] = false
+	e.ad.mu.Unlock()
+	retry, err := e.runner.Retry(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := e.wait(retry); st != "succeeded" {
+		t.Fatalf("retry status %s", st)
+	}
+	if c := e.calls(); c["q01"] != 2 || e.ad.source["q01"] != "## HTTP\n\nedited\n" {
+		t.Errorf("calls = %v source = %q, want q01 re-evaluated with the edited chapter", c, e.ad.source["q01"])
+	}
+}
+
+func TestEvaluateChapterSourceErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name, code string
+		remove     bool
+	}{{"too large", "source_too_large", false}, {"missing", "source_missing", true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := setup(t, 1)
+			rel := withSource(t, e.db, e.root, strings.Repeat("a", 65))
+			if tc.remove {
+				if err := e.root.Remove(rel); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if st, code := e.wait(e.enqueue("full")); st != "failed" || code != tc.code || len(e.calls()) != 0 {
+				t.Errorf("status %s code %s calls %v, want failed %s and no AI call", st, code, e.calls(), tc.code)
+			}
+		})
 	}
 }

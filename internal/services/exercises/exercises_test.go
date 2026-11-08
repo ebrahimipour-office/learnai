@@ -73,7 +73,7 @@ func setup(t *testing.T) *env {
 	r := jobs.New(db, 1)
 	r.Poll, r.Heartbeat, r.Files = 20*time.Millisecond, time.Hour, root
 	svc := &exercises.Service{DB: db, Root: root, Adapter: ad, Model: "m1", Language: "fa", Timeout: time.Minute, Stall: time.Minute,
-		Config: config.DefaultConfig(dir).Exercises}
+		Config: config.DefaultConfig(dir).Exercises, MaxSource: 64}
 	r.Register(domain.JobKindExercises, svc.Handle)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -408,5 +408,54 @@ func TestBuildAssignsCriterionIDs(t *testing.T) {
 	}
 	if !bytes.Contains(set.RubricJSON, []byte(`"id": "c4"`)) || bytes.Contains(set.RubricJSON, []byte("crit-")) {
 		t.Fatal("rubric.json does not carry the app's criterion ids")
+	}
+}
+
+// withSource gives topic 2 a chapter source.md the way roadmaps.Confirm records it (TDD §12.6).
+func withSource(t *testing.T, db *store.DB, root *fsx.Root, text string) string {
+	t.Helper()
+	rel := "topics/02-http/source.md"
+	if err := root.MkdirAll("topics/02-http", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := root.WriteNew(rel, []byte(text), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sha := fsx.HashString(text)
+	if _, err := db.Writer().Exec(`INSERT INTO files (id, topic_id, kind, owner_type, owner_id, rel_path, sha256, size_bytes, observed_sha256)
+		VALUES (99, 2, 'source', 'topic', 2, ?, ?, ?, ?)`, rel, sha, len(text), sha); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Writer().Exec(`UPDATE topics SET source_file_id = 99, source_sha256 = ? WHERE id = 2`, sha); err != nil {
+		t.Fatal(err)
+	}
+	return rel
+}
+
+func TestChapterSourceErrors(t *testing.T) {
+	for _, tc := range []struct{ name, text, code string }{
+		{"at limit", strings.Repeat("a", 64), ""},
+		{"too large", strings.Repeat("a", 65), "source_too_large"},
+		{"missing", "", "source_missing"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := setup(t)
+			rel := withSource(t, e.db, e.root, tc.text)
+			if tc.code == "source_missing" {
+				if err := e.root.Remove(rel); err != nil {
+					t.Fatal(err)
+				}
+			}
+			st, code := e.run(2, good(), `{}`)
+			if tc.code == "" {
+				if st != "succeeded" {
+					t.Fatalf("status %s (%s)", st, code)
+				}
+				return
+			}
+			if st != "failed" || code != tc.code || len(e.ad.Calls()) != 0 {
+				t.Errorf("status %s code %s calls %d, want failed %s and no AI call", st, code, len(e.ad.Calls()), tc.code)
+			}
+		})
 	}
 }

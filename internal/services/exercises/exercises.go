@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"slices"
 	"time"
 
 	"learninghub/internal/ai"
@@ -33,19 +34,21 @@ type Params struct {
 }
 
 type Service struct {
-	DB       *store.DB
-	Root     *fsx.Root
-	Adapter  ai.Adapter
-	Model    string
-	Language string
-	Timeout  time.Duration // config jobs.timeout_exercises
-	Stall    time.Duration // config jobs.stall_timeout
-	Config   config.ExercisesConfig
+	DB        *store.DB
+	Root      *fsx.Root
+	Adapter   ai.Adapter
+	Model     string
+	Language  string
+	Timeout   time.Duration // config jobs.timeout_exercises
+	Stall     time.Duration // config jobs.stall_timeout
+	Config    config.ExercisesConfig
+	MaxSource int64 // config limits.max_source_bytes
 }
 
 type topic struct {
 	ID                                    int64
 	Title, Roadmap, Dir, StableKey, Group string
+	Source                                string // rel path of the chapter's source.md; "" = no source text
 }
 
 func SetRel(dir string, v int) string {
@@ -102,7 +105,7 @@ func (s *Service) Handle(ctx context.Context, j jobs.Job) error {
 	}
 	req.Model, req.Timeout, req.StallTimeout = s.Model, s.Timeout, s.Stall
 	if _, err := s.DB.Writer().ExecContext(ctx, `UPDATE jobs SET inputs_fingerprint = ?, adapter = ?, model = ?, skill = ?, skill_version = ? WHERE id = ?`,
-		fsx.HashBytes(append(in.Files["task.json"], lessonMD...)), s.Adapter.Name(), s.Model, req.Skill.Name, req.Skill.Version, j.ID); err != nil {
+		fsx.HashBytes(slices.Concat(in.Files["task.json"], lessonMD, in.Files["source.md"])), s.Adapter.Name(), s.Model, req.Skill.Name, req.Skill.Version, j.ID); err != nil {
 		return err
 	}
 	meta := Meta{StableKey: t.StableKey, TopicTitle: t.Title, Version: maxVer + 1,
@@ -139,9 +142,10 @@ func (s *Service) phase(ctx context.Context, id int64, phase string) {
 
 func (s *Service) loadTopic(ctx context.Context, id int64) (topic, error) {
 	t := topic{ID: id}
-	err := s.DB.Writer().QueryRowContext(ctx, `SELECT t.title, r.title, t.dir_name, t.stable_key, COALESCE(g.title, '')
-		FROM topics t JOIN roadmaps r ON r.id = t.roadmap_id LEFT JOIN groups g ON g.id = t.group_id WHERE t.id = ?`, id).
-		Scan(&t.Title, &t.Roadmap, &t.Dir, &t.StableKey, &t.Group)
+	err := s.DB.Writer().QueryRowContext(ctx, `SELECT t.title, r.title, t.dir_name, t.stable_key, COALESCE(g.title, ''), COALESCE(f.rel_path, '')
+		FROM topics t JOIN roadmaps r ON r.id = t.roadmap_id LEFT JOIN groups g ON g.id = t.group_id
+		LEFT JOIN files f ON f.id = t.source_file_id WHERE t.id = ?`, id).
+		Scan(&t.Title, &t.Roadmap, &t.Dir, &t.StableKey, &t.Group, &t.Source)
 	if errors.Is(err, sql.ErrNoRows) {
 		return t, fmt.Errorf("%w: topic %d", domain.ErrNotFound, id)
 	}
@@ -197,6 +201,11 @@ func (s *Service) input(jobID int64, t topic, lessonMD []byte, count int) (promp
 		return in, err
 	}
 	in.Files = map[string][]byte{"task.json": task, "lesson.md": lessonMD}
+	if t.Source != "" { // TDD §12.8: exercises stay inside the chapter text
+		if in.Files["source.md"], err = prompt.ReadSource(s.Root, t.Source, s.MaxSource); err != nil {
+			return in, err
+		}
+	}
 	return in, nil
 }
 

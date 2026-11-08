@@ -48,6 +48,7 @@ type Service struct {
 	Stall          time.Duration // config jobs.stall_timeout
 	Parallel       int           // config jobs.evaluate_parallelism
 	MaxAnswerBytes int64         // config limits.max_answer_bytes
+	MaxSource      int64         // config limits.max_source_bytes
 }
 
 // Output is what a done step leaves in staging for the commit (T5.5).
@@ -82,6 +83,7 @@ func (s *Service) Handle(ctx context.Context, j jobs.Job) error {
 
 type shared struct {
 	exercisesMD []byte
+	source      []byte // chapter source.md; nil = topic has no source text
 	rubric      map[string]schema.RubricExercise
 	in          prompt.Input // Agents, Profile, Skill, Schema; Files/Step set per exercise
 }
@@ -89,13 +91,13 @@ type shared struct {
 func (s *Service) run(ctx context.Context, j jobs.Job, mode string) error {
 	s.phase(ctx, j.ID, "prepare")
 	var set setInfo
-	var exRel, rubricRel string
+	var exRel, rubricRel, sourceRel string
 	err := s.DB.Writer().QueryRowContext(ctx, `SELECT x.id, x.version, x.rubric_version, fe.rel_path, fr.rel_path, fm.rel_path,
-		t.dir_name, t.stable_key, t.title FROM exercise_sets x
+		t.dir_name, t.stable_key, t.title, COALESCE(fs.rel_path, '') FROM exercise_sets x
 		JOIN files fe ON fe.id = x.exercises_file JOIN files fr ON fr.id = x.rubric_file JOIN files fm ON fm.id = x.manifest_file
-		JOIN topics t ON t.id = x.topic_id
+		JOIN topics t ON t.id = x.topic_id LEFT JOIN files fs ON fs.id = t.source_file_id
 		WHERE x.topic_id = ? AND x.is_current = 1`, j.TopicID).Scan(&set.ID, &set.Version, &set.RubricVersion, &exRel, &rubricRel,
-		&set.ManifestRel, &set.TopicDir, &set.StableKey, &set.TopicTitle)
+		&set.ManifestRel, &set.TopicDir, &set.StableKey, &set.TopicTitle, &sourceRel)
 	if errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("%w: topic %d has no exercise set", domain.ErrInvalidState, j.TopicID)
 	}
@@ -122,6 +124,11 @@ func (s *Service) run(ctx context.Context, j jobs.Job, mode string) error {
 	}
 	if sh.exercisesMD, err = read(exRel); err != nil {
 		return err
+	}
+	if sourceRel != "" { // TDD §12.8: the rubric first, then the chapter text, is the reference
+		if sh.source, err = prompt.ReadSource(s.Root, sourceRel, s.MaxSource); err != nil {
+			return err
+		}
 	}
 	rubricB, err := read(rubricRel)
 	if err != nil {
@@ -150,7 +157,7 @@ func (s *Service) run(ctx context.Context, j jobs.Job, mode string) error {
 	// Same fingerprint ⇒ a retry may reuse the failed job's done steps (TDD §6.4).
 	var fp bytes.Buffer
 	fp.WriteString(s.Model + "\x00")
-	for _, b := range [][]byte{sh.in.Skill, sh.in.Agents, sh.in.Profile, sh.exercisesMD, rubricB} {
+	for _, b := range [][]byte{sh.in.Skill, sh.in.Agents, sh.in.Profile, sh.exercisesMD, rubricB, sh.source} {
 		fp.WriteString(fsx.HashBytes(b) + "\x00")
 	}
 	for _, pk := range sel.Send {
@@ -308,6 +315,9 @@ func (s *Service) step(ctx context.Context, j jobs.Job, sh shared, pk topics.Pic
 	in := sh.in
 	in.Step = pk.ExID
 	in.Files = map[string][]byte{"task.json": task, "question.md": question, "rubric.json": rubricJSON, answerName: pk.Body}
+	if sh.source != nil {
+		in.Files["source.md"] = sh.source
+	}
 	req, err := (&prompt.Composer{Root: s.Root}).Compose(in)
 	if err != nil {
 		return err

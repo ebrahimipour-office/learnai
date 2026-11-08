@@ -308,11 +308,12 @@ func runServe(args []string) {
 	runner.Register(domain.JobKindExercises, (&exercises.Service{
 		DB: db, Root: root, Adapter: adapter, Model: cfg.Adapter.Model, Language: cfg.Language,
 		Timeout: cfg.Jobs.TimeoutExercises, Stall: cfg.Jobs.StallTimeout, Config: cfg.Exercises,
+		MaxSource: cfg.Limits.MaxSourceBytes,
 	}).Handle)
 	runner.Register(domain.JobKindEvaluate, (&evaluation.Service{
 		DB: db, Root: root, Adapter: adapter, Model: cfg.Adapter.Model, Language: cfg.Language,
 		Timeout: cfg.Jobs.TimeoutEvaluateItem, Stall: cfg.Jobs.StallTimeout, Parallel: cfg.Jobs.EvaluateParallelism,
-		MaxAnswerBytes: cfg.Limits.MaxAnswerBytes,
+		MaxAnswerBytes: cfg.Limits.MaxAnswerBytes, MaxSource: cfg.Limits.MaxSourceBytes,
 	}).Handle)
 	analyzer := &roadmaps.Analyzer{
 		Drafts: drafts, Adapter: adapter, Model: cfg.Adapter.Model, Timeout: cfg.Jobs.TimeoutAnalyze, Stall: cfg.Jobs.StallTimeout,
