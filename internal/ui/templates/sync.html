@@ -7,7 +7,7 @@
   <button type="submit">اسکن اکنون</button>
 </form>
 {{with .Sync}}
-<p class="count">آخرین اسکن: <bdi>{{.StartedAt}}</bdi> — {{len .Report.Missing}} گم‌شده، {{len .Report.Moved}} جابه‌جاشده، {{len .Report.New}} جدید، {{len .Report.Modified}} تغییرکرده</p>
+<p class="count">آخرین اسکن: <bdi>{{localTime .StartedAt}}</bdi> — {{len .Report.Missing}} گم‌شده، {{len .Report.Moved}} جابه‌جاشده، {{len .Report.New}} جدید، {{len .Report.Modified}} تغییرکرده</p>
 
 {{if .Report.Moved}}<section aria-label="جابه‌جاشده">
 <h2>جابه‌جاشده</h2>

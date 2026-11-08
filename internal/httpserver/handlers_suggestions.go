@@ -23,9 +23,9 @@ func (a *app) showSuggestions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) renderSuggestions(w http.ResponseWriter, r *http.Request, topicID int64, status int, msg string) {
-	d, err := a.panelData(r, topicID, nil)
+	d, err := a.panelData(r, topicID, "suggestions", nil)
 	if err == nil {
-		d.Tab, d.Error = "suggestions", msg
+		d.Error = msg
 		d.Suggestions, err = a.topics.Suggestions(r.Context(), topicID)
 	}
 	if errors.Is(err, domain.ErrNotFound) {

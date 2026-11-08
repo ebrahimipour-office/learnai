@@ -227,3 +227,23 @@ func TestPanelSafetyAndNotFound(t *testing.T) {
 		t.Errorf("enqueue unknown topic: want 404, got %d", rec.Code)
 	}
 }
+
+// B7: a tab shows only its own kind's card, but a job of another kind still disables every action (R11.2-2).
+func TestTabShowsOwnJobKind(t *testing.T) {
+	e := newEnv(t)
+	e.seedTopics()
+	if _, err := e.db.Writer().Exec(`INSERT INTO jobs (kind, scope_key, topic_id, status, started_at)
+		VALUES ('exercises', 'topic:1', 1, 'running', '2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	lesson := e.get("/topics/1").Body.String()
+	if strings.Contains(lesson, "<strong>تولید تمرین</strong>") || strings.Contains(lesson, `hx-trigger="every 2s"`) {
+		t.Error("lesson tab must not show the exercises job card")
+	}
+	if !strings.Contains(lesson, `type="submit" disabled`) || !strings.Contains(lesson, "کار دیگری روی این موضوع در جریان است") {
+		t.Error("lesson button must be disabled while another job of the topic runs")
+	}
+	if ex := e.get("/topics/1/exercises").Body.String(); !strings.Contains(ex, "<strong>تولید تمرین</strong>") {
+		t.Error("exercises tab must show its running job card")
+	}
+}

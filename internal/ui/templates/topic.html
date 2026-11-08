@@ -21,7 +21,7 @@
     <ul>{{range .Panel.Lessons}}
       <li><a href="/topics/{{$.Panel.ID}}/lesson?v={{.Version}}"{{if and $.Viewing (eq $.Viewing.Version .Version)}} aria-current="true"{{end}}>نسخه {{.Version}}</a>
         {{if .Current}}<span class="badge">جاری</span>{{end}}
-        <span class="note"><bdi>{{.CreatedAt}}</bdi>{{with .Model}} · <bdi>{{.}}</bdi>{{end}}</span></li>{{end}}
+        <span class="note"><bdi>{{localTime .CreatedAt}}</bdi>{{with .Model}} · <bdi>{{.}}</bdi>{{end}}</span></li>{{end}}
     </ul>
   </details>
   {{with .Viewing}}{{if not .Current}}<p class="note">در حال مشاهده نسخه قدیمی {{.Version}}. <a href="/topics/{{$.Panel.ID}}/lesson">نسخه جاری</a></p>{{end}}{{end}}
@@ -40,7 +40,7 @@
     <ul>{{range .Sets}}
       <li><a href="/topics/{{$.Panel.ID}}/{{$.Tab}}?v={{.Version}}"{{if eq $.Set.Version .Version}} aria-current="true"{{end}}>مجموعه v{{.Version}}</a>
         {{if .Current}}<span class="badge">جاری</span>{{end}}
-        <span class="note"><bdi>{{.CreatedAt}}</bdi>{{with .Model}} · <bdi>{{.}}</bdi>{{end}}</span></li>{{end}}
+        <span class="note"><bdi>{{localTime .CreatedAt}}</bdi>{{with .Model}} · <bdi>{{.}}</bdi>{{end}}</span></li>{{end}}
     </ul>
   </details>{{end}}
   {{if not .Set.Current}}<p class="note">در حال مشاهده مجموعه قدیمی v{{.Set.Version}}. <a href="/topics/{{.Panel.ID}}/{{.Tab}}">مجموعه جاری</a></p>{{end}}
@@ -95,7 +95,7 @@
   <table class="grid"><thead><tr><th>تلاش</th><th>تاریخ</th><th>حالت</th><th>نمره موضوع</th><th>پاسخ‌داده‌شده</th></tr></thead>
     <tbody>{{range .Attempts}}<tr>
       <td><a href="/topics/{{$.Panel.ID}}/reports?v={{$.Set.Version}}&amp;attempt={{.No}}"{{if eq $.Attempt.No .No}} aria-current="true"{{end}}>تلاش {{.No}}</a></td>
-      <td><bdi>{{.FinishedAt}}</bdi></td><td>{{evalMode .Mode}}</td>
+      <td><bdi>{{localTime .FinishedAt}}</bdi></td><td>{{evalMode .Mode}}</td>
       <td class="score">{{num .Score}}</td>
       <td>{{if .Partial}}<span class="badge warn">ناقص ({{.Answered}} از {{.Total}} پاسخ‌داده‌شده)</span>{{else}}{{.Answered}} از {{.Total}}{{end}}</td>
     </tr>{{end}}</tbody>
@@ -127,7 +127,8 @@
 {{define "job-area"}}
 <div id="job-area" aria-live="polite"{{if and .Job .Job.Active}} hx-get="/jobs/{{.Job.ID}}/card?poll=1&amp;tab={{.Tab}}" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
   {{with .Notice}}<p class="error" role="alert">{{.}}</p>{{end}}
-  {{$busy := and .Job .Job.Active}}
+  {{$busy := or .Panel.Busy (and .Job .Job.Active)}}
+  {{if and .Panel.Busy (not (and .Job .Job.Active))}}<p class="note">کار دیگری روی این موضوع در جریان است؛ پس از پایان آن صفحه را تازه کنید.</p>{{end}}
   {{if eq .Tab "suggestions"}}
   {{else if eq .Tab "reports"}}
   {{if .Sets}}
@@ -170,7 +171,7 @@
     <strong>{{jobKind .Kind}}</strong> <span class="badge">{{jobStatus .Status}}</span>
     {{if .Active}}{{with .Phase}}<span>مرحله: {{jobPhase .}}</span>{{end}}{{end}}
     {{if .Total}}<progress value="{{.Done}}" max="{{.Total}}">{{.Done}}/{{.Total}}</progress>{{end}}
-    {{if .Duration}}<span class="note">مدت: <bdi>{{.Duration}}</bdi></span>{{end}}
+    {{if .Duration}}<span class="note">مدت: {{faDuration .Duration}}</span>{{end}}
     {{if eq .Status "failed"}}{{$msg := aiMessage .ErrorCode}}<p class="error">{{if $msg}}{{$msg}}{{else}}<bdi>{{.ErrorMessage}}</bdi>{{end}}
       {{if or (eq .ErrorCode "auth_required") (eq .ErrorCode "adapter_missing")}}<a href="/settings">تنظیمات</a>{{end}}</p>
     {{if $msg}}<details><summary>جزئیات فنی</summary><pre>{{.ErrorMessage}}</pre> <code>{{.ErrorCode}}</code></details>{{end}}

@@ -67,9 +67,8 @@ func (a *app) showSetTab(w http.ResponseWriter, r *http.Request, tab string) {
 		http.NotFound(w, r)
 		return
 	}
-	d, err := a.panelData(r, id, nil)
+	d, err := a.panelData(r, id, tab, nil)
 	if err == nil {
-		d.Tab = tab
 		err = a.fillSet(r, d)
 	}
 	if errors.Is(err, domain.ErrNotFound) {

@@ -326,7 +326,8 @@ func TestReportsTab(t *testing.T) {
 	a := res.Aggregate
 	for _, want := range []string{
 		"تلاش " + strconv.Itoa(res.AttemptNo),
-		`<td class="score">` + strconv.FormatFloat(a.WeightedScore, 'f', -1, 64) + "</td>",
+		`<td class="score">` + strconv.FormatFloat(a.WeightedScore, 'f', 2, 64) + "</td>",
+		`<strong>ارزیابی</strong>`,
 		"ناقص (" + strconv.Itoa(a.AnsweredCount) + " از " + strconv.Itoa(a.TotalCount) + " پاسخ‌داده‌شده)",
 		`aria-current="page">گزارش‌ها`,
 	} {
@@ -341,6 +342,14 @@ func TestReportsTab(t *testing.T) {
 	}
 	if strings.Contains(page, "RAW-ANSWER") {
 		t.Error("report body must show only on the exercise report page")
+	}
+
+	// B7: each tab shows only its own job kind's card; B8: one score format on every page.
+	if strings.Contains(e.get("/topics/1/lesson").Body.String(), `<strong>ارزیابی</strong>`) {
+		t.Error("lesson tab must not show the evaluate job card")
+	}
+	if want := `<span class="score">` + strconv.FormatFloat(a.WeightedScore, 'f', 2, 64) + "</span>"; !strings.Contains(e.get("/topics").Body.String(), want) {
+		t.Errorf("topics list score must match the reports tab: want %q", want)
 	}
 
 	// Exercise report page: the committed qNN-report.md with the raw answer.

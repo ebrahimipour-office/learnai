@@ -120,7 +120,9 @@ func newApp(sm *SecurityManager, drafts *roadmaps.Service, topicList *topics.Ser
 		"difficulty":  func(s string) string { return difficultyLabels[s] },
 		"itemStatus":  func(s string) string { return itemStatusLabels[s] },
 		"evalMode":    func(s string) string { return evalModeLabels[s] },
-		"num":         func(f float64) string { return strconv.FormatFloat(f, 'f', -1, 64) },
+		"num":         func(f float64) string { return strconv.FormatFloat(f, 'f', 2, 64) },
+		"localTime":   localTime,
+		"faDuration":  faDuration,
 		"sugKind":     func(s string) string { return suggestionKindLabels[s] },
 		"sugStatus":   func(s string) string { return suggestionStatusLabels[s] },
 		"fileKind":    func(s string) string { return fileKindLabels[s] },
@@ -350,7 +352,7 @@ func (a *app) draftAI(r *http.Request, d *roadmaps.Draft, data *pageData) error 
 			}
 		}
 	}
-	j, err := a.runner.Latest(r.Context(), roadmaps.DraftScope(d.ID))
+	j, err := a.runner.Latest(r.Context(), roadmaps.DraftScope(d.ID), domain.JobKindRoadmapAnalyze)
 	data.Job = j
 	return err
 }
@@ -373,7 +375,7 @@ func (a *app) draftAIStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Query().Get("poll") == "1" {
-		if j, err := a.runner.Latest(r.Context(), roadmaps.DraftScope(d.ID)); err == nil && (j == nil || !j.Active()) {
+		if j, err := a.runner.Latest(r.Context(), roadmaps.DraftScope(d.ID), domain.JobKindRoadmapAnalyze); err == nil && (j == nil || !j.Active()) {
 			w.Header().Set("HX-Refresh", "true")
 		}
 	}

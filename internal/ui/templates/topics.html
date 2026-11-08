@@ -38,7 +38,7 @@
 <li class="topic{{if eq .State "archived"}} archived{{end}}">
   <a href="/topics/{{.ID}}"><bdi>{{.Title}}</bdi></a>
   <span class="badge">{{statusLabel .Status}}</span>
-  {{if .Score.Valid}}<span class="score">{{printf "%.0f" .Score.Float64}}</span>{{if .Partial}} <span class="badge warn">ناقص</span>{{end}}{{end}}
+  {{if .Score.Valid}}<span class="score">{{num .Score.Float64}}</span>{{if .Partial}} <span class="badge warn">ناقص</span>{{end}}{{end}}
   {{if eq .Origin "suggested"}}<span class="badge suggested">پیشنهادی</span>{{end}}
   {{if eq .State "archived"}}<span class="badge">بایگانی‌شده</span>{{end}}
   {{if .Busy}}<span class="badge busy">در حال اجرا</span>{{end}}

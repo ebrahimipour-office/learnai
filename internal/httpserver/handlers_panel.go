@@ -30,19 +30,24 @@ func pathID(r *http.Request) (int64, bool) {
 	return id, err == nil && id > 0
 }
 
-// panelData loads the topic and its latest job; job overrides the latest one when non-nil.
-func (a *app) panelData(r *http.Request, id int64, job *jobs.Info) (*pageData, error) {
+// tabJobKind is the one job kind whose card a tab shows (B7); suggestions has none.
+var tabJobKind = map[string]domain.JobKind{
+	"": domain.JobKindLesson, "exercises": domain.JobKindExercises, "answers": domain.JobKindExercises, "reports": domain.JobKindEvaluate,
+}
+
+// panelData loads the topic and its tab's latest job; job overrides the latest one when non-nil.
+func (a *app) panelData(r *http.Request, id int64, tab string, job *jobs.Info) (*pageData, error) {
 	p, err := a.topics.Panel(r.Context(), id)
 	if err != nil {
 		return nil, err
 	}
-	if job == nil {
-		if job, err = a.runner.Latest(r.Context(), topics.Scope(id)); err != nil {
+	if kind, ok := tabJobKind[tab]; ok && job == nil {
+		if job, err = a.runner.Latest(r.Context(), topics.Scope(id), kind); err != nil {
 			return nil, err
 		}
 	}
 	c := a.settings.Exercises
-	return &pageData{Title: p.Title, Panel: p, Job: job, Tab: tabOf(r), CountMin: c.CountMin, CountMax: c.CountMax}, nil
+	return &pageData{Title: p.Title, Panel: p, Job: job, Tab: tab, CountMin: c.CountMin, CountMax: c.CountMax}, nil
 }
 
 func (a *app) showTopic(w http.ResponseWriter, r *http.Request) {
@@ -51,7 +56,7 @@ func (a *app) showTopic(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	d, err := a.panelData(r, id, nil)
+	d, err := a.panelData(r, id, tabOf(r), nil)
 	if errors.Is(err, domain.ErrNotFound) {
 		http.NotFound(w, r)
 		return
@@ -94,7 +99,7 @@ func (a *app) respond(w http.ResponseWriter, r *http.Request, status int, topicI
 		http.Redirect(w, r, "/topics/"+strconv.FormatInt(topicID, 10), http.StatusSeeOther)
 		return
 	}
-	d, err := a.panelData(r, topicID, job)
+	d, err := a.panelData(r, topicID, tabOf(r), job)
 	if err != nil {
 		slog.Error("loading topic panel", "topic", topicID, "error", err)
 		http.Error(w, "خطای داخلی", http.StatusInternalServerError)

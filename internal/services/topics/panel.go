@@ -14,6 +14,7 @@ type Panel struct {
 	ID                    int64
 	Title, Group, Roadmap string
 	Status, State, Origin string
+	Busy                  bool            // has a queued or running job of any kind: every action button is disabled
 	Lessons               []LessonVersion // newest first
 }
 
@@ -32,9 +33,10 @@ func Scope(id int64) string { return "topic:" + strconv.FormatInt(id, 10) }
 func (s *Service) Panel(ctx context.Context, id int64) (*Panel, error) {
 	p := &Panel{ID: id}
 	err := s.db.Writer().QueryRowContext(ctx, `
-		SELECT t.title, COALESCE(g.title, ''), r.title, t.status, t.state, t.origin
+		SELECT t.title, COALESCE(g.title, ''), r.title, t.status, t.state, t.origin,
+		       EXISTS (SELECT 1 FROM jobs j WHERE j.topic_id = t.id AND j.status IN ('queued','running'))
 		FROM topics t JOIN roadmaps r ON r.id = t.roadmap_id LEFT JOIN groups g ON g.id = t.group_id
-		WHERE t.id = ?`, id).Scan(&p.Title, &p.Group, &p.Roadmap, &p.Status, &p.State, &p.Origin)
+		WHERE t.id = ?`, id).Scan(&p.Title, &p.Group, &p.Roadmap, &p.Status, &p.State, &p.Origin, &p.Busy)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
