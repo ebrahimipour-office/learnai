@@ -73,6 +73,8 @@ func TestRebuildFromFiles(t *testing.T) {
 	}
 	files := map[string]string{
 		"roadmaps/go/rev-001.md":                            roadmapMD,
+		"topics/02-http/source.md":                          "### HTTP\n\n",
+		"topics/02-http/source-history/source.0001.md":      "old\n",
 		"topics/02-http/lesson/lesson.md":                   "# HTTP v2\n",
 		"topics/02-http/lesson/history/lesson.0001.md":      "# HTTP v1\n",
 		"topics/02-http/exercises/v1/exercises.md":          "## [q01] One\n\n## [q02] Two\n",
@@ -113,7 +115,7 @@ func TestRebuildFromFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rep.Roadmaps != 1 || rep.Topics != 4 || rep.Lessons != 4 || rep.Sets != 1 || rep.Attempts != 1 || rep.Files != 12 || len(rep.Warnings) != 1 {
+	if rep.Roadmaps != 1 || rep.Topics != 4 || rep.Lessons != 4 || rep.Sets != 1 || rep.Attempts != 1 || rep.Files != 14 || len(rep.Warnings) != 1 {
 		t.Errorf("report = %+v", rep)
 	}
 
@@ -175,6 +177,15 @@ func TestRebuildFromFiles(t *testing.T) {
 	db.Writer().QueryRow(`SELECT COUNT(*) FROM lesson_versions WHERE is_current = 0`).Scan(&hist)
 	if cur != 2 || hist != 1 {
 		t.Errorf("lesson current v%d, history %d", cur, hist)
+	}
+	// The chapter text is linked to its topic with its own hash; the range comes from the revision (§12.6).
+	var srcRel, srcSHA, topicSHA string
+	var start, end, srcRows int
+	db.Writer().QueryRow(`SELECT f.rel_path, f.sha256, t.source_sha256, t.source_start_line, t.source_end_line FROM topics t
+		JOIN files f ON f.id = t.source_file_id WHERE t.dir_name = '02-http'`).Scan(&srcRel, &srcSHA, &topicSHA, &start, &end)
+	db.Writer().QueryRow(`SELECT COUNT(*) FROM files WHERE kind = 'source'`).Scan(&srcRows)
+	if srcRel != "topics/02-http/source.md" || srcSHA != fsx.HashString("### HTTP\n\n") || topicSHA != srcSHA || start != 7 || end != 8 || srcRows != 2 {
+		t.Errorf("source: %s %s %s %d-%d rows %d", srcRel, srcSHA, topicSHA, start, end, srcRows)
 	}
 	var orphans int
 	db.Writer().QueryRow(`SELECT COUNT(*) FROM files WHERE owner_id IS NULL OR presence != 'present'`).Scan(&orphans)

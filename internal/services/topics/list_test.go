@@ -127,6 +127,9 @@ func TestListShowsLatestAttemptOfCurrentSet(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// the fixed file ids below need the source.md row of the import (§12.6) out of the way
+	exec(`UPDATE topics SET source_file_id = NULL`)
+	exec(`DELETE FROM files`)
 	for i := 1; i <= 5; i++ {
 		exec(`INSERT INTO files (id, topic_id, kind, rel_path, sha256, size_bytes) VALUES (?, 1, 'result', ?, 'x', 1)`, i, "f"+string(rune('0'+i)))
 	}

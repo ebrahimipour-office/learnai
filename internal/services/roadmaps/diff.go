@@ -27,6 +27,8 @@ type oldTopic struct {
 	ID                    int64
 	Key, Title, TitleNorm string
 	Outline, State        string
+	Dir, SourceSHA        string        // dir_name; source_sha256 ("" = no source.md yet)
+	SourceFile            sql.NullInt64 // source_file_id
 }
 
 type querier interface {
@@ -34,8 +36,8 @@ type querier interface {
 }
 
 func recordedTopics(ctx context.Context, q querier, roadmapID int64) ([]oldTopic, error) {
-	rows, err := q.QueryContext(ctx, `SELECT id, stable_key, title, title_norm, COALESCE(outline, ''), state
-		FROM topics WHERE roadmap_id = ? AND origin = 'roadmap' ORDER BY ord, id`, roadmapID)
+	rows, err := q.QueryContext(ctx, `SELECT id, stable_key, title, title_norm, COALESCE(outline, ''), state,
+		dir_name, COALESCE(source_sha256, ''), source_file_id FROM topics WHERE roadmap_id = ? AND origin = 'roadmap' ORDER BY ord, id`, roadmapID)
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +45,7 @@ func recordedTopics(ctx context.Context, q querier, roadmapID int64) ([]oldTopic
 	var out []oldTopic
 	for rows.Next() {
 		var o oldTopic
-		if err := rows.Scan(&o.ID, &o.Key, &o.Title, &o.TitleNorm, &o.Outline, &o.State); err != nil {
+		if err := rows.Scan(&o.ID, &o.Key, &o.Title, &o.TitleNorm, &o.Outline, &o.State, &o.Dir, &o.SourceSHA, &o.SourceFile); err != nil {
 			return nil, err
 		}
 		out = append(out, o)

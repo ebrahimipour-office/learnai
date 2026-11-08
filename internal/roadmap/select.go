@@ -36,6 +36,7 @@ type Topic struct {
 	StableKey string `json:"stable_key"`
 	Title     string `json:"title"`
 	Line      int    `json:"line"`
+	EndLine   int    `json:"end_line,omitempty"` // source range Line..EndLine (§12.4); 0 = no source text (items rule)
 	Group     int    `json:"group"`
 	Outline   string `json:"outline,omitempty"`
 }
@@ -58,10 +59,11 @@ func Select(root *Node, r Rule) (*Selection, error) {
 	groupIdx := map[*Node]int{}
 	var groupPaths []string // normalized key path of each entry in s.Groups
 	usedG, usedT := map[string]bool{}, map[string]bool{}
-	chTitle := map[int]string{} // RuleChapters: the chapter title replaces the heading title, not its key
+	chapter := map[int]Chapter{} // RuleChapters: the chapter title and range replace the heading's, not its key
 	if r.Kind == RuleChapters {
 		for _, c := range r.Chapters {
-			chTitle[c.Line] = strings.TrimSpace(c.Title)
+			c.Title = strings.TrimSpace(c.Title)
+			chapter[c.Line] = c
 		}
 	}
 	pathOf := func(group int) string {
@@ -94,11 +96,14 @@ func Select(root *Node, r Rule) (*Selection, error) {
 			if isTopic(c, n) {
 				g := group(path)
 				key := stableKey(childPath(pathOf(g), c.Title, usedT))
-				title, ok := chTitle[c.Line]
-				if !ok {
-					title = c.Title
+				t := Topic{StableKey: key, Title: c.Title, Line: c.Line, Group: g, Outline: outline(c)}
+				if c.Kind == KindHeading {
+					t.EndLine = c.EndLine
 				}
-				s.Topics = append(s.Topics, Topic{StableKey: key, Title: title, Line: c.Line, Group: g, Outline: outline(c)})
+				if ch, ok := chapter[c.Line]; ok {
+					t.Title, t.EndLine = ch.Title, ch.EndLine
+				}
+				s.Topics = append(s.Topics, t)
 			} else if c.Kind == KindHeading {
 				walk(c, append(path[:len(path):len(path)], c))
 			}

@@ -75,9 +75,9 @@ func TestConfirmRecordsKeptTopics(t *testing.T) {
 		}
 		i++
 	}
-	// Topic folders are created on first generation, not on import.
-	if _, err := os.Stat(filepath.Join(base, "topics")); !os.IsNotExist(err) {
-		t.Errorf("topics/ must not exist after import: %v", err)
+	// Import puts only each chapter's text in its topic folder (§12.6); lessons come on first generation.
+	if ents, _ := os.ReadDir(filepath.Join(base, "topics", "01-types")); len(ents) != 1 || ents[0].Name() != "source.md" {
+		t.Errorf("topics/01-types after import: %v", ents)
 	}
 
 	// A second import of the same name gets fresh slug and dir numbers.
@@ -117,8 +117,10 @@ func TestConfirmIsAllOrNothing(t *testing.T) {
 				t.Errorf("%s: want 0 rows after failure, got %d", table, n)
 			}
 		}
-		if _, err := os.Stat(filepath.Join(base, "roadmaps")); !os.IsNotExist(err) {
-			t.Errorf("roadmaps/ must not exist after failure: %v", err)
+		for _, dir := range []string{"roadmaps", "topics"} {
+			if _, err := os.Stat(filepath.Join(base, dir)); !os.IsNotExist(err) {
+				t.Errorf("%s/ must not exist after failure: %v", dir, err)
+			}
 		}
 		if _, err := s.Draft(ctx, id); err != nil {
 			t.Errorf("draft must survive a failed confirm: %v", err)

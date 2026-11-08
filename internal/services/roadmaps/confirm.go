@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -23,8 +25,9 @@ const maxDirSlugRunes = 40
 // revision (re-import), groups and topics, plus roadmaps/<slug>/rev-NNN.md written with WriteNew.
 // Excluded topics are skipped, and so are groups left without topics. On re-import, topics are
 // matched by stable key and updated in place (dir_name never changes); recorded topics and groups
-// that are no longer kept are only archived, never deleted. The draft is consumed. On any failure
-// no rows change and the revision file is not left behind.
+// that are no longer kept are only archived, never deleted. The draft is consumed. Each topic with a
+// source range gets its chapter text in topics/<dir>/source.md (§12.6). On any failure no rows change
+// and no file written by this confirm is left behind.
 func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topics int, err error) {
 	d, err := s.Draft(ctx, id)
 	if err != nil {
@@ -60,7 +63,7 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 		return 0, 0, err
 	}
 	keysJSON := func(keys []string) string { b, _ := json.Marshal(append([]string{}, keys...)); return string(b) }
-	var revPath string // set once the file exists, so a failed commit can remove it
+	var undo []func() // reverts each file write done so far, so a failed commit leaves the disk as it was
 
 	err = s.db.WithTx(ctx, func(tx *sql.Tx) error {
 		// Deleting first makes a second concurrent confirm of the same draft fail instead of importing twice.
@@ -142,10 +145,11 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 		if err != nil {
 			return err
 		}
-		oldID := make(map[string]int64, len(old))
+		oldByKey := make(map[string]oldTopic, len(old))
 		for _, o := range old {
-			oldID[o.Key] = o.ID
+			oldByKey[o.Key] = o
 		}
+		var writes []sourceWrite
 		// Topics are never deleted (only archived), so the count is a gap-free global sequence
 		// that keeps dir_name unique across roadmaps.
 		var seq int
@@ -158,25 +162,39 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 				group = groupID[t.Group]
 			}
 			outline := sql.NullString{String: t.Outline, Valid: t.Outline != ""}
-			if tid, ok := oldID[t.StableKey]; ok {
+			o, ok := oldByKey[t.StableKey]
+			if ok {
 				_, err := tx.ExecContext(ctx,
 					`UPDATE topics SET group_id = ?, title = ?, title_norm = ?, outline = ?, ord = ?, state = 'active',
 					   source_rev_id = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`,
-					group, t.Title, roadmap.Normalize(t.Title), outline, float64(i+1), revID, tid)
+					group, t.Title, roadmap.Normalize(t.Title), outline, float64(i+1), revID, o.ID)
 				if err != nil {
 					return fmt.Errorf("updating topic %q: %w", t.Title, err)
 				}
-				continue
+			} else {
+				seq++
+				slug, dir := TopicDir(seq, t.Title)
+				res, err := tx.ExecContext(ctx,
+					`INSERT INTO topics (roadmap_id, group_id, stable_key, title, title_norm, outline, ord, slug, dir_name, source_rev_id)
+					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+					roadmapID, group, t.StableKey, t.Title, roadmap.Normalize(t.Title), outline,
+					float64(i+1), slug, dir, revID)
+				if err != nil {
+					return fmt.Errorf("inserting topic %q: %w", t.Title, err)
+				}
+				if o.ID, err = res.LastInsertId(); err != nil {
+					return err
+				}
+				o.Dir = dir
 			}
-			seq++
-			slug, dir := TopicDir(seq, t.Title)
-			_, err := tx.ExecContext(ctx,
-				`INSERT INTO topics (roadmap_id, group_id, stable_key, title, title_norm, outline, ord, slug, dir_name, source_rev_id)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-				roadmapID, group, t.StableKey, t.Title, roadmap.Normalize(t.Title), outline,
-				float64(i+1), slug, dir, revID)
-			if err != nil {
-				return fmt.Errorf("inserting topic %q: %w", t.Title, err)
+			if t.EndLine > 0 {
+				w, err := s.recordSource(ctx, tx, o, t, d.Content)
+				if err != nil {
+					return fmt.Errorf("recording source of %q: %w", t.Title, err)
+				}
+				if w != nil {
+					writes = append(writes, *w)
+				}
 			}
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE topics SET state = 'archived', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
@@ -185,20 +203,105 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 			return fmt.Errorf("archiving topics: %w", err)
 		}
 
-		// The file goes last: any earlier failure leaves nothing on disk.
+		// Files go last: any earlier failure leaves nothing on disk. Files created with O_EXCL are ours to remove.
 		if err := s.root.WriteNew(rel, d.Content, 0o644); err != nil {
 			return fmt.Errorf("writing %s: %w", rel, err)
 		}
-		revPath = rel
+		undo = append(undo, func() { _ = s.root.Remove(rel) })
+		for _, w := range writes {
+			if err := s.writeSource(w, &undo); err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 	if err != nil {
-		if revPath != "" { // commit failed after the write; we created it with O_EXCL, so it is ours
-			_ = s.root.Remove(revPath)
+		for i := len(undo) - 1; i >= 0; i-- {
+			undo[i]()
 		}
 		return 0, 0, err
 	}
 	return roadmapID, len(kept), nil
+}
+
+// sourceWrite is a chapter text to put on disk once its rows are recorded. hist != "" means source.md
+// exists and its current bytes (prev) move to hist first.
+type sourceWrite struct {
+	rel, hist  string
+	data, prev []byte
+}
+
+// recordSource records the chapter text of topic o (range t.Line..t.EndLine of content) and returns the
+// file write it needs, or nil when the text is unchanged since the last import (§12.6).
+func (s *Service) recordSource(ctx context.Context, tx *sql.Tx, o oldTopic, t roadmap.Topic, content []byte) (*sourceWrite, error) {
+	data := roadmap.Slice(content, t.Line, t.EndLine)
+	sha := fsx.HashBytes(data)
+	if _, err := tx.ExecContext(ctx, `UPDATE topics SET source_start_line = ?, source_end_line = ?, source_sha256 = ? WHERE id = ?`,
+		t.Line, t.EndLine, sha, o.ID); err != nil {
+		return nil, err
+	}
+	if sha == o.SourceSHA {
+		return nil, nil // same text, maybe moved: the file (and any user edit of it) stays
+	}
+	w := &sourceWrite{rel: path.Join("topics", o.Dir, "source.md"), data: data}
+	if !o.SourceFile.Valid {
+		res, err := tx.ExecContext(ctx, `INSERT INTO files (topic_id, kind, owner_type, owner_id, rel_path, sha256, size_bytes, observed_sha256)
+			VALUES (?, 'source', 'topic', ?, ?, ?, ?, ?)`, o.ID, o.ID, w.rel, sha, len(data), sha)
+		if err != nil {
+			return nil, err
+		}
+		fileID, err := res.LastInsertId()
+		if err != nil {
+			return nil, err
+		}
+		_, err = tx.ExecContext(ctx, `UPDATE topics SET source_file_id = ? WHERE id = ?`, fileID, o.ID)
+		return w, err
+	}
+	// Keep what is on disk now (the user may have edited it) before replacing it (I1).
+	prev, err := s.root.ReadFile(w.rel)
+	switch {
+	case err == nil:
+		var n int // rows of this topic's source files = source.md + earlier history, so n numbers the next one
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM files WHERE topic_id = ? AND kind = 'source'`, o.ID).Scan(&n); err != nil {
+			return nil, err
+		}
+		w.hist, w.prev = path.Join("topics", o.Dir, "source-history", fmt.Sprintf("source.%04d.md", n)), prev
+		ph := fsx.HashBytes(prev)
+		if _, err := tx.ExecContext(ctx, `INSERT INTO files (topic_id, kind, owner_type, owner_id, rel_path, sha256, size_bytes, observed_sha256)
+			VALUES (?, 'source', 'topic', ?, ?, ?, ?, ?)`, o.ID, o.ID, w.hist, ph, len(prev), ph); err != nil {
+			return nil, err
+		}
+	case !errors.Is(err, fs.ErrNotExist): // a missing source.md is just written anew
+		return nil, err
+	}
+	_, err = tx.ExecContext(ctx, `UPDATE files SET sha256 = ?, size_bytes = ?, observed_sha256 = ?, observed_mtime = NULL,
+		observed_at = NULL, presence = 'present' WHERE id = ?`, sha, len(data), sha, o.SourceFile.Int64)
+	return w, err
+}
+
+// writeSource puts w on disk and pushes its revert onto undo. A replaced source.md is restored before
+// its history copy is removed, so the old text is never lost.
+func (s *Service) writeSource(w sourceWrite, undo *[]func()) error {
+	if w.hist == "" {
+		if err := s.root.WriteNew(w.rel, w.data, 0o644); err != nil {
+			return fmt.Errorf("writing %s: %w", w.rel, err)
+		}
+		*undo = append(*undo, func() { _ = s.root.Remove(w.rel) })
+		return nil
+	}
+	if err := s.root.WriteNew(w.hist, w.prev, 0o644); err != nil {
+		return fmt.Errorf("writing %s: %w", w.hist, err)
+	}
+	if err := s.root.WriteAtomic(w.rel, w.data, 0o644); err != nil {
+		_ = s.root.Remove(w.hist)
+		return fmt.Errorf("writing %s: %w", w.rel, err)
+	}
+	*undo = append(*undo, func() {
+		if s.root.WriteAtomic(w.rel, w.prev, 0o644) == nil {
+			_ = s.root.Remove(w.hist)
+		}
+	})
+	return nil
 }
 
 // freeRoadmapSlug picks slug, slug-2, ... unused both in the DB and on disk.

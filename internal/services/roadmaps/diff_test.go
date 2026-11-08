@@ -130,6 +130,9 @@ func TestReimportDiffArchivesAndKeepsFiles(t *testing.T) {
 	}
 	after := fileHashes(t, base)
 	for p, h := range beforeFiles {
+		if filepath.Base(p) == "source.md" && after[p] != h { // a changed chapter keeps its old text (§12.6)
+			p = filepath.Join(filepath.Dir(p), "source-history", "source.0001.md")
+		}
 		if after[p] != h {
 			t.Errorf("%s changed or vanished", p)
 		}

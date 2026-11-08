@@ -327,10 +327,15 @@ func (r *run) insertTopic(c *candidate, slug, dir string) (int64, error) {
 		state = "archived"
 	}
 	outline := sql.NullString{String: c.t.Outline, Valid: c.t.Outline != ""}
+	start := 0 // no source range (items rule) is NULL
+	if c.t.EndLine > 0 {
+		start = c.t.Line
+	}
 	var id int64
 	if err := r.tx.QueryRowContext(r.ctx, `INSERT INTO topics (roadmap_id, group_id, stable_key, title, title_norm, outline, ord, slug,
-		dir_name, state, source_rev_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`, c.roadmapID, group, c.t.StableKey,
-		c.t.Title, roadmap.Normalize(c.t.Title), outline, float64(c.ord), slug, dir, state, c.revID).Scan(&id); err != nil {
+		dir_name, state, source_rev_id, source_start_line, source_end_line) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, 0), NULLIF(?, 0))
+		RETURNING id`, c.roadmapID, group, c.t.StableKey, c.t.Title, roadmap.Normalize(c.t.Title), outline, float64(c.ord), slug, dir,
+		state, c.revID, start, c.t.EndLine).Scan(&id); err != nil {
 		return 0, fmt.Errorf("topic %q (%s): %w", c.t.Title, dir, err)
 	}
 	r.rep.Topics++
@@ -364,8 +369,11 @@ func (r *run) own(fileID, ownerID int64) error {
 	return err
 }
 
-// contents records the lesson versions, exercise sets and attempts found in topics/<dir>.
+// contents records the chapter text, lesson versions, exercise sets and attempts found in topics/<dir>.
 func (r *run) contents(topicID int64, dir, key string) error {
+	if err := r.sources(topicID, dir); err != nil {
+		return err
+	}
 	if err := r.lessons(topicID, dir); err != nil {
 		return err
 	}
@@ -379,6 +387,37 @@ func (r *run) contents(topicID int64, dir, key string) error {
 		}
 	}
 	return nil
+}
+
+// sources records source-history/source.NNNN.md and source.md (§12.6). source_sha256 is the file's
+// own hash: the slice last written is unknown, and an equal hash keeps the next re-import from touching it.
+func (r *run) sources(topicID int64, dir string) error {
+	hist, _, err := r.numbered("topics/"+dir+"/source-history/source.*.md", base, "source.%d.md")
+	if err != nil {
+		return err
+	}
+	for _, rel := range hist {
+		fid, _, err := r.file(topicID, "source", "topic", rel, false)
+		if err != nil {
+			return err
+		}
+		if err := r.own(fid, topicID); err != nil {
+			return err
+		}
+	}
+	rel := "topics/" + dir + "/source.md"
+	if !r.root.Exists(rel) {
+		return nil
+	}
+	fid, sha, err := r.file(topicID, "source", "topic", rel, false)
+	if err != nil {
+		return err
+	}
+	if err := r.own(fid, topicID); err != nil {
+		return err
+	}
+	_, err = r.tx.ExecContext(r.ctx, `UPDATE topics SET source_file_id = ?, source_sha256 = ? WHERE id = ?`, fid, sha, topicID)
+	return err
 }
 
 func (r *run) lessons(topicID int64, dir string) error {

@@ -66,6 +66,10 @@ func TestSelectChapters(t *testing.T) {
 	if len(sel.Topics) != 2 || sel.Topics[0].Title != "فصل یک" || sel.Topics[1].Title != "فصل سه" {
 		t.Fatalf("topics = %+v", sel.Topics)
 	}
+	// the source range is the chapter's (a merged chapter ends past its heading), not the heading's
+	if sel.Topics[0].EndLine != 6 || sel.Topics[1].EndLine != 12 {
+		t.Errorf("chapter ranges: %d, %d", sel.Topics[0].EndLine, sel.Topics[1].EndLine)
+	}
 	// keys come from the heading path, not the chapter title
 	if sel.Topics[0].StableKey != deep.Topics[0].StableKey || sel.Topics[1].StableKey != deep.Topics[2].StableKey {
 		t.Errorf("chapter keys differ from heading keys")

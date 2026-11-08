@@ -48,10 +48,10 @@ func TestSelectDeepestDefault(t *testing.T) {
 	// Leaf headings at any level are topics, including "Resources" which only has list items (B1).
 	s := mustSelect(t, nested, Rule{})
 	want := []Topic{
-		{Title: "Git", Line: 3, Group: 0, Outline: "- branching\n  - rebase\n- merge"},
-		{Title: "Linux", Line: 7, Group: 0},
-		{Title: "Images", Line: 10, Group: 2},
-		{Title: "Resources", Line: 11, Group: -1, Outline: "- a book"},
+		{Title: "Git", Line: 3, EndLine: 6, Group: 0, Outline: "- branching\n  - rebase\n- merge"},
+		{Title: "Linux", Line: 7, EndLine: 7, Group: 0},
+		{Title: "Images", Line: 10, EndLine: 10, Group: 2},
+		{Title: "Resources", Line: 11, EndLine: 12, Group: -1, Outline: "- a book"},
 	}
 	if !reflect.DeepEqual(s.Topics, want) {
 		t.Fatalf("topics = %+v", s.Topics)
@@ -133,9 +133,9 @@ func TestSelectLevelNestedGroupsAndOutline(t *testing.T) {
 		t.Fatalf("groups = %+v", s.Groups)
 	}
 	wantTopics := []Topic{
-		{Title: "Git", Line: 3, Group: 0, Outline: "- branching\n  - rebase\n- merge"},
-		{Title: "Linux", Line: 7, Group: 0},
-		{Title: "Docker", Line: 9, Group: 1, Outline: "- Images"},
+		{Title: "Git", Line: 3, EndLine: 6, Group: 0, Outline: "- branching\n  - rebase\n- merge"},
+		{Title: "Linux", Line: 7, EndLine: 7, Group: 0},
+		{Title: "Docker", Line: 9, EndLine: 10, Group: 1, Outline: "- Images"},
 	}
 	if !reflect.DeepEqual(s.Topics, wantTopics) {
 		t.Fatalf("topics = %+v", s.Topics)

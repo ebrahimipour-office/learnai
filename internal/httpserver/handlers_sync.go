@@ -13,6 +13,7 @@ import (
 var fileKindLabels = map[string]string{
 	"lesson": "درس", "exercises_md": "تمرین‌ها", "manifest": "manifest", "rubric": "روبریک",
 	"answer": "پاسخ", "report": "گزارش", "summary": "خلاصه", "result": "نتیجه",
+	"source": "متن فصل",
 }
 
 // showSync shows the latest scan with a confirm option for each move (R5.3).

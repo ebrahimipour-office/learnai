@@ -52,6 +52,7 @@ const (
 	FileKindReport      FileKind = "report"
 	FileKindSummary     FileKind = "summary"
 	FileKindResult      FileKind = "result"
+	FileKindSource      FileKind = "source" // topics/<dir>/source.md and source-history/ (§12.6)
 )
 
 // FilePresence tracks whether the file was found on disk during the last sync.
