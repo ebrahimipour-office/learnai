@@ -1,9 +1,12 @@
 package exercises_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -381,5 +384,29 @@ func TestExternalKnowledgeMirroredInRubric(t *testing.T) {
 	}
 	if n := e.count(`SELECT COUNT(*) FROM exercises WHERE ex_id = 'q01' AND external_deps LIKE '%X.509%'`); n != 1 {
 		t.Error("external_deps not stored")
+	}
+}
+
+// B5: criterion ids are the app's (c1..cN), like qNN; a real agy reply with "crit-1-…" ids must
+// be accepted on the first try instead of costing a retry.
+func TestBuildAssignsCriterionIDs(t *testing.T) {
+	raw, err := os.ReadFile("testdata/agy-crit-ids.json") // real agy 1.5.3 output from the T7.0 run
+	if err != nil {
+		t.Fatal(err)
+	}
+	set, err := exercises.Build(raw, exercises.Meta{StableKey: key, TopicTitle: "T", Version: 1, CreatedAt: "2026-11-01T00:00:00Z",
+		Generator: schema.ManifestGenerator{Adapter: "fake", Skill: "s", SkillVersion: "1"}, AllowedExts: []string{".go", ".md"}, CountMin: 1, CountMax: 5})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	for _, ex := range set.Rubric.Exercises {
+		for k, c := range ex.Criteria {
+			if want := fmt.Sprintf("c%d", k+1); c.ID != want {
+				t.Fatalf("%s criterion %d id = %q, want %q", ex.ID, k, c.ID, want)
+			}
+		}
+	}
+	if !bytes.Contains(set.RubricJSON, []byte(`"id": "c4"`)) || bytes.Contains(set.RubricJSON, []byte("crit-")) {
+		t.Fatal("rubric.json does not carry the app's criterion ids")
 	}
 }

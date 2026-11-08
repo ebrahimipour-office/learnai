@@ -112,6 +112,9 @@ func Build(raw json.RawMessage, m Meta) (*Set, error) {
 			Weight: math.Min(x.Weight, maxWeight), Answer: ans, ExternalKnowledge: x.ExternalKnowledge,
 		})
 		r := x.Rubric
+		for k := range r.Criteria { // like qNN: the AI's criterion ids are ignored (B5)
+			r.Criteria[k].ID = fmt.Sprintf("c%d", k+1)
+		}
 		set.Rubric.Exercises = append(set.Rubric.Exercises, schema.RubricExercise{ID: id, ReferenceAnswer: r.ReferenceAnswer,
 			Criteria: r.Criteria, CommonErrors: r.CommonErrors, OutOfScopeKnowledge: outOfScope(r.OutOfScopeKnowledge, x.ExternalKnowledge),
 			GradingNotes: r.GradingNotes})

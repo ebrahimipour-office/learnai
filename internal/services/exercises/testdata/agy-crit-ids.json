@@ -1,0 +1,222 @@
+{
+ "exercises": [
+  {
+   "answer": {
+    "ext": ".md",
+    "language": "markdown",
+    "slug": "01-zero-values-and-constants",
+    "starter": "# پاسخ تمرین ۱: مقادیر صفر و ثابت‌ها\n\n## ۱. مقادیر پیش‌فرض (Zero Values)\n<!-- توضیح مفهوم، دلایل امنیتی در Go و جدول مقادیر برای انواع مختلف -->\n\n## ۲. ثابت‌های بدون نوع (Untyped Constants)\n<!-- مقایسه با ثابت‌های دارای نوع، رفتار کامپایلر و مفهوم Arbitrary Precision -->\n"
+   },
+   "difficulty": "easy",
+   "external_knowledge": [
+    {
+     "note": "فرایند تخصیص حافظه در پشته یا هیپ مربوط به فصول بعدی است و در این درس صرفاً دانستن مقادیر صفر کافی است.",
+     "topic": "مدیریت حافظه سطح پایین Go Runtime"
+    }
+   ],
+   "rubric": {
+    "common_errors": [
+     {
+      "description": "تصور اینکه در Go متغیر مقداردهی‌نشده حاوی داده تصادفی زباله (Garbage Memory) است.",
+      "type": "conceptual"
+     },
+     {
+      "description": "اشتباه گرفتن مقدار صفر نوع رشته با null یا nil به جای رشته خالی (\"\").",
+      "type": "conceptual"
+     },
+     {
+      "description": "عدم درک انعطاف‌پذیری ثابت‌های بدون نوع و تلاش برای نسبت دادن رفتاری مشابه متغیرهای استاتیک به آنها.",
+      "type": "logical"
+     }
+    ],
+    "criteria": [
+     {
+      "category": "concept",
+      "description": "توضیح کامل فلسفه و تعریف Zero Value در Go (جلوگیری از رفتارهای تعریف‌نشده و باگ‌های حافظه) و ذکر دقیق مقادیر صفر برای انواع عددی (0)، بولی (false)، رشته (\"\") و انواع ارجاعی (nil).",
+      "id": "crit-1-zero-values",
+      "max_points": 50
+     },
+     {
+      "category": "concept",
+      "description": "تشریح جامع مفهوم Untyped Constants، دقت نامحدود (Arbitrary Precision) آنها در زمان کامپایل، و بیان تفاوت آن با ثابت‌های نوع‌دار در انتساب بدون خطا به انواع عددی مختلف.",
+      "id": "crit-2-untyped-constants",
+      "max_points": 50
+     }
+    ],
+    "grading_notes": "پاسخ باید دقیق، مستدل و ساختاریافته باشد. ذکر مثال‌های کوتاه کدی برای نشان دادن تفاوت ثابت‌های بدون نوع و نوع‌دار مزیت محسوب می‌شود اما الزامی نیست.",
+    "out_of_scope_knowledge": [
+     {
+      "handling": "do_not_penalize",
+      "topic": "پیاده‌سازی داخلی رانتایم Go در بازنشانی حافظه"
+     }
+    ],
+    "reference_answer": {
+     "content": "# پاسخ مرجع: مقادیر صفر (Zero Values) و ثابت‌های بدون نوع (Untyped Constants)\n\n## ۱. مقادیر صفر (Zero Values)\nدر زبان Go هیچ متغیری پس از تعریف بدون مقدار اولیه رها نمی‌شود و مفهومی به نام \"حافظه زباله\" (Garbage Memory) یا مقدار تعریف‌نشده وجود ندارد. در صورتی که برنامه‌نویس مقداری برای متغیر تعیین نکند، کامپایلر Go به صورت خودکار حافظه اختصاص‌یافته را با مقدار صفر (Zero Value) متناسب با نوع آن پر می‌کند:\n- انواع عددی صحیح و اعشاری (`int`, `int64`, `float32`, `float64`, ...): مقدار `0` یا `0.0`\n- نوع بولی (`bool`): مقدار `false`\n- نوع رشته (`string`): رشته خالی `\"\"` (با طول صفر)\n- انواع اشاره‌گر، اسلایس، مپ، کانال و اینترفیس: مقدار `nil`\n\n**فلسفه طراحی:** این سازوکار ایمنی حافظه (Memory Safety) را تضمین کرده و مانع از خطاهای کلاسیک زمان اجرا مانند دسترسی به متغیرهای مقداری تعریف‌نشده یا رفتارهای پیش‌بینی‌نشده می‌شود.\n\n## ۲. ثابت‌های بدون نوع (Untyped Constants)\nثابت‌هایی که در Go بدون مشخص کردن نوع صریح تعریف می‌شوند (مانند `const Pi = 3.14159`)، ثابت بدون نوع نامیده می‌شوند.\n- **دقت نامحدود (Arbitrary Precision):** این ثابت‌ها در زمان کامپایل ارزیابی شده و با دقت ریاضی بسیار بالا (حداقل ۲۵۶ بیت برای اعداد صحیح و اعشاری) نگهداری می‌شوند.\n- **تفاوت با ثابت‌های نوع‌دار:** یک ثابت نوع‌دار مثل `const Pi float32 = 3.14` مقید به اندازه ۳۲ بیتی است و نمی‌تواند مستقیماً به متغیری از نوع `float64` اختصاص داده شود (نیاز به تبدیل صریح دارد). اما ثابت بدون نوع تا زمانی که به یک متغیر نسبت داده نشود نوع قطعی نمی‌گیرد؛ بنابراین می‌توان از `const Pi = 3.14` همزمان برای مقداردهی متغیرهای `float32` و `float64` بدون خطای کامپایل استفاده کرد.",
+     "format": "text"
+    }
+   },
+   "statement_markdown": "# تمرین ۱ (مفهومی): بررسی دقیق مقادیر صفر و رفتار ثابت‌ها در Go\n\nدر این تمرین باید به دو پرسش بنیادین در مورد سیستم نوع و مدیریت حافظه در زبان Go پاسخ دهید:\n\n### پرسش اول: سازوکار و فلسفه مقادیر صفر (Zero Values)\n۱. مفهوم **Zero Value** را شرح دهید و توضیح دهید چرا طراحان Go رویکرد مقداردهی خودکار را به جای استفاده از مقادیر نامشخص (مشابه C/C++) انتخاب کرده‌اند؟\n۲. مقدار صفر پیش‌فرض را برای هر یک از انواع زیر به طور دقیق مشخص کنید:\n   - `int`\n   - `float64`\n   - `bool`\n   - `string`\n   - انواع ارجاعی (مانند اشاره‌گرها و اسلایس‌ها)\n\n### پرسش دوم: ثابت‌های بدون نوع (Untyped Constants)\n۱. تفاوت یک ثابت بدون نوع (مانند `const MaxSize = 100`) با یک ثابت نوع‌دار (مانند `const MaxSize int32 = 100`) چیست؟\n۲. مفهوم **دقت نامحدود (Arbitrary Precision)** در ثابت‌های بدون نوع چیست و این ویژگی چگونه اجازه می‌دهد یک ثابت عددی بدون نوع بدون خطای کامپایل به متغیرهایی از انواع مختلف عددی انتساب یابد؟\n\nپاسخ خود را به زبان فارسی روان، علمی و همراه با توضیحات شفاف در فایل پاسخ بنویسید.",
+   "title": "بررسی مفهومی مقادیر صفر (Zero Values) و ثابت‌های بدون نوع (Untyped Constants)",
+   "type": "conceptual",
+   "weight": 1
+  },
+  {
+   "answer": {
+    "ext": ".md",
+    "language": "markdown",
+    "slug": "02-code-analysis-compile-errors",
+    "starter": "# تحلیل و رفع خطاهای کد\n\n### قطعه ۱: تبدیل نوع\n- علت خطا:\n- کد اصلاح‌شده:\n\n### قطعه ۲: متغیر استفاده‌نشده\n- علت خطا:\n- کد اصلاح‌شده:\n\n### قطعه ۳: مقداردهی ثابت در زمان اجرا\n- علت خطا:\n- کد اصلاح‌شده:\n\n### قطعه ۴: پدیده Variable Shadowing\n- تحلیل رفتار و باگ پنهان:\n- کد اصلاح‌شده:\n"
+   },
+   "difficulty": "medium",
+   "external_knowledge": [
+    {
+     "note": "تابع time.Now() صرفاً به عنوان مثالی از فراخوانی تابع در زمان اجرا به کار رفته است.",
+     "topic": "پکیج time و توابع سیستمی زمان"
+    }
+   ],
+   "rubric": {
+    "common_errors": [
+     {
+      "description": "تصور اینکه Go تبدیل ضمنی بین int32 و int64 یا int و float را می‌پذیرد.",
+      "type": "conceptual"
+     },
+     {
+      "description": "عدم تشخیص اینکه خطا ناشی از پدیده Shadowing با := است و اشتباه گرفتن آن با بازتعریف خطاگونه.",
+      "type": "logical"
+     },
+     {
+      "description": "فراموش کردن ماهیت Compile-time بودن const و تلاش برای اصلاح آن با متغیر بدون توضیح علت.",
+      "type": "technical"
+     }
+    ],
+    "criteria": [
+     {
+      "category": "correctness",
+      "description": "تشخیص دقیق خطای عدم تبدیل صریح نوع بین int32 و int64 (mismatched types) و ارائه کد اصلاح‌شده با int64(count).",
+      "id": "crit-1-type-cast",
+      "max_points": 25
+     },
+     {
+      "category": "correctness",
+      "description": "تشخیص خطای متغیر بدون استفاده (unused variable) و ارائه راه‌حل با استفاده از متغیر یا شناسه خالی (_).",
+      "id": "crit-2-unused-var",
+      "max_points": 25
+     },
+     {
+      "category": "correctness",
+      "description": "تشخیص خطای انتساب تابع زمان اجرا (time.Now) به const و توضیح اینکه مقدار ثابت باید در زمان کامپایل قطعی باشد.",
+      "id": "crit-3-const-runtime",
+      "max_points": 25
+     },
+     {
+      "category": "reasoning",
+      "description": "تحلیل دقیق باگ Shadowing ناشی از استفاده نادرست از := درون بلوک شرطی، توضیح عدم تغییر متغیر سراسری/بیرونی و رفع آن با انتساب =.",
+      "id": "crit-4-shadowing",
+      "max_points": 25
+     }
+    ],
+    "grading_notes": "هر بخش دارای ۲۵ نمره مجزا است. داوطلب باید هم علت رخ دادن خطا یا باگ منطقی را به درستی بیان کند و هم راهکار اصلاحی معتبر ارائه نماید.",
+    "out_of_scope_knowledge": [
+     {
+      "handling": "do_not_penalize",
+      "topic": "جزئیات پکیج time و ساختار داخلی تایم‌استمپ‌ها"
+     }
+    ],
+    "reference_answer": {
+     "content": "# پاسخ مرجع: تحلیل و رفع خطاهای کد\n\n### قطعه ۱: تبدیل نوع (Mismatched Types)\n- **علت خطا:** در Go هیچ تبدیل ضمنی (Implicit Conversion) حتی بین انواع صحیح با طول مختلف وجود ندارد. انتساب متغیر `int32` به `int64` خطای کامپایل `cannot use count (variable of type int32) as int64 value in assignment` می‌دهد.\n- **کد اصلاح‌شده:**\n```go\nvar count int32 = 42\nvar total int64 = int64(count)\n```\n\n### قطعه ۲: متغیر استفاده‌نشده (Unused Variable)\n- **علت خطا:** کامپایلر Go اجازه رها کردن متغیرهای محلی بدون استفاده را نمی‌دهد تا کد تمیز و خوانا بماند (`debugToken declared and not used`).\n- **کد اصلاح‌شده:**\n```go\n// راهکار ۱: استفاده از شناسه خالی (Blank Identifier)\n_ = \"temporary-token\"\n\n// یا راهکار ۲: استفاده عملی از متغیر\ndebugToken := \"temporary-token\"\nfmt.Println(\"Debug:\", debugToken)\n```\n\n### قطعه ۳: مقداردهی ثابت در زمان اجرا (Run-time Const Assignment)\n- **علت خطا:** مقادیر `const` باید در زمان کامپایل (Compile-time) کاملاً معین و قطعی باشند. خروجی تابع `time.Now()` در زمان اجرا مشخص می‌شود و نمی‌تواند به یک `const` منتسب شود (`time.Now() (value of type time.Time) is not constant`).\n- **کد اصلاح‌شده:**\n```go\n// به جای const از var یا := استفاده شود:\nstartedAt := time.Now()\n```\n\n### قطعه ۴: پدیده Variable Shadowing\n- **تحلیل باگ:** استفاده از `:=` درون بلوک `if` باعث تعریف یک متغیر محلی جدید با نام `status` می‌شود که متغیر `status` حوزه بیرونی را پنهان (Shadow) می‌کند. با خروج از بلوک `if`، متغیر محلی از بین رفته و مقدار متغیر بیرونی همچنان مقدار اولیه باقی می‌ماند.\n- **کد اصلاح‌شده:**\n```go\nvar status string = \"init\"\nif isReady {\n    status = \"ready\" // استفاده از = به جای := جهت انتساب به متغیر بیرونی\n}\nfmt.Println(status) // چاپ \"ready\"\n```",
+     "format": "text"
+    }
+   },
+   "statement_markdown": "# تمرین ۲ (تحلیل کد): عیب‌یابی خطاهای کامپایل و پدیده Shadowing\n\nقطعه‌کدهای زیر در زبان Go دارای خطاهای زمان کامپایل یا باگ‌های منطقی ناشی از نقض قواعد متغیرها و ثابت‌ها هستند. برای هر قطعه:\n۱. خطای کامپایلر یا رفتار غیرمنتظره را مشخص کنید.\n۲. دلیل بروز خطا طبق قوانین زبان Go را شرح دهید.\n۳. نحوه اصلاح آن را همراه با قطعه‌کد صحیح بنویسید.\n\n---\n\n### قطعه ۱:\n```go\npackage main\n\nfunc main() {\n    var count int32 = 42\n    var total int64 = count\n    _ = total\n}\n```\n\n---\n\n### قطعه ۲:\n```go\npackage main\n\nimport \"fmt\"\n\nfunc main() {\n    debugToken := \"temporary-token\"\n    fmt.Println(\"Application started.\")\n}\n```\n\n---\n\n### قطعه ۳:\n```go\npackage main\n\nimport \"time\"\n\nfunc main() {\n    const startedAt = time.Now()\n    _ = startedAt\n}\n```\n\n---\n\n### قطعه ۴:\n```go\npackage main\n\nimport \"fmt\"\n\nfunc main() {\n    status := \"init\"\n    isReady := true\n\n    if isReady {\n        status := \"ready\"\n        _ = status\n    }\n\n    fmt.Println(\"Final status:\", status) // برنامه‌نویس انتظار چاپ \"ready\" را دارد اما \"init\" چاپ می‌شود!\n}\n```",
+   "title": "تحلیل و عیب‌یابی خطاهای زمان کامپایل و پدیده Shadowing",
+   "type": "code_analysis",
+   "weight": 1
+  },
+  {
+   "answer": {
+    "ext": ".go",
+    "language": "go",
+    "slug": "03-server-config-iota",
+    "starter": "package main\n\nimport \"fmt\"\n\n// ۱. تعریف سطوح دسترسی (UserRole) با iota:\n// RoleGuest (0), RoleUser (1), RoleAdmin (2), RoleSuperAdmin (3)\nconst (\n\tRoleGuest = iota\n\t// بقیه موارد را تکمیل کنید\n)\n\n// ۲. تعریف پرچم‌های دسترسی بیتی (Permission Flags) با 1 << iota:\n// PermissionRead (1), PermissionWrite (2), PermissionDelete (4)\nconst (\n\tPermissionRead = 1 << iota\n\t// بقیه موارد را تکمیل کنید\n)\n\n// ۳. تابع CalculateQuotaMB:\n// ظرفیت گیگابایت را به صورت float64 دریافت کرده و به صورت عدد صحیح int به مگابایت برگرداند\nfunc CalculateQuotaMB(gigabytes float64) int {\n\t// پیاده‌سازی تبدیل صریح نوع\n\treturn 0\n}\n\nfunc main() {\n\t// ۴. تعریف متغیرهای کانفیگ با مقادیر صفر و مقداردهی کوتاه\n\t// ۵. چاپ مقادیر و تست تابع\n}\n"
+   },
+   "difficulty": "medium",
+   "external_knowledge": [
+    {
+     "note": "عملیات بیتی پیشرفته خارج از شیفت چپ اولیه، اختیاری است و در صورت عدم استفاده کسر نمره ندارد.",
+     "topic": "عملگرهای بیتی پیشرفته (Bitwise AND/OR)"
+    }
+   ],
+   "rubric": {
+    "common_errors": [
+     {
+      "description": "عدم استفاده از تبدیل صریح نوع هنگام ضرب float64 و int یا بازگرداندن مقدار به عنوان int.",
+      "type": "technical"
+     },
+     {
+      "description": "تولید مقادیر ترتیبی ناصحیح برای پرچم‌های بیتی به دلیل استفاده از جمع به جای عملگر شیفت (1 << iota).",
+      "type": "logical"
+     },
+     {
+      "description": "وجود متغیرهای محلی تعریف‌شده بدون استفاده که مانع از اجرای برنامه در Go می‌شود.",
+      "type": "style"
+     }
+    ],
+    "criteria": [
+     {
+      "category": "correctness",
+      "description": "تعریف کامل و صحیح نقش‌های کاربری (UserRole) به صورت ترتیبی و پرچم‌های دسترسی بیتی (Permissions) با استفاده از iota و عملگر شیفت چپ.",
+      "id": "crit-1-iota-enums",
+      "max_points": 30
+     },
+     {
+      "category": "correctness",
+      "description": "پیاده‌سازی دقیق تابع CalculateQuotaMB همراه با تبدیل صریح (Explicit Conversion) حاصل ضرب float64 به int.",
+      "id": "crit-2-type-cast",
+      "max_points": 30
+     },
+     {
+      "category": "completeness",
+      "description": "بررسی و نمایش مقادیر صفر (Zero Values) برای تنظیمات اولیه سرور (مانند پورت، نام هاست و فعال بودن TLS).",
+      "id": "crit-3-zero-values",
+      "max_points": 20
+     },
+     {
+      "category": "code_quality",
+      "description": "رعایت استانداردهای کدنویسی تمیز در Go، نام‌گذاری به شیوه CamelCase، کامپایل بدون خطا و عدم وجود متغیر بدون استفاده.",
+      "id": "crit-4-quality",
+      "max_points": 20
+     }
+    ],
+    "grading_notes": "برنامه باید با دستور go run main.go بدون هیچ خطای کامپایل اجرا شود و خروجی‌های معتبر تولید کند. مجموع امتیازات دقیقاً ۱۰۰ است.",
+    "out_of_scope_knowledge": [
+     {
+      "handling": "do_not_penalize",
+      "topic": "ماسک‌گذاری بیتی پیشرفته و پیاده‌سازی متدهای ساختار (Struct methods)"
+     }
+    ],
+    "reference_answer": {
+     "content": "package main\n\nimport (\n\t\"fmt\"\n)\n\n// ۱. سطوح نقش‌های کاربری با استفاده از iota\nconst (\n\tRoleGuest = iota // 0\n\tRoleUser         // 1\n\tRoleAdmin        // 2\n\tRoleSuperAdmin   // 3\n)\n\n// ۲. پرچم‌های بیتی دسترسی (Bitmask Permissions) با 1 << iota\nconst (\n\tPermissionRead   = 1 << iota // 1 (1 << 0)\n\tPermissionWrite              // 2 (1 << 1)\n\tPermissionDelete             // 4 (1 << 2)\n)\n\n// ۳. محاسبه سهمیه بر اساس مگابایت با تبدیل صریح نوع\nfunc CalculateQuotaMB(gigabytes float64) int {\n\tmegabytes := gigabytes * 1024.0\n\treturn int(megabytes)\n}\n\nfunc main() {\n\t// ۴. نمایش مقادیر صفر (Zero Values) در متغیرهای سرور\n\tvar serverPort int\n\tvar serverHost string\n\tvar isTLS bool\n\n\tfmt.Println(\"--- تنظیمات پیش‌فرض سرور (Zero Values) ---\")\n\tfmt.Printf(\"Port: %d, Host: '%s', TLS: %t\\n\", serverPort, serverHost, isTLS)\n\n\t// مقداردهی با تعریف کوتاه (Short Variable Declaration)\n\tserverPort = 8443\n\tserverHost = \"api.internal.local\"\n\tisTLS = true\n\n\tfmt.Println(\"\\n--- تنظیمات فعال سرور ---\")\n\tfmt.Printf(\"Endpoint: https://%s:%d (TLS Active: %t)\\n\", serverHost, serverPort, isTLS)\n\n\t// ۵. تست نقش‌ها و پرچم‌های iota\n\tcurrentRole := RoleAdmin\n\tuserPerms := PermissionRead | PermissionWrite\n\n\tfmt.Println(\"\\n--- وضعیت دسترسی و نقش‌ها ---\")\n\tfmt.Printf(\"Current Role Code: %d (Admin: %t)\\n\", currentRole, currentRole == RoleAdmin)\n\tfmt.Printf(\"Bitmask Permissions: %d (Has Read: %t, Has Write: %t)\\n\",\n\t\tuserPerms,\n\t\t(userPerms&PermissionRead) != 0,\n\t\t(userPerms&PermissionWrite) != 0,\n\t)\n\n\t// ۶. تست تابع تبدیل نوع\n\tquotaGB := 2.5\n\tquotaMB := CalculateQuotaMB(quotaGB)\n\tfmt.Printf(\"\\n--- سهمیه دیسک ---\\n%.2f GB معادل %d MB است.\\n\", quotaGB, quotaMB)\n}\n",
+     "format": "code",
+     "language": "go"
+    }
+   },
+   "statement_markdown": "# تمرین ۳ (کدنویسی): پیاده‌سازی سیستم تنظیمات سرور و مجوزها با iota و کنترل نوع داده\n\nدر این تمرین عملی، شما یک سیستم پایه برای تنظیمات سرور، سطوح کاربری، و مدیریت سهمیه حافظه به زبان Go پیاده‌سازی خواهید کرد.\n\n### نیازمندی‌های پیاده‌سازی:\n\n۱. **تعریف نقش‌های کاربری (User Roles):**\n   - با استفاده از بلوک `const` و شناسه `iota` نقش‌های زیر را تعریف کنید:\n     - `RoleGuest` (مقدار 0)\n     - `RoleUser` (مقدار 1)\n     - `RoleAdmin` (مقدار 2)\n     - `RoleSuperAdmin` (مقدار 3)\n\n۲. **تعریف پرچم‌های دسترسی (Permission Flags):**\n   - با استفاده از `iota` و عملگر شیفت چپ (`1 << iota`)، پرچم‌های بیتی زیر را تعریف کنید:\n     - `PermissionRead` (مقدار 1)\n     - `PermissionWrite` (مقدار 2)\n     - `PermissionDelete` (مقدار 4)\n\n۳. **تابع محاسبه سهمیه (`CalculateQuotaMB`):**\n   - تابعی به نام `CalculateQuotaMB(gigabytes float64) int` بنویسید که مقدار گیگابایت را دریافت کرده، آن را در `1024.0` ضرب نموده و با **تبدیل صریح نوع (Explicit Conversion)** خروجی را به صورت عدد صحیح `int` برگرداند.\n\n۴. **مدیریت مقادیر صفر و مقداردهی سرور در `main`:**\n   - سه متغیر `serverPort` (از نوع `int`)، `serverHost` (از نوع `string`) و `isTLS` (از نوع `bool`) را بدون مقداردهی اولیه تعریف کنید و مقادیر صفر آنها را در خروجی چاپ نمایید.\n   - سپس آنها را با مقادیر معتبر مقداردهی کرده و مقادیر جدید، نقش جاری، پرچم‌های دسترسی و خروجی تابع `CalculateQuotaMB` را در خروجی چاپ کنید.\n\n> **توجه:** تمام متغیرهای محلی تعریف‌شده باید استفاده شوند تا برنامه بدون خطای کامپایلر Go اجرا گردد.",
+   "title": "پیاده‌سازی سیستم تنظیمات سرور و مجوزها با iota و کنترل نوع داده",
+   "type": "coding",
+   "weight": 1
+  }
+ ],
+ "suggested_dir_slug": "01-variables-and-data-types",
+ "suggestions": [
+  {
+   "kind": "prerequisite",
+   "reason": "آشنایی با شیوه مدیریت حافظه، کامپایل استاتیک و سیستم انواع در زبان‌های خانواده C به درک فلسفه عدم تبدیل ضمنی و صفر بودن مقادیر در Go کمک شایانی می‌کند.",
+   "title": "مفاهیم پایه‌ای سیستم‌های نوع استاتیک و نحوه کار کامپایلرها"
+  },
+  {
+   "kind": "supplementary",
+   "reason": "برای ترکیب متغیرها، ثابت‌ها و انواع داده در ساختارهای پیچیده‌تر، یادگیری ساختارهای کنترلی (if, switch, for) و توابع در سرفصل‌های بعدی پیشنهاد می‌شود.",
+   "title": "ساختارهای کنترلی و جریان اجرای برنامه در Go"
+  }
+ ]
+}

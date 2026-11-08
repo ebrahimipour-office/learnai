@@ -72,7 +72,7 @@
                 "items": {
                   "type": "object",
                   "additionalProperties": false,
-                  "required": ["id", "description", "max_points", "category"],
+                  "required": ["description", "max_points", "category"],
                   "properties": {
                     "id": { "type": "string" },
                     "description": { "type": "string" },
