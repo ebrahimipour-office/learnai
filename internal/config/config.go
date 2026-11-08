@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -30,12 +31,24 @@ type Config struct {
 	Editor           EditorConfig    `toml:"editor"`
 }
 
+// AdapterConfig: the top-level keys configure agy; [adapter.claude] and [adapter.codex] the other
+// tools. Kind is the tool used until one is picked on the settings page (saved in the database).
 type AdapterConfig struct {
-	Kind      string   `toml:"kind"`
+	Kind      string     `toml:"kind"` // antigravity | claude | codex
+	Binary    string     `toml:"binary"`
+	Model     string     `toml:"model"`
+	Effort    string     `toml:"effort"`
+	Sandbox   bool       `toml:"sandbox"`
+	ExtraArgs []string   `toml:"extra_args"`
+	Claude    ToolConfig `toml:"claude"`
+	Codex     ToolConfig `toml:"codex"`
+}
+
+// ToolConfig is one more AI CLI; Model/Effort "" use the tool's own default.
+type ToolConfig struct {
 	Binary    string   `toml:"binary"`
 	Model     string   `toml:"model"`
 	Effort    string   `toml:"effort"`
-	Sandbox   bool     `toml:"sandbox"`
 	ExtraArgs []string `toml:"extra_args"`
 }
 
@@ -81,6 +94,8 @@ func DefaultConfig(defaultBaseDir string) Config {
 			Effort:    "medium",
 			Sandbox:   true,
 			ExtraArgs: nil,
+			Claude:    ToolConfig{Binary: "claude"},
+			Codex:     ToolConfig{Binary: "codex"},
 		},
 		Jobs: JobsConfig{
 			MaxConcurrent:       1,
@@ -158,11 +173,14 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("%w: listen is configured as %q", ErrForbiddenListenAddr, c.Listen)
 	}
 
-	// 2. Reject prohibited dangerous flags
-	for _, arg := range c.Adapter.ExtraArgs {
-		if strings.Contains(arg, "dangerously-skip-permissions") {
+	// 2. Reject prohibited dangerous flags and unknown tools
+	for _, arg := range slices.Concat(c.Adapter.ExtraArgs, c.Adapter.Claude.ExtraArgs, c.Adapter.Codex.ExtraArgs) {
+		if strings.Contains(arg, "dangerously") {
 			return ErrForbiddenDangerousFlag
 		}
+	}
+	if !slices.Contains([]string{"antigravity", "claude", "codex"}, c.Adapter.Kind) {
+		return fmt.Errorf("adapter.kind must be antigravity, claude or codex, not %q", c.Adapter.Kind)
 	}
 
 	// 3. Ensure base directory is absolute

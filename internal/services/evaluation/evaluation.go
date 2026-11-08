@@ -156,7 +156,7 @@ func (s *Service) run(ctx context.Context, j jobs.Job, mode string) error {
 
 	// Same fingerprint ⇒ a retry may reuse the failed job's done steps (TDD §6.4).
 	var fp bytes.Buffer
-	fp.WriteString(s.Model + "\x00")
+	fp.WriteString(ai.ModelFor(s.Adapter, s.Model) + "\x00")
 	for _, b := range [][]byte{sh.in.Skill, sh.in.Agents, sh.in.Profile, sh.exercisesMD, rubricB, sh.source} {
 		fp.WriteString(fsx.HashBytes(b) + "\x00")
 	}
@@ -165,7 +165,7 @@ func (s *Service) run(ctx context.Context, j jobs.Job, mode string) error {
 	}
 	fingerprint := fsx.HashBytes(fp.Bytes())
 	if _, err := s.DB.Writer().ExecContext(ctx, `UPDATE jobs SET inputs_fingerprint = ?, adapter = ?, model = ?, skill = ? WHERE id = ?`,
-		fingerprint, s.Adapter.Name(), s.Model, skillName, j.ID); err != nil {
+		fingerprint, s.Adapter.Name(), ai.ModelFor(s.Adapter, s.Model), skillName, j.ID); err != nil {
 		return err
 	}
 
@@ -322,7 +322,7 @@ func (s *Service) step(ctx context.Context, j jobs.Job, sh shared, pk topics.Pic
 	if err != nil {
 		return err
 	}
-	req.Model, req.Timeout, req.StallTimeout = s.Model, s.Timeout, s.Stall
+	req.Model, req.Timeout, req.StallTimeout = ai.ModelFor(s.Adapter, s.Model), s.Timeout, s.Stall
 
 	var out json.RawMessage
 	_, err = ai.WatchValid(ctx, s.Adapter, req, nil, func(raw json.RawMessage) error {

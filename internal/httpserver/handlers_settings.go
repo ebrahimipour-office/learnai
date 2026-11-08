@@ -18,7 +18,8 @@ import (
 type Settings struct {
 	DB      *store.DB
 	Adapter ai.Adapter
-	Model   string // configured adapter.model; "" = the tool's default
+	Switch  *ai.Switch // the same adapter when the tool is selectable on this page; nil hides the selector
+	Model   string     // configured adapter.model; "" = the tool's default
 
 	Exercises      config.ExercisesConfig // count bounds for the exercises form
 	MaxAnswerBytes int64                  // config limits.max_answer_bytes (evaluation selection)
@@ -43,14 +44,15 @@ const PrivacyNotice = "پاسخ‌ها و محتوای آموزشی برای پ�
 // ProbeAdapter runs Adapter.Probe and turns the result into actionable messages (also used by `hub doctor`).
 func ProbeAdapter(ctx context.Context, s Settings) Doctor {
 	caps, err := s.Adapter.Probe(ctx)
+	model := ai.ModelFor(s.Adapter, s.Model)
 	d := Doctor{At: time.Now(), Caps: caps}
 	switch {
 	case err != nil:
 		d.Err, d.Hint = err.Error(), ai.Message(ai.Code(err))
 	case !caps.Authenticated:
 		d.Hint = ai.Message("auth_required")
-	case s.Model != "" && len(caps.Models) > 0 && !slices.Contains(caps.Models, s.Model):
-		d.ModelWarn = "مدل «" + s.Model + "» در فهرست `agy models` نیست؛ مقدار `adapter.model` را در config.toml اصلاح کنید."
+	case model != "" && len(caps.Models) > 0 && !slices.Contains(caps.Models, model):
+		d.ModelWarn = "مدل «" + model + "» در فهرست `agy models` نیست؛ مقدار `adapter.model` را در config.toml اصلاح کنید."
 	}
 	return d
 }
@@ -92,7 +94,60 @@ func (a *app) renderSettings(w http.ResponseWriter, r *http.Request, status int,
 	}
 	d := a.doctor(r.Context(), false)
 	a.render(w, status, "settings", "layout", &pageData{Title: "تنظیمات", Error: msg, Doctor: &d,
-		Model: a.settings.Model, Adapter: a.settings.Adapter.Name(), PrivacyAck: ack, Privacy: PrivacyNotice})
+		Model: ai.ModelFor(a.settings.Adapter, a.settings.Model), Adapter: a.settings.Adapter.Name(),
+		Adapters: a.adapterNames(), PrivacyAck: ack, Privacy: PrivacyNotice})
+}
+
+func (a *app) adapterNames() []string {
+	if a.settings.Switch == nil {
+		return nil
+	}
+	return a.settings.Switch.Names()
+}
+
+// SavedAdapter is the tool picked on the settings page (meta.adapter_kind), else fallback (adapter.kind).
+func SavedAdapter(ctx context.Context, db *store.DB, fallback string) string {
+	var v string
+	if err := db.Writer().QueryRowContext(ctx, `SELECT value FROM meta WHERE key = 'adapter_kind'`).Scan(&v); err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			slog.Error("reading adapter_kind", "error", err)
+		}
+		return fallback
+	}
+	return v
+}
+
+// selectAdapter switches the AI tool for new jobs. It is refused while any job is queued or
+// running, because a job reads the adapter's name, model and Run at different moments.
+func (a *app) selectAdapter(w http.ResponseWriter, r *http.Request) {
+	name := r.FormValue("adapter")
+	if a.settings.Switch == nil || !slices.Contains(a.settings.Switch.Names(), name) {
+		a.renderSettings(w, r, http.StatusUnprocessableEntity, "ابزار هوش مصنوعی نامعتبر است.")
+		return
+	}
+	var busy int
+	if err := a.settings.DB.Writer().QueryRowContext(r.Context(),
+		`SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running')`).Scan(&busy); err != nil {
+		slog.Error("counting active jobs", "error", err)
+		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
+		return
+	}
+	if busy > 0 {
+		a.renderSettings(w, r, http.StatusConflict, "تا پایان کارهای در حال اجرا نمی‌توان ابزار هوش مصنوعی را عوض کرد.")
+		return
+	}
+	if _, err := a.settings.DB.Writer().ExecContext(r.Context(),
+		`INSERT INTO meta (key, value) VALUES ('adapter_kind', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, name); err != nil {
+		slog.Error("saving adapter_kind", "error", err)
+		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
+		return
+	}
+	_ = a.settings.Switch.Set(name) // validated above
+	a.probeMu.Lock()
+	a.lastProbe = nil // the doctor result belonged to the previous tool
+	a.probeMu.Unlock()
+	slog.Info("AI tool selected", "adapter", name)
+	http.Redirect(w, r, "/settings", http.StatusSeeOther)
 }
 
 func (a *app) rerunDoctor(w http.ResponseWriter, r *http.Request) {

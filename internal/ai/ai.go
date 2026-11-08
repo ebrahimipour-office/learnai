@@ -130,8 +130,8 @@ func Message(code string) string {
 }
 
 var messages = map[string]string{
-	"auth_required":    "ابتدا یک‌بار در ترمینال `agy` را اجرا و وارد شوید؛ سپس در صفحه تنظیمات بررسی را دوباره اجرا کنید.",
-	"adapter_missing":  "فایل `agy` پیدا نشد؛ آن را نصب کنید یا مسیرش را در `adapter.binary` فایل config.toml اصلاح کنید.",
+	"auth_required":    "ابتدا یک‌بار در ترمینال ابزار انتخاب‌شده را اجرا و وارد شوید (`agy`، `claude` یا `codex login`)؛ سپس در صفحه تنظیمات بررسی را دوباره اجرا کنید.",
+	"adapter_missing":  "فایل اجرایی ابزار انتخاب‌شده پیدا نشد؛ آن را نصب کنید یا مسیرش را در config.toml اصلاح کنید (`adapter.binary`، `adapter.claude.binary` یا `adapter.codex.binary`).",
 	"timeout":          "زمان اجرا از سقف مجاز گذشت.",
 	"stalled":          "ابزار AI مدتی پاسخ نداد؛ دوباره تلاش کنید. اگر تکرار شد، `jobs.stall_timeout` را در config.toml افزایش دهید.",
 	"rate_limited":     "سهمیه یا محدودیت نرخ؛ بعداً دوباره تلاش کنید.",

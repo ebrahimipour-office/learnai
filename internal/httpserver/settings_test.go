@@ -1,6 +1,7 @@
 package httpserver_test
 
 import (
+	"context"
 	"fmt"
 	"html"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	"learninghub/internal/ai"
+	"learninghub/internal/ai/fake"
 	"learninghub/internal/httpserver"
 )
 
@@ -131,5 +133,45 @@ func TestFirstRunGate(t *testing.T) {
 	}
 	if rec := e.do(httptest.NewRequest(http.MethodGet, "/topics", nil)); rec.Code != http.StatusOK {
 		t.Errorf("GET /topics after ack: %d", rec.Code)
+	}
+}
+
+// named gives a fake adapter its own name so a switch can hold two of them.
+type named struct {
+	ai.Adapter
+	n string
+}
+
+func (a named) Name() string { return a.n }
+
+func TestSettingsSelectAdapter(t *testing.T) {
+	sw := ai.NewSwitch("claude", named{&fake.Adapter{}, "antigravity"}, named{&fake.Adapter{}, "claude"})
+	e := newEnv(t, func(s *httpserver.Settings) { s.Adapter, s.Switch = sw, sw })
+	if b := e.settingsPage(false); !strings.Contains(b, `<option value="claude" selected>`) {
+		t.Fatalf("current tool not selected:\n%s", b)
+	}
+	if rec := e.post("/settings/adapter", url.Values{"adapter": {"nope"}}, false); rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("unknown tool: %d", rec.Code)
+	}
+
+	// A queued job blocks the switch: it would read the name and Run of different tools.
+	if _, err := e.db.Writer().Exec(`INSERT INTO jobs (kind, scope_key, status, params) VALUES ('lesson', 'x', 'queued', '{}')`); err != nil {
+		t.Fatal(err)
+	}
+	if rec := e.post("/settings/adapter", url.Values{"adapter": {"antigravity"}}, false); rec.Code != http.StatusConflict || sw.Name() != "claude" {
+		t.Fatalf("switch while busy: %d %s", rec.Code, sw.Name())
+	}
+	if _, err := e.db.Writer().Exec(`DELETE FROM jobs`); err != nil {
+		t.Fatal(err)
+	}
+
+	if rec := e.post("/settings/adapter", url.Values{"adapter": {"antigravity"}}, false); rec.Code != http.StatusSeeOther {
+		t.Fatalf("select: %d %s", rec.Code, rec.Body.String())
+	}
+	if sw.Name() != "antigravity" || httpserver.SavedAdapter(context.Background(), e.db, "claude") != "antigravity" {
+		t.Fatalf("not switched/saved: %s", sw.Name())
+	}
+	if b := e.settingsPage(false); !strings.Contains(b, `<option value="antigravity" selected>`) {
+		t.Fatalf("new tool not shown:\n%s", b)
 	}
 }

@@ -70,6 +70,11 @@ var DefaultPatterns = []Pattern{
 	{"resource_exhausted", ai.ErrRateLimited},
 	{"quota", ai.ErrRateLimited},
 	{"too many requests", ai.ErrRateLimited},
+	{"usage limit", ai.ErrRateLimited}, // claude and codex plan limits
+	{"not logged in", ai.ErrAuthRequired},
+	{"/login", ai.ErrAuthRequired},
+	{"invalid api key", ai.ErrAuthRequired},
+	{"unauthorized", ai.ErrAuthRequired},
 }
 
 func classify(patterns []Pattern, text string) error {

@@ -18,6 +18,17 @@
 
 <section>
 <h2>ابزار هوش مصنوعی (doctor)</h2>
+{{if .Adapters}}
+<form method="post" action="/settings/adapter">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <label for="adapter">ابزار مورد استفاده</label>
+  <select id="adapter" name="adapter">
+    {{range .Adapters}}<option value="{{.}}"{{if eq . $.Adapter}} selected{{end}}>{{.}}</option>{{end}}
+  </select>
+  <button type="submit">ذخیره</button>
+</form>
+<p class="note">مدل و مسیر هر ابزار در config.toml تنظیم می‌شود: <code>[adapter]</code> برای agy، <code>[adapter.claude]</code> و <code>[adapter.codex]</code>.</p>
+{{end}}
 {{with .Doctor}}
 {{if .Hint}}<p class="error" role="alert">{{.Hint}}</p>{{else}}<p>آماده است.</p>{{end}}
 {{with .ModelWarn}}<p class="error" role="alert">{{.}}</p>{{end}}

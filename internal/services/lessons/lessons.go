@@ -101,9 +101,9 @@ func (s *Service) Handle(ctx context.Context, j jobs.Job) error {
 	if err != nil {
 		return err
 	}
-	req.Model, req.Timeout, req.StallTimeout = s.Model, s.Timeout, s.Stall
+	req.Model, req.Timeout, req.StallTimeout = ai.ModelFor(s.Adapter, s.Model), s.Timeout, s.Stall
 	if _, err := s.DB.Writer().ExecContext(ctx, `UPDATE jobs SET inputs_fingerprint = ?, adapter = ?, model = ?, skill = ?, skill_version = ? WHERE id = ?`,
-		fsx.HashBytes(in.Files["task.json"]), s.Adapter.Name(), s.Model, req.Skill.Name, req.Skill.Version, j.ID); err != nil {
+		fsx.HashBytes(in.Files["task.json"]), s.Adapter.Name(), ai.ModelFor(s.Adapter, s.Model), req.Skill.Name, req.Skill.Version, j.ID); err != nil {
 		return err
 	}
 
@@ -367,7 +367,7 @@ func (s *Service) record(ctx context.Context, j jobs.Job, skill ai.SkillRef, t t
 		kw, _ := json.Marshal(out.Keywords)
 		res, err := tx.ExecContext(ctx, `INSERT INTO lesson_versions (topic_id, version, file_id, keywords, is_current, job_id, skill, skill_version, model)
 			VALUES (?, (SELECT COALESCE(MAX(version), 0) + 1 FROM lesson_versions WHERE topic_id = ?), ?, ?, 1, ?, ?, ?, ?)`,
-			t.ID, t.ID, fileID, string(kw), j.ID, skill.Name, skill.Version, s.Model)
+			t.ID, t.ID, fileID, string(kw), j.ID, skill.Name, skill.Version, ai.ModelFor(s.Adapter, s.Model))
 		if err != nil {
 			return err
 		}

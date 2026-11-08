@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"learninghub/internal/ai"
 	"learninghub/internal/ai/antigravity"
 	"learninghub/internal/config"
 	"learninghub/internal/domain"
@@ -95,7 +96,7 @@ func runDoctor(args []string) {
 	} else {
 		_ = os.Remove(testFile)
 	}
-	adapter := antigravity.New(antigravity.Config{Binary: cfg.Adapter.Binary, Model: cfg.Adapter.Model})
+	adapter := newAdapter(cfg, nil, cfg.Adapter.Kind)
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 	d := httpserver.ProbeAdapter(ctx, httpserver.Settings{Adapter: adapter, Model: cfg.Adapter.Model})
@@ -295,10 +296,7 @@ func runServe(args []string) {
 	} else if n > 0 {
 		slog.Info("Installed default AGENTS.md, profile and skills", "files", n)
 	}
-	adapter := antigravity.New(antigravity.Config{
-		Binary: cfg.Adapter.Binary, Model: cfg.Adapter.Model, Effort: cfg.Adapter.Effort,
-		Sandbox: cfg.Adapter.Sandbox, ExtraArgs: cfg.Adapter.ExtraArgs, Logs: root,
-	})
+	adapter := newAdapter(cfg, root, httpserver.SavedAdapter(ctx, db, cfg.Adapter.Kind))
 	runner := jobs.New(db, cfg.Jobs.MaxConcurrent)
 	runner.Files = root
 	runner.Register(domain.JobKindLesson, (&lessons.Service{
@@ -321,7 +319,7 @@ func runServe(args []string) {
 	runner.Register(domain.JobKindRoadmapAnalyze, analyzer.Handle)
 	runner.Register(domain.JobKindChapterDetect, analyzer.DetectChapters)
 	srv := httpserver.NewServer(cfg.Listen, sm, drafts, topics.NewService(db), runner, root,
-		httpserver.Settings{DB: db, Adapter: adapter, Model: cfg.Adapter.Model, Exercises: cfg.Exercises, MaxAnswerBytes: cfg.Limits.MaxAnswerBytes, Editor: cfg.Editor.Command})
+		httpserver.Settings{DB: db, Adapter: adapter, Switch: adapter, Model: cfg.Adapter.Model, Exercises: cfg.Exercises, MaxAnswerBytes: cfg.Limits.MaxAnswerBytes, Editor: cfg.Editor.Command})
 	// Maintenance at startup and hourly: expired job dirs/logs, daily DB backup, expired import drafts.
 	maint := &maintenance.Service{DB: db, Root: root, LogRetention: time.Duration(cfg.LogRetentionDays) * 24 * time.Hour}
 	go func() {
@@ -371,4 +369,16 @@ func runServe(args []string) {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("Graceful shutdown failed", "error", err)
 	}
+}
+
+// newAdapter builds every configured AI tool behind one switch, starting with kind.
+func newAdapter(cfg config.Config, logs *fsx.Root, kind string) *ai.Switch {
+	ad := cfg.Adapter
+	tool := func(k string, t config.ToolConfig) ai.Adapter {
+		return antigravity.New(antigravity.Config{Kind: k, Binary: t.Binary, Model: t.Model, Effort: t.Effort, ExtraArgs: t.ExtraArgs, Logs: logs})
+	}
+	return ai.NewSwitch(kind,
+		antigravity.New(antigravity.Config{Binary: ad.Binary, Model: ad.Model, Effort: ad.Effort, Sandbox: ad.Sandbox, ExtraArgs: ad.ExtraArgs, Logs: logs}),
+		tool(antigravity.KindClaude, ad.Claude),
+		tool(antigravity.KindCodex, ad.Codex))
 }

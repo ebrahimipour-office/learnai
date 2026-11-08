@@ -103,14 +103,14 @@ func (s *Service) Handle(ctx context.Context, j jobs.Job) error {
 	if err != nil {
 		return err
 	}
-	req.Model, req.Timeout, req.StallTimeout = s.Model, s.Timeout, s.Stall
+	req.Model, req.Timeout, req.StallTimeout = ai.ModelFor(s.Adapter, s.Model), s.Timeout, s.Stall
 	if _, err := s.DB.Writer().ExecContext(ctx, `UPDATE jobs SET inputs_fingerprint = ?, adapter = ?, model = ?, skill = ?, skill_version = ? WHERE id = ?`,
-		fsx.HashBytes(slices.Concat(in.Files["task.json"], lessonMD, in.Files["source.md"])), s.Adapter.Name(), s.Model, req.Skill.Name, req.Skill.Version, j.ID); err != nil {
+		fsx.HashBytes(slices.Concat(in.Files["task.json"], lessonMD, in.Files["source.md"])), s.Adapter.Name(), ai.ModelFor(s.Adapter, s.Model), req.Skill.Name, req.Skill.Version, j.ID); err != nil {
 		return err
 	}
 	meta := Meta{StableKey: t.StableKey, TopicTitle: t.Title, Version: maxVer + 1,
 		CreatedAt:   time.Now().UTC().Format(time.RFC3339),
-		Generator:   schema.ManifestGenerator{Adapter: s.Adapter.Name(), Model: s.Model, Skill: req.Skill.Name, SkillVersion: req.Skill.Version, JobID: j.ID},
+		Generator:   schema.ManifestGenerator{Adapter: s.Adapter.Name(), Model: ai.ModelFor(s.Adapter, s.Model), Skill: req.Skill.Name, SkillVersion: req.Skill.Version, JobID: j.ID},
 		AllowedExts: s.Config.AllowedAnswerExts, CountMin: s.Config.CountMin, CountMax: s.Config.CountMax}
 
 	// 2) ai + validate (one automatic retry on invalid output)

@@ -90,7 +90,8 @@ type pageData struct {
 
 	Doctor              *Doctor
 	Adapter, Model      string
-	Privacy, PrivacyAck string // notice text; RFC3339 time of acknowledgement or ""
+	Adapters            []string // selectable AI tools on the settings page
+	Privacy, PrivacyAck string   // notice text; RFC3339 time of acknowledgement or ""
 }
 
 type ruleOption struct {

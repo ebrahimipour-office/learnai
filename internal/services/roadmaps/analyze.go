@@ -144,10 +144,10 @@ func (a *Analyzer) run(ctx context.Context, j jobs.Job, build func(*Draft, *road
 	if err != nil {
 		return err
 	}
-	req.Model, req.Timeout, req.StallTimeout = a.Model, a.Timeout, a.Stall
+	req.Model, req.Timeout, req.StallTimeout = ai.ModelFor(a.Adapter, a.Model), a.Timeout, a.Stall
 	db := s.db.Writer()
 	if _, err := db.ExecContext(ctx, `UPDATE jobs SET phase = 'ai', inputs_fingerprint = ?, adapter = ?, model = ?, skill = ?, skill_version = ? WHERE id = ?`,
-		fsx.HashBytes(inputs), a.Adapter.Name(), a.Model, req.Skill.Name, req.Skill.Version, j.ID); err != nil {
+		fsx.HashBytes(inputs), a.Adapter.Name(), ai.ModelFor(a.Adapter, a.Model), req.Skill.Name, req.Skill.Version, j.ID); err != nil {
 		return err
 	}
 

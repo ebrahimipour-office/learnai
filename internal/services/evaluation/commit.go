@@ -9,6 +9,7 @@ import (
 	"path"
 	"time"
 
+	"learninghub/internal/ai"
 	"learninghub/internal/domain"
 	"learninghub/internal/fsx"
 	"learninghub/internal/jobs"
@@ -123,7 +124,7 @@ func (s *Service) commit(ctx context.Context, j jobs.Job, mode string, set setIn
 
 	res := &schema.Result{Topic: schema.ManifestTopic{StableKey: set.StableKey, Title: set.TopicTitle}, SetVersion: set.Version,
 		AttemptNo: k, Mode: mode, RubricVersion: set.RubricVersion, StartedAt: started, FinishedAt: now, JobID: j.ID,
-		Evaluator: schema.ManifestGenerator{Adapter: s.Adapter.Name(), Model: s.Model, Skill: skillName, SkillVersion: skillVersion, JobID: j.ID}}
+		Evaluator: schema.ManifestGenerator{Adapter: s.Adapter.Name(), Model: ai.ModelFor(s.Adapter, s.Model), Skill: skillName, SkillVersion: skillVersion, JobID: j.ID}}
 	flagged := map[string]bool{}
 	for _, r := range rows {
 		res.Items = append(res.Items, r.item)
@@ -180,7 +181,7 @@ func (s *Service) commit(ctx context.Context, j jobs.Job, mode string, set setIn
 			total_count, is_partial, result_file, summary_file, skill, skill_version, model, started_at, finished_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			set.ID, k, mode, j.ID, set.RubricVersion, a.WeightedScore, a.AnsweredCount, a.TotalCount, a.Partial,
-			ids[len(ids)-1], ids[len(ids)-2], skillName, skillVersion, s.Model, started, now)
+			ids[len(ids)-1], ids[len(ids)-2], skillName, skillVersion, ai.ModelFor(s.Adapter, s.Model), started, now)
 		if err != nil {
 			return err
 		}

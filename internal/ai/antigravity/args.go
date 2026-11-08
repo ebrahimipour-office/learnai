@@ -49,11 +49,8 @@ type argSpec struct {
 
 // buildArgs returns the agy argv (never run through a shell).
 func buildArgs(s argSpec) ([]string, error) {
-	for _, a := range s.Extra {
-		name, _, _ := strings.Cut(strings.TrimSpace(a), "=")
-		if forbidden[strings.TrimLeft(name, "-")] || strings.Contains(a, "dangerously-skip-permissions") {
-			return nil, fmt.Errorf("%w: %q", ErrForbiddenArg, a)
-		}
+	if err := checkExtra(s.Extra, forbidden); err != nil {
+		return nil, err
 	}
 	if strings.TrimSpace(s.Prompt) == "" {
 		return nil, errors.New("antigravity: empty prompt")

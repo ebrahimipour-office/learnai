@@ -1,4 +1,5 @@
-// Package antigravity runs the agy CLI headless with stream-json output (TDD §6.2).
+// Package antigravity runs an AI CLI headless with JSON-lines output (TDD §6.2): agy, and
+// with Kind set, Claude Code or Codex (dialects.go). Logging, kill and error mapping are shared.
 package antigravity
 
 import (
@@ -25,6 +26,7 @@ import (
 )
 
 type Config struct {
+	Kind      string // KindAgy (default), KindClaude or KindCodex
 	Binary    string
 	Model     string
 	Effort    string
@@ -46,7 +48,8 @@ type Adapter struct {
 var _ ai.Adapter = (*Adapter)(nil)
 
 func New(cfg Config) *Adapter {
-	cfg.Binary = cmp.Or(cfg.Binary, "agy")
+	cfg.Kind = cmp.Or(cfg.Kind, KindAgy)
+	cfg.Binary = cmp.Or(cfg.Binary, defaultBinary[cfg.Kind])
 	cfg.KillGrace = cmp.Or(cfg.KillGrace, 30*time.Second)
 	if cfg.Patterns == nil {
 		cfg.Patterns = DefaultPatterns
@@ -54,7 +57,10 @@ func New(cfg Config) *Adapter {
 	return &Adapter{cfg: cfg}
 }
 
-func (a *Adapter) Name() string { return "antigravity" }
+func (a *Adapter) Name() string { return a.cfg.Kind }
+
+// Model is the configured model ("" = the tool's default); jobs record it (ai.Modeler).
+func (a *Adapter) Model() string { return a.cfg.Model }
 
 func (a *Adapter) lookPath() (string, error) {
 	bin, err := exec.LookPath(a.cfg.Binary)
@@ -84,6 +90,12 @@ func (a *Adapter) Probe(ctx context.Context) (ai.Capabilities, error) {
 	}
 	caps.Version = strings.TrimSpace(v)
 	a.version.Store(&caps.Version)
+	switch a.cfg.Kind {
+	case KindClaude:
+		return probeClaude(caps, out), nil
+	case KindCodex:
+		return probeCodex(caps, out), nil
+	}
 
 	help, _ := out("--help") // flag usage may exit non-zero; only the text matters
 	caps.HeadlessJSON = strings.Contains(help, "stream-json")
@@ -115,7 +127,7 @@ func (a *Adapter) Run(ctx context.Context, req ai.Request, events chan<- ai.Even
 	if !filepath.IsAbs(req.WorkDir) {
 		return nil, fmt.Errorf("antigravity: WorkDir must be absolute: %q", req.WorkDir)
 	}
-	args, err := buildArgs(argSpec{
+	spec := argSpec{
 		Prompt:    req.Prompt,
 		WorkDir:   req.WorkDir,
 		HasSchema: len(req.OutputSchema) > 0,
@@ -124,7 +136,20 @@ func (a *Adapter) Run(ctx context.Context, req ai.Request, events chan<- ai.Even
 		Timeout:   req.Timeout,
 		Sandbox:   a.cfg.Sandbox,
 		Extra:     a.cfg.ExtraArgs,
-	})
+	}
+	var args []string
+	var err error
+	dec := decoder(&agyDecoder{})
+	switch a.cfg.Kind {
+	case KindClaude:
+		args, err = buildClaudeArgs(spec, req.OutputSchema)
+		dec = &claudeDecoder{}
+	case KindCodex:
+		args, err = buildCodexArgs(spec)
+		dec = &codexDecoder{}
+	default:
+		args, err = buildArgs(spec)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +189,7 @@ func (a *Adapter) Run(ctx context.Context, req ai.Request, events chan<- ai.Even
 		log.finish(args, nil, stderr.String(), -1, 0, err)
 		return nil, fmt.Errorf("%w: start: %v", ai.ErrToolFailed, err)
 	}
-	res, rawRes := readStream(runCtx, stdout, events, log)
+	res, rawRes := readStream(runCtx, stdout, events, log, dec)
 	waitErr := cmd.Wait()
 	group.Close()
 	dur := time.Since(start)
@@ -202,32 +227,52 @@ func writeSchema(workDir string, schema []byte) error {
 	return r.WriteAtomic(schemaFile, schema, 0o644)
 }
 
-// readStream consumes agy's NDJSON stdout, forwarding progress and keeping the final result.
-func readStream(ctx context.Context, r io.Reader, events chan<- ai.Event, log *jobLog) (*result, []byte) {
-	var res *result
-	var raw []byte
+// decoder turns the CLI's JSON-lines stdout into progress events and one final result.
+type decoder interface {
+	// line returns the event name to report ("" for none) for one non-empty stdout line.
+	line(b []byte) string
+	final() (*result, []byte)
+}
+
+// agyDecoder: the key is "event" (not "type") and the final payload sits under "result" (agy 1.4.x).
+type agyDecoder struct {
+	res *result
+	raw []byte
+}
+
+func (d *agyDecoder) line(b []byte) string {
+	var env envelope
+	if json.Unmarshal(b, &env) != nil || env.Event == "" {
+		return ""
+	}
+	if env.Event == "result" {
+		var rr result
+		if json.Unmarshal(env.Result, &rr) == nil {
+			d.res, d.raw = &rr, env.Result
+		}
+		return ""
+	}
+	return env.Event
+}
+
+func (d *agyDecoder) final() (*result, []byte) { return d.res, d.raw }
+
+// readStream consumes the CLI's stdout, forwarding progress and keeping the final result.
+func readStream(ctx context.Context, r io.Reader, events chan<- ai.Event, log *jobLog, dec decoder) (*result, []byte) {
 	br := bufio.NewReader(r)
 	for {
 		line, err := br.ReadBytes('\n')
 		if t := bytes.TrimSpace(line); len(t) > 0 {
 			log.event(t)
-			var env envelope
-			if json.Unmarshal(t, &env) == nil && env.Event != "" {
-				if env.Event == "result" {
-					var rr result
-					if json.Unmarshal(env.Result, &rr) == nil {
-						res, raw = &rr, env.Result
-					}
-				} else if events != nil {
-					select {
-					case events <- ai.Event{Kind: eventKind(env.Event), Info: env.Event}:
-					case <-ctx.Done():
-					}
+			if ev := dec.line(t); ev != "" && events != nil {
+				select {
+				case events <- ai.Event{Kind: eventKind(ev), Info: ev}:
+				case <-ctx.Done():
 				}
 			}
 		}
 		if err != nil {
-			return res, raw
+			return dec.final()
 		}
 	}
 }
@@ -246,7 +291,7 @@ func (a *Adapter) outcome(ctx, runCtx context.Context, req ai.Request, res *resu
 		return nil
 	}
 	if req.Timeout > 0 && dur >= req.Timeout {
-		return fmt.Errorf("%w: agy stopped after %s", ai.ErrTimeout, dur.Round(time.Second))
+		return fmt.Errorf("%w: %s stopped after %s", ai.ErrTimeout, a.Name(), dur.Round(time.Second))
 	}
 	text := stderr
 	if res != nil && res.Error != "" {
