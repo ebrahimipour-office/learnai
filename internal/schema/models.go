@@ -54,21 +54,21 @@ type ExternalKnowledge struct {
 
 // Rubric represents rubric-vN.json structure.
 type Rubric struct {
-	SchemaVersion  int              `json:"schema_version"`
-	RubricVersion  int              `json:"rubric_version"`
-	SetVersion     int              `json:"set_version"`
-	TopicStableKey string           `json:"topic_stable_key"`
+	SchemaVersion  int               `json:"schema_version"`
+	RubricVersion  int               `json:"rubric_version"`
+	SetVersion     int               `json:"set_version"`
+	TopicStableKey string            `json:"topic_stable_key"`
 	Generator      ManifestGenerator `json:"generator,omitempty"`
-	Exercises      []RubricExercise `json:"exercises"`
+	Exercises      []RubricExercise  `json:"exercises"`
 }
 
 type RubricExercise struct {
-	ID                  string               `json:"id"`
-	ReferenceAnswer     ReferenceAnswer      `json:"reference_answer"`
-	Criteria            []Criterion          `json:"criteria"`
-	CommonErrors        []CommonError        `json:"common_errors,omitempty"`
+	ID                  string                `json:"id"`
+	ReferenceAnswer     ReferenceAnswer       `json:"reference_answer"`
+	Criteria            []Criterion           `json:"criteria"`
+	CommonErrors        []CommonError         `json:"common_errors,omitempty"`
 	OutOfScopeKnowledge []OutOfScopeKnowledge `json:"out_of_scope_knowledge,omitempty"`
-	GradingNotes        string               `json:"grading_notes,omitempty"`
+	GradingNotes        string                `json:"grading_notes,omitempty"`
 }
 
 type ReferenceAnswer struct {

@@ -16,8 +16,9 @@ const (
 
 // Rule chooses which tree nodes become topics. Stored as JSON in roadmaps.select_rule.
 type Rule struct {
-	Kind  RuleKind `json:"kind"`
-	Level int      `json:"level,omitempty"` // RuleLevel only: 1-6
+	Kind     RuleKind  `json:"kind"`
+	Level    int       `json:"level,omitempty"`    // RuleLevel only: 1-6
+	Chapters []Chapter `json:"chapters,omitempty"` // RuleChapters only; checked by ValidateChapters
 }
 
 // Group is a heading above a topic. Parent indexes Selection.Groups; -1 means top level.
@@ -57,6 +58,12 @@ func Select(root *Node, r Rule) (*Selection, error) {
 	groupIdx := map[*Node]int{}
 	var groupPaths []string // normalized key path of each entry in s.Groups
 	usedG, usedT := map[string]bool{}, map[string]bool{}
+	chTitle := map[int]string{} // RuleChapters: the chapter title replaces the heading title, not its key
+	if r.Kind == RuleChapters {
+		for _, c := range r.Chapters {
+			chTitle[c.Line] = strings.TrimSpace(c.Title)
+		}
+	}
 	pathOf := func(group int) string {
 		if group < 0 {
 			return ""
@@ -87,7 +94,11 @@ func Select(root *Node, r Rule) (*Selection, error) {
 			if isTopic(c, n) {
 				g := group(path)
 				key := stableKey(childPath(pathOf(g), c.Title, usedT))
-				s.Topics = append(s.Topics, Topic{StableKey: key, Title: c.Title, Line: c.Line, Group: g, Outline: outline(c)})
+				title, ok := chTitle[c.Line]
+				if !ok {
+					title = c.Title
+				}
+				s.Topics = append(s.Topics, Topic{StableKey: key, Title: title, Line: c.Line, Group: g, Outline: outline(c)})
 			} else if c.Kind == KindHeading {
 				walk(c, append(path[:len(path):len(path)], c))
 			}
@@ -163,6 +174,15 @@ func topicTest(r Rule) (func(c, parent *Node) bool, error) {
 			return nil, fmt.Errorf("roadmap: heading level %d out of range 1-6", r.Level)
 		}
 		return headingAt(r.Level), nil
+	case RuleChapters:
+		if len(r.Chapters) == 0 {
+			return nil, fmt.Errorf("roadmap: chapters rule without chapters")
+		}
+		lines := map[int]bool{}
+		for _, c := range r.Chapters {
+			lines[c.Line] = true
+		}
+		return func(c, _ *Node) bool { return c.Kind == KindHeading && lines[c.Line] }, nil
 	case RuleItems:
 		// parent check, not Level==1: items promoted from an empty parent item keep a deeper Level.
 		return func(c, p *Node) bool { return c.Kind == KindItem && p.Kind != KindItem }, nil

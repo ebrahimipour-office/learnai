@@ -5,7 +5,7 @@ import "errors"
 // Common domain errors
 var (
 	ErrNotFound          = errors.New("not found")
-	ErrAlreadyExists      = errors.New("already exists")
+	ErrAlreadyExists     = errors.New("already exists")
 	ErrScopeBusy         = errors.New("another active job is already running on this scope")
 	ErrImmutableFile     = errors.New("file is immutable and cannot be overwritten")
 	ErrNothingToEvaluate = errors.New("nothing to evaluate: no new or modified answers found")
@@ -89,6 +89,7 @@ const (
 	JobKindExercises      JobKind = "exercises"
 	JobKindEvaluate       JobKind = "evaluate"
 	JobKindRoadmapAnalyze JobKind = "roadmap_analyze"
+	JobKindChapterDetect  JobKind = "chapter_detect"
 )
 
 // JobStatus tracks the lifecycle state of a background job (R4).
@@ -114,8 +115,8 @@ const (
 type SuggestionKind string
 
 const (
-	SuggestionKindPrerequisite    SuggestionKind = "prerequisite"
-	SuggestionKindSupplementary   SuggestionKind = "supplementary"
+	SuggestionKindPrerequisite  SuggestionKind = "prerequisite"
+	SuggestionKindSupplementary SuggestionKind = "supplementary"
 )
 
 // SuggestionStatus tracks decision state on an AI suggestion.

@@ -134,3 +134,36 @@ func TestDraftsExpireAfter24h(t *testing.T) {
 		t.Errorf("import_drafts: want 0 after purge, got %d", n)
 	}
 }
+
+// A saved chapters rule points at lines of the old revision: re-import keeps it only if it still fits.
+func TestReimportChaptersRule(t *testing.T) {
+	s, db := newService(t)
+	ctx := context.Background()
+	rule := `{"kind":"chapters","chapters":[{"line":2,"end_line":4,"title":"پایه"}]}`
+	var rid int64
+	if err := db.Writer().QueryRow(`INSERT INTO roadmaps (slug, title, select_rule) VALUES ('go', 'Go', ?) RETURNING id`, rule).Scan(&rid); err != nil {
+		t.Fatal(err)
+	}
+	for name, tc := range map[string]struct {
+		content string
+		want    roadmap.RuleKind
+	}{
+		"still fits": {sample, roadmap.RuleChapters},
+		"moved":      {"# Go\nnew preface\n## Basics\n", roadmap.RuleDeepest},
+	} {
+		id, err := s.CreateReimport(ctx, rid, "go.md", []byte(tc.content))
+		if err != nil {
+			t.Fatal(err)
+		}
+		d, err := s.Draft(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if d.Choice.Rule.Kind != tc.want {
+			t.Errorf("%s: rule = %+v, want %s", name, d.Choice.Rule, tc.want)
+		}
+		if _, err := d.Preview(d.Choice); err != nil {
+			t.Errorf("%s: preview: %v", name, err)
+		}
+	}
+}

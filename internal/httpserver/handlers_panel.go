@@ -22,7 +22,7 @@ var jobPhaseLabels = map[string]string{
 }
 
 var jobKindLabels = map[string]string{
-	"lesson": "تولید درس", "exercises": "تولید تمرین", "evaluate": "ارزیابی", "roadmap_analyze": "تحلیل نقشه راه",
+	"lesson": "تولید درس", "exercises": "تولید تمرین", "evaluate": "ارزیابی", "roadmap_analyze": "تحلیل نقشه راه", "chapter_detect": "تشخیص فصل‌ها",
 }
 
 func pathID(r *http.Request) (int64, bool) {

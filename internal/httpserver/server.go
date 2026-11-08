@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"learninghub/internal/domain"
 	"learninghub/internal/fsx"
 	"learninghub/internal/jobs"
 	"learninghub/internal/services/roadmaps"
@@ -56,7 +57,8 @@ func NewServer(addr string, sm *SecurityManager, drafts *roadmaps.Service, topic
 	mux.HandleFunc("GET /roadmaps/drafts/{id}", a.showDraft)
 	mux.HandleFunc("POST /roadmaps/drafts/{id}/selection", a.updateSelection)
 	mux.HandleFunc("POST /roadmaps/drafts/{id}/confirm", a.confirmDraft)
-	mux.HandleFunc("POST /roadmaps/drafts/{id}/ai-assist", a.requireAck(a.analyzeDraft))
+	mux.HandleFunc("POST /roadmaps/drafts/{id}/ai-assist", a.requireAck(a.draftJob(domain.JobKindRoadmapAnalyze)))
+	mux.HandleFunc("POST /roadmaps/drafts/{id}/chapters", a.requireAck(a.draftJob(domain.JobKindChapterDetect)))
 	mux.HandleFunc("GET /roadmaps/drafts/{id}/ai", a.draftAIStatus)
 
 	return &http.Server{

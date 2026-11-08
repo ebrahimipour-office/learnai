@@ -62,8 +62,15 @@ func (d *Draft) DefaultTitle() string {
 }
 
 // Preview applies c to the draft content. Parsing is deterministic, so the content is the source of truth.
+// A chapters rule must pass roadmap.ValidateChapters (its *roadmap.ChapterError is returned as is).
 func (d *Draft) Preview(c Choice) (*roadmap.Selection, error) {
-	return roadmap.Select(roadmap.Parse(d.Content), c.Rule)
+	tree := roadmap.Parse(d.Content)
+	if c.Rule.Kind == roadmap.RuleChapters {
+		if err := roadmap.ValidateChapters(tree, roadmap.LineCount(d.Content), c.Rule.Chapters); err != nil {
+			return nil, err
+		}
+	}
+	return roadmap.Select(tree, c.Rule)
 }
 
 type Service struct {
@@ -123,6 +130,10 @@ func (s *Service) createDraft(ctx context.Context, roadmapID int64, name string,
 			return "", fmt.Errorf("decoding roadmap rule: %w", err)
 		}
 		roadmapRef = sql.NullInt64{Int64: roadmapID, Valid: true}
+		// Saved chapters point at lines of the old revision: keep them only if they still fit the new file.
+		if rule.Kind == roadmap.RuleChapters && roadmap.ValidateChapters(roadmap.Parse(content), roadmap.LineCount(content), rule.Chapters) != nil {
+			rule = roadmap.Rule{Kind: roadmap.RuleDeepest}
+		}
 	}
 	choice, err := json.Marshal(Choice{Rule: rule})
 	if err != nil {
@@ -180,7 +191,7 @@ func (s *Service) Draft(ctx context.Context, id string) (*Draft, error) {
 // SetChoice validates c against the draft and stores it.
 func (s *Service) SetChoice(ctx context.Context, d *Draft, c Choice) error {
 	if _, err := d.Preview(c); err != nil {
-		return fmt.Errorf("%w: %v", ErrInvalidSource, err)
+		return fmt.Errorf("%w: %w", ErrInvalidSource, err)
 	}
 	raw, err := json.Marshal(c)
 	if err != nil {

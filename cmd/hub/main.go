@@ -314,9 +314,11 @@ func runServe(args []string) {
 		Timeout: cfg.Jobs.TimeoutEvaluateItem, Stall: cfg.Jobs.StallTimeout, Parallel: cfg.Jobs.EvaluateParallelism,
 		MaxAnswerBytes: cfg.Limits.MaxAnswerBytes,
 	}).Handle)
-	runner.Register(domain.JobKindRoadmapAnalyze, (&roadmaps.Analyzer{
+	analyzer := &roadmaps.Analyzer{
 		Drafts: drafts, Adapter: adapter, Model: cfg.Adapter.Model, Timeout: cfg.Jobs.TimeoutAnalyze, Stall: cfg.Jobs.StallTimeout,
-	}).Handle)
+	}
+	runner.Register(domain.JobKindRoadmapAnalyze, analyzer.Handle)
+	runner.Register(domain.JobKindChapterDetect, analyzer.DetectChapters)
 	srv := httpserver.NewServer(cfg.Listen, sm, drafts, topics.NewService(db), runner, root,
 		httpserver.Settings{DB: db, Adapter: adapter, Model: cfg.Adapter.Model, Exercises: cfg.Exercises, MaxAnswerBytes: cfg.Limits.MaxAnswerBytes, Editor: cfg.Editor.Command})
 	// Maintenance at startup and hourly: expired job dirs/logs, daily DB backup, expired import drafts.

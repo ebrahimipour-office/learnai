@@ -56,9 +56,9 @@ func (r *Runner) Get(ctx context.Context, id int64) (*Info, error) {
 	return r.scanInfo(ctx, `WHERE id = ?`, id)
 }
 
-// Latest returns the newest job of kind in scope, or nil if it never had one.
+// Latest returns the newest job of kind ("" = any kind) in scope, or nil if it never had one.
 func (r *Runner) Latest(ctx context.Context, scope string, kind domain.JobKind) (*Info, error) {
-	i, err := r.scanInfo(ctx, `WHERE scope_key = ? AND kind = ? ORDER BY id DESC LIMIT 1`, scope, kind)
+	i, err := r.scanInfo(ctx, `WHERE scope_key = ? AND (? = '' OR kind = ?) ORDER BY id DESC LIMIT 1`, scope, kind, kind)
 	if errors.Is(err, domain.ErrNotFound) {
 		return nil, nil
 	}

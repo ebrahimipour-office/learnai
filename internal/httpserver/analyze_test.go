@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -53,7 +54,7 @@ func TestDraftAIAssistFlow(t *testing.T) {
 	}
 
 	page = e.do(httptest.NewRequest(http.MethodGet, draftURL, nil)).Body.String()
-	for _, want := range []string{"قاعده پیشنهادی: <strong>آیتم‌های لیست</strong>", "سرفصل‌ها فازند", `name="rule" value="items"`, "اعمال پیشنهاد", "<strong>2</strong> موضوع انتخاب‌شده از 2"} {
+	for _, want := range []string{"قاعده پیشنهادی: <strong>آیتم‌های لیست</strong>", "سرفصل‌ها فازند", `name="rule" value="ai"`, "اعمال پیشنهاد", "<strong>2</strong> موضوع انتخاب‌شده از 2"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("page missing %q", want)
 		}
@@ -117,5 +118,89 @@ func TestDraftAIAssistBusyAndFailure(t *testing.T) {
 
 	if rec := e.analyze("/roadmaps/drafts/nope", true); rec.Code != http.StatusNotFound {
 		t.Errorf("unknown draft: want 404, got %d", rec.Code)
+	}
+}
+
+// T7.4: detect chapters, apply (rule + title), rename, merge, reject an invalid edit, confirm.
+func TestDraftChapterFlow(t *testing.T) {
+	e := newEnv(t)
+	e.ad.Output = json.RawMessage(`{"title":"کتاب Go","reason":"هر H2 یک فصل","chapters":[
+		{"title":"مقدمات","start_line":3,"end_line":4},{"title":"توابع","start_line":5,"end_line":6},{"title":"همروندی","start_line":7,"end_line":8}]}`)
+	draftURL := e.upload("go.md", []byte("# Go Book\npreface\n## Basics\nb\n## Funcs\nf\n## Conc\nc\n")).Header().Get("Location")
+
+	req := httptest.NewRequest(http.MethodPost, draftURL+"/chapters", nil)
+	req.Header.Set("X-CSRF-Token", e.sm.CSRFToken())
+	req.Header.Set("HX-Request", "true")
+	if rec := e.do(req); rec.Code != http.StatusAccepted || !strings.Contains(rec.Body.String(), `id="draft-ai"`) {
+		t.Fatalf("chapters: want 202 fragment, got %d\n%s", rec.Code, rec.Body.String())
+	}
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		if e.do(httptest.NewRequest(http.MethodGet, draftURL+"/ai?poll=1", nil)).Header().Get("HX-Refresh") == "true" {
+			break
+		} else if time.Now().After(deadline) {
+			t.Fatal("chapter detection did not finish")
+		}
+	}
+	page := e.do(httptest.NewRequest(http.MethodGet, draftURL, nil)).Body.String()
+	for _, want := range []string{"<strong>3 فصل</strong>", "عنوان پیشنهادی: <bdi>کتاب Go</bdi>", "همروندی", "(خط 7 تا 8)", "اعمال پیشنهاد"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("suggestion page missing %q", want)
+		}
+	}
+
+	if rec := e.selection(draftURL, url.Values{"rule": {"ai"}}, false); rec.Code != http.StatusSeeOther {
+		t.Fatalf("apply: %d", rec.Code)
+	}
+	page = e.do(httptest.NewRequest(http.MethodGet, draftURL, nil)).Body.String()
+	for _, want := range []string{`value="کتاب Go"`, `name="ch_title" value="توابع"`, "<strong>3</strong> موضوع انتخاب‌شده از 3", `name="merge" value="2"`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("applied page missing %q", want)
+		}
+	}
+	if strings.Contains(page, "اعمال پیشنهاد") || strings.Contains(page, `name="merge" value="3"`) {
+		t.Error("applied: no apply button, and the last chapter has no merge")
+	}
+
+	edit := func(merge string, ends ...string) url.Values {
+		v := url.Values{"rule": {"chapters"}, "shown_rule": {"chapters"}, "ch_line": {"3", "5", "7"}, "ch_end": ends,
+			"ch_title": {"مقدمات", " توابع Go ", "همروندی"}}
+		if merge != "" {
+			v.Set("merge", merge)
+		}
+		return v
+	}
+	rec := e.selection(draftURL, edit("", "4", "7", "8"), true) // overlaps chapter 3
+	if rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "فصل 3 با فصل قبلی هم‌پوشانی دارد") {
+		t.Fatalf("overlap: want 422 with message, got %d\n%s", rec.Code, rec.Body.String())
+	}
+	// rename chapter 2 and merge 2+3; chapter 1 unticked
+	keys := regexp.MustCompile(`name="include" value="([^"]+)"`).FindAllStringSubmatch(page, -1)
+	if len(keys) != 3 {
+		t.Fatalf("include keys = %v", keys)
+	}
+	v := edit("2", "4", "6", "8")
+	v["include"] = []string{keys[1][1], keys[2][1]}
+	if rec := e.selection(draftURL, v, false); rec.Code != http.StatusSeeOther {
+		t.Fatalf("merge: %d", rec.Code)
+	}
+	page = e.do(httptest.NewRequest(http.MethodGet, draftURL, nil)).Body.String()
+	if !strings.Contains(page, `name="ch_title" value="توابع Go"`) || !strings.Contains(page, "خط 5 تا 8") || strings.Contains(page, `aria-label="عنوان فصل 3"`) {
+		t.Fatalf("after merge\n%s", page)
+	}
+
+	confirm := url.Values{"confirm": {"1"}, "title": {"کتاب Go"}}
+	creq := httptest.NewRequest(http.MethodPost, draftURL+"/confirm", strings.NewReader(confirm.Encode()))
+	creq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	creq.Header.Set("X-CSRF-Token", e.sm.CSRFToken())
+	if rec := e.do(creq); rec.Code != http.StatusSeeOther {
+		t.Fatalf("confirm: %d\n%s", rec.Code, rec.Body.String())
+	}
+	var titles string
+	if err := e.db.Writer().QueryRow(`SELECT group_concat(title, '|') FROM (SELECT title FROM topics ORDER BY id)`).Scan(&titles); err != nil || titles != "توابع Go" {
+		t.Errorf("topics = %q (%v)", titles, err)
+	}
+	var rt string
+	if err := e.db.Writer().QueryRow(`SELECT title FROM roadmaps`).Scan(&rt); err != nil || rt != "کتاب Go" {
+		t.Errorf("roadmap title = %q (%v)", rt, err)
 	}
 }

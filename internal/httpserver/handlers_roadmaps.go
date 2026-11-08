@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"path"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -53,8 +54,10 @@ type pageData struct {
 	SuggestItems    bool
 	Diff            *roadmaps.Diff
 	Roadmaps        []roadmaps.RoadmapRef
-	RoadmapID       int64  // re-import target preselected in the upload form
-	AIRule, AILabel string // T6.2 suggested rule as form value and label; "" = no suggestion
+	RoadmapID       int64        // re-import target preselected in the upload form
+	AIRule, AILabel string       // T6.2 suggested rule as form value and label; "" = no suggestion
+	AIApplied       bool         // the draft's rule is exactly the suggested one
+	Chapters        []chapterRow // chapters rule only: editable list instead of Items
 
 	Query, Status       string
 	Statuses            []ruleOption
@@ -93,6 +96,13 @@ type pageData struct {
 type ruleOption struct {
 	Value, Label string
 	Selected     bool
+}
+
+// chapterRow is one chapter in the preview; its form fields rebuild the chapters rule (§12.4).
+type chapterRow struct {
+	N, Line, EndLine int // N is 1-based and is the merge value
+	Title, Key       string
+	Included, Last   bool
 }
 
 // treeNode is a group or a topic in the preview tree, in document order.
@@ -233,7 +243,18 @@ func (a *app) updateSelection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	value := r.FormValue("rule")
-	rule, ok := parseRule(value)
+	var rule roadmap.Rule
+	ok := false
+	switch value {
+	case "ai": // apply the stored AI suggestion as is
+		if d.AI != nil {
+			rule, ok = d.AI.Rule, true
+		}
+	case string(roadmap.RuleChapters):
+		rule, ok = formChapters(r)
+	default:
+		rule, ok = parseRule(value)
+	}
 	if !ok {
 		a.renderDraft(w, r, http.StatusUnprocessableEntity, d, "قاعده انتخاب نامعتبر است.")
 		return
@@ -243,7 +264,7 @@ func (a *app) updateSelection(w http.ResponseWriter, r *http.Request) {
 	if value == r.FormValue("shown_rule") {
 		sel, err := d.Preview(c)
 		if err != nil {
-			a.renderDraft(w, r, http.StatusUnprocessableEntity, d, "قاعده انتخاب نامعتبر است.")
+			a.renderDraft(w, r, http.StatusUnprocessableEntity, d, selectionError(err, "قاعده انتخاب نامعتبر است."))
 			return
 		}
 		ticked := map[string]bool{}
@@ -262,8 +283,16 @@ func (a *app) updateSelection(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		slog.Error("saving draft selection", "error", err)
-		a.renderDraft(w, r, http.StatusUnprocessableEntity, d, "ذخیره انتخاب ناموفق بود.")
+		a.renderDraft(w, r, http.StatusUnprocessableEntity, d, selectionError(err, "ذخیره انتخاب ناموفق بود."))
 		return
+	}
+	// A chapter suggestion also carries a title; it fills the title field of a first import only (§12.5).
+	if value == "ai" && d.RoadmapID == 0 && d.AI.Title != "" {
+		if err := a.drafts.SetTitle(r.Context(), d, d.AI.Title); err != nil {
+			slog.Error("saving suggested title", "error", err)
+			a.renderDraft(w, r, http.StatusUnprocessableEntity, d, "ذخیره عنوان پیشنهادی ناموفق بود.")
+			return
+		}
 	}
 	if r.Header.Get("HX-Request") != "true" {
 		http.Redirect(w, r, "/roadmaps/drafts/"+d.ID, http.StatusSeeOther)
@@ -330,8 +359,21 @@ func (a *app) renderDraft(w http.ResponseWriter, r *http.Request, status int, d 
 		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
 		return
 	}
+	var chapters []chapterRow
+	if d.Choice.Rule.Kind == roadmap.RuleChapters {
+		key := map[int]string{}
+		for _, t := range sel.Topics {
+			key[t.Line] = t.StableKey
+		}
+		for i, c := range d.Choice.Rule.Chapters {
+			k := key[c.Line]
+			chapters = append(chapters, chapterRow{N: i + 1, Line: c.Line, EndLine: c.EndLine, Title: c.Title, Key: k,
+				Included: !excluded[k], Last: i == len(d.Choice.Rule.Chapters)-1})
+		}
+	}
 	value := ruleValue(d.Choice.Rule)
 	data := &pageData{
+		Chapters:     chapters,
 		Title:        "پیش‌نمایش ورود",
 		Error:        errMsg,
 		Draft:        d,
@@ -361,13 +403,18 @@ func (a *app) draftAI(r *http.Request, d *roadmaps.Draft, data *pageData) error 
 	data.Draft, data.RuleValue = d, ruleValue(d.Choice.Rule)
 	if d.AI != nil {
 		data.AIRule = ruleValue(d.AI.Rule)
+		data.AIApplied = reflect.DeepEqual(d.AI.Rule, d.Choice.Rule)
 		for _, o := range ruleOptions(data.AIRule) {
 			if o.Selected {
 				data.AILabel = o.Label
 			}
 		}
+		if d.AI.Rule.Kind == roadmap.RuleChapters {
+			data.AILabel = fmt.Sprintf("%d فصل", len(d.AI.Rule.Chapters))
+		}
 	}
-	j, err := a.runner.Latest(r.Context(), roadmaps.DraftScope(d.ID), domain.JobKindRoadmapAnalyze)
+	// Both draft jobs share the scope, so the latest of either kind is the one to show.
+	j, err := a.runner.Latest(r.Context(), roadmaps.DraftScope(d.ID), "")
 	data.Job = j
 	return err
 }
@@ -390,27 +437,32 @@ func (a *app) draftAIStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Query().Get("poll") == "1" {
-		if j, err := a.runner.Latest(r.Context(), roadmaps.DraftScope(d.ID), domain.JobKindRoadmapAnalyze); err == nil && (j == nil || !j.Active()) {
+		if j, err := a.runner.Latest(r.Context(), roadmaps.DraftScope(d.ID), ""); err == nil && (j == nil || !j.Active()) {
 			w.Header().Set("HX-Refresh", "true")
 		}
 	}
 	a.renderDraftAI(w, r, http.StatusOK, d, "")
 }
 
-// analyzeDraft queues a roadmap_analyze job (T6.2). Its result is only a suggestion the user may apply.
-func (a *app) analyzeDraft(w http.ResponseWriter, r *http.Request) {
+// draftJob queues a roadmap_analyze (T6.2) or chapter_detect (T7.4) job. Its result is only a
+// suggestion the user may apply.
+func (a *app) draftJob(kind domain.JobKind) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) { a.enqueueDraftJob(w, r, kind) }
+}
+
+func (a *app) enqueueDraftJob(w http.ResponseWriter, r *http.Request, kind domain.JobKind) {
 	d := a.loadDraft(w, r)
 	if d == nil {
 		return
 	}
 	params, _ := json.Marshal(roadmaps.AnalyzeParams{DraftID: d.ID})
-	_, err := a.runner.Enqueue(r.Context(), jobs.Job{Kind: domain.JobKindRoadmapAnalyze, Scope: roadmaps.DraftScope(d.ID), Params: params})
+	_, err := a.runner.Enqueue(r.Context(), jobs.Job{Kind: kind, Scope: roadmaps.DraftScope(d.ID), Params: params})
 	status, notice := http.StatusAccepted, ""
 	switch {
 	case errors.Is(err, domain.ErrScopeBusy):
 		status, notice = http.StatusConflict, "تحلیل دیگری روی این پیش‌نویس در جریان است."
 	case err != nil:
-		slog.Error("enqueueing roadmap analysis", "error", err)
+		slog.Error("enqueueing draft job", "kind", kind, "error", err)
 		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
 		return
 	}
@@ -474,12 +526,51 @@ func parseRule(v string) (roadmap.Rule, bool) {
 	return roadmap.Rule{}, false
 }
 
+// formChapters rebuilds a chapters rule from the preview's ch_line/ch_end/ch_title fields and applies
+// merge=N (chapter N absorbs chapter N+1). Validity is checked later by Draft.Preview.
+func formChapters(r *http.Request) (roadmap.Rule, bool) {
+	lines, ends, titles := r.Form["ch_line"], r.Form["ch_end"], r.Form["ch_title"]
+	if len(lines) != len(ends) || len(lines) != len(titles) {
+		return roadmap.Rule{}, false
+	}
+	chs := make([]roadmap.Chapter, len(lines))
+	for i := range lines {
+		l, err1 := strconv.Atoi(lines[i])
+		e, err2 := strconv.Atoi(ends[i])
+		if err1 != nil || err2 != nil {
+			return roadmap.Rule{}, false
+		}
+		chs[i] = roadmap.Chapter{Line: l, EndLine: e, Title: strings.TrimSpace(titles[i])}
+	}
+	if v := r.FormValue("merge"); v != "" {
+		m, err := strconv.Atoi(v)
+		if err != nil || m < 1 || m >= len(chs) {
+			return roadmap.Rule{}, false
+		}
+		chs[m-1].EndLine = chs[m].EndLine
+		chs = append(chs[:m], chs[m+1:]...)
+	}
+	return roadmap.Rule{Kind: roadmap.RuleChapters, Chapters: chs}, true
+}
+
+// selectionError shows a ValidateChapters message as is, otherwise fallback.
+func selectionError(err error, fallback string) string {
+	var ce *roadmap.ChapterError
+	if errors.As(err, &ce) {
+		return ce.Msg
+	}
+	return fallback
+}
+
 func ruleOptions(selected string) []ruleOption {
 	opts := []ruleOption{{Value: "deepest", Label: "سرفصل‌های بدون زیرسرفصل (پیش‌فرض)"}}
 	for n := 1; n <= 6; n++ {
 		opts = append(opts, ruleOption{Value: fmt.Sprintf("level-%d", n), Label: fmt.Sprintf("سرفصل‌های سطح %d", n)})
 	}
 	opts = append(opts, ruleOption{Value: "items", Label: "آیتم‌های لیست"})
+	if selected == string(roadmap.RuleChapters) { // only reachable through an applied chapter suggestion
+		opts = append(opts, ruleOption{Value: selected, Label: "فصل‌ها"})
+	}
 	for i := range opts {
 		opts[i].Selected = opts[i].Value == selected
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -22,25 +23,32 @@ const ambiguous = "# Go\n\nintro text the AI must not see\n\n## Phase 1\n- Types
 
 func runAnalyze(t *testing.T, ad *fake.Adapter) (*roadmaps.Service, *roadmaps.Draft, *jobs.Info) {
 	t.Helper()
+	return runDraftJob(t, ad, domain.JobKindRoadmapAnalyze, ambiguous)
+}
+
+func runDraftJob(t *testing.T, ad *fake.Adapter, kind domain.JobKind, content string) (*roadmaps.Service, *roadmaps.Draft, *jobs.Info) {
+	t.Helper()
 	s, db, root := newServiceIn(t, t.TempDir())
 	if _, err := skills.Install(root); err != nil {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	id, err := s.CreateDraft(ctx, "go.md", []byte(ambiguous))
+	id, err := s.CreateDraft(ctx, "go.md", []byte(content))
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := jobs.New(db, 1)
 	r.Poll, r.Heartbeat, r.Files = 20*time.Millisecond, time.Hour, root
-	r.Register(domain.JobKindRoadmapAnalyze, (&roadmaps.Analyzer{Drafts: s, Adapter: ad, Timeout: time.Minute, Stall: time.Minute}).Handle)
+	an := &roadmaps.Analyzer{Drafts: s, Adapter: ad, Timeout: time.Minute, Stall: time.Minute}
+	r.Register(domain.JobKindRoadmapAnalyze, an.Handle)
+	r.Register(domain.JobKindChapterDetect, an.DetectChapters)
 	runCtx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 	go func() { defer close(done); r.Run(runCtx) }()
 	t.Cleanup(func() { cancel(); <-done })
 
 	params, _ := json.Marshal(roadmaps.AnalyzeParams{DraftID: id})
-	jid, err := r.Enqueue(ctx, jobs.Job{Kind: domain.JobKindRoadmapAnalyze, Scope: roadmaps.DraftScope(id), Params: params})
+	jid, err := r.Enqueue(ctx, jobs.Job{Kind: kind, Scope: roadmaps.DraftScope(id), Params: params})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +80,7 @@ func TestAnalyzeStoresSuggestionOnly(t *testing.T) {
 		t.Fatalf("job %s: %s %s", j.Status, j.ErrorCode, j.ErrorMessage)
 	}
 	want := roadmap.Rule{Kind: roadmap.RuleItems}
-	if d.AI == nil || d.AI.Rule != want || d.AI.Reason != "موضوعات آیتم‌های لیست‌اند" || d.AI.JobID != j.ID {
+	if d.AI == nil || !reflect.DeepEqual(d.AI.Rule, want) || d.AI.Reason != "موضوعات آیتم‌های لیست‌اند" || d.AI.JobID != j.ID {
 		t.Fatalf("suggestion = %+v", d.AI)
 	}
 	if d.Choice.Rule.Kind != roadmap.RuleDeepest {
@@ -116,5 +124,72 @@ func TestTitlesDropsBody(t *testing.T) {
 	want := "# Go\n## Phase 1\n- Types\n- Loops\n## Phase 2\n- Goroutines\n"
 	if got != want {
 		t.Errorf("Titles =\n%s\nwant\n%s", got, want)
+	}
+}
+
+// book: H1 title, preface, two H2 chapters (one with a sub-heading), a code block with '#'.
+const book = "# کتاب Go\npreface\n## مقدمات\nبدنه یک\n### نوع‌ها\nint\n## توابع\n```\n# نه سرفصل\n```\nfunc\n"
+
+func TestDetectChaptersStoresSuggestionOnly(t *testing.T) {
+	ad := &fake.Adapter{Scenario: fake.OK, Output: json.RawMessage(`{"title":" کتاب Go ","reason":"هر H2 یک فصل",
+		"chapters":[{"title":"مقدمات","start_line":3,"end_line":6},{"title":" توابع ","start_line":7,"end_line":11}]}`)}
+	_, d, j := runDraftJob(t, ad, domain.JobKindChapterDetect, book) // runDraftJob also asserts no roadmap/topic/file rows
+	if j.Status != "succeeded" {
+		t.Fatalf("job %s: %s %s", j.Status, j.ErrorCode, j.ErrorMessage)
+	}
+	want := roadmap.Rule{Kind: roadmap.RuleChapters, Chapters: []roadmap.Chapter{{Line: 3, EndLine: 6, Title: "مقدمات"}, {Line: 7, EndLine: 11, Title: "توابع"}}}
+	if d.AI == nil || !reflect.DeepEqual(d.AI.Rule, want) || d.AI.Title != "کتاب Go" || d.AI.JobID != j.ID {
+		t.Fatalf("suggestion = %+v", d.AI)
+	}
+	if d.Choice.Rule.Kind != roadmap.RuleDeepest || d.Title != "" {
+		t.Errorf("draft changed without the user applying it: %+v %q", d.Choice.Rule, d.Title)
+	}
+	if calls := ad.Calls(); len(calls) != 1 || !strings.Contains(calls[0], "chapter-detector") {
+		t.Errorf("prompts = %q", calls)
+	}
+	// The suggestion previews as two chapter topics.
+	sel, err := d.Preview(roadmaps.Choice{Rule: d.AI.Rule})
+	if err != nil || len(sel.Topics) != 2 || sel.Topics[1].Title != "توابع" {
+		t.Errorf("preview = %+v, %v", sel, err)
+	}
+}
+
+func TestDetectChaptersRejectsInvalidRanges(t *testing.T) {
+	for name, chapters := range map[string]string{
+		"overlap":       `[{"title":"a","start_line":3,"end_line":7},{"title":"b","start_line":7,"end_line":11}]`,
+		"out of range":  `[{"title":"a","start_line":3,"end_line":12}]`,
+		"not a heading": `[{"title":"a","start_line":9,"end_line":10}]`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			ad := &fake.Adapter{Scenario: fake.OK, Output: json.RawMessage(`{"title":"t","reason":"r","chapters":` + chapters + `}`)}
+			_, d, j := runDraftJob(t, ad, domain.JobKindChapterDetect, book)
+			if j.Status != "failed" || j.ErrorCode != "invalid_output" {
+				t.Fatalf("job = %s/%s", j.Status, j.ErrorCode)
+			}
+			if d.AI != nil {
+				t.Errorf("suggestion stored from invalid output: %+v", d.AI)
+			}
+		})
+	}
+}
+
+func TestOutlineShowsHeadingsAndShortPreview(t *testing.T) {
+	src := []byte(book + "## طولانی\n" + strings.Repeat("خط\n", 10) + strings.Repeat("ب", 400) + "\n")
+	got := roadmaps.Outline(roadmap.Parse(src), src)
+	if len(got) != 5 {
+		t.Fatalf("outline = %+v", got)
+	}
+	if got[1].Title != "مقدمات" || got[1].Line != 3 || got[1].EndLine != 6 || got[1].Level != 2 || got[1].Preview != "بدنه یک" {
+		t.Errorf("chapter entry = %+v (preview must stop at the sub-heading)", got[1])
+	}
+	if got[3].Preview != "```\n# نه سرفصل\n```\nfunc" {
+		t.Errorf("code-block preview = %q", got[3].Preview)
+	}
+	if p := got[4].Preview; strings.Count(p, "\n") != 4 || strings.Contains(p, "ب") {
+		t.Errorf("preview must keep 5 lines: %q", p)
+	}
+	long := []byte("# t\n" + strings.Repeat("ب", 400) + "\n")
+	if p := roadmaps.Outline(roadmap.Parse(long), long)[0].Preview; len([]rune(p)) != 300 {
+		t.Errorf("preview has %d runes, want 300", len([]rune(p)))
 	}
 }

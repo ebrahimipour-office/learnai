@@ -24,6 +24,7 @@ var (
 	aiExercisesSchema  *jsonschema.Schema
 	aiEvaluationSchema *jsonschema.Schema
 	aiAnalyzeSchema    *jsonschema.Schema
+	aiChaptersSchema   *jsonschema.Schema
 )
 
 func initSchemas() error {
@@ -41,6 +42,7 @@ func initSchemas() error {
 		{"https://learninghub.local/schemas/ai-exercises-output-1.json", "ai-exercises-output.schema.json", &aiExercisesSchema},
 		{"https://learninghub.local/schemas/ai-evaluation-output-1.json", "ai-evaluation-output.schema.json", &aiEvaluationSchema},
 		{"https://learninghub.local/schemas/ai-roadmap-analyze-output-1.json", "ai-roadmap-analyze-output.schema.json", &aiAnalyzeSchema},
+		{"https://learninghub.local/schemas/ai-chapter-detect-output-1.json", "ai-chapter-detect-output.schema.json", &aiChaptersSchema},
 	}
 
 	// 1. Add all resources to compiler so cross-references resolve
@@ -151,6 +153,15 @@ func ValidateAIRoadmapAnalyzeOutput(data []byte) error {
 		return err
 	}
 	return validateData(aiAnalyzeSchema, data)
+}
+
+// ValidateAIChapterDetectOutput validates the AI chapter-detection JSON (T7.4) against its schema.
+// Cross-item rules (order, overlap, nesting, range) are roadmap.ValidateChapters' job.
+func ValidateAIChapterDetectOutput(data []byte) error {
+	if err := ensureInitialized(); err != nil {
+		return err
+	}
+	return validateData(aiChaptersSchema, data)
 }
 
 // GetSchemaBytes returns the raw JSON schema bytes for a given schema filename.

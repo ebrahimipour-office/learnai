@@ -31,7 +31,19 @@
   <p class="count" aria-live="polite"><strong>{{.Included}}</strong> موضوع انتخاب‌شده از {{.Total}}</p>
   {{if .SuggestItems}}<p class="hint">با این قاعده هیچ موضوعی پیدا نشد. قاعده «آیتم‌های لیست» را امتحان کنید.</p>{{end}}
   {{with .Diff}}{{template "diff" .}}{{end}}
-  <ul class="tree">{{range .Items}}{{template "node" .}}{{end}}</ul>
+  {{if .Chapters}}
+  <p class="note">عنوان فصل‌ها را می‌توانید تغییر دهید یا هر فصل را با فصل بعدی ادغام کنید. بخش‌های بیرون از فصل‌ها (مثل پیش‌گفتار) جزو هیچ فصلی نمی‌شوند.</p>
+  <button type="submit">ذخیره تغییرات فصل‌ها</button>
+  <ol class="chapters">{{range .Chapters}}
+    <li class="topic">
+      <input type="hidden" name="ch_line" value="{{.Line}}"><input type="hidden" name="ch_end" value="{{.EndLine}}">
+      <label><input type="checkbox" name="include" value="{{.Key}}"{{if .Included}} checked{{end}}> فصل {{.N}}</label>
+      <input type="text" name="ch_title" value="{{.Title}}" maxlength="200" dir="auto" aria-label="عنوان فصل {{.N}}">
+      <span class="note">خط {{.Line}} تا {{.EndLine}}</span>
+      {{if not .Last}}<button type="submit" name="merge" value="{{.N}}">ادغام با فصل بعد</button>{{end}}
+    </li>{{end}}
+  </ol>
+  {{else}}<ul class="tree">{{range .Items}}{{template "node" .}}{{end}}</ul>{{end}}
 </form>
 {{end}}
 
@@ -42,10 +54,12 @@
   <p class="note">برای ساختارهای مبهم؛ جدا از قاعده قطعی بالا و تا وقتی اعمالش نکنید هیچ اثری ندارد.</p>
   {{if .AIRule}}
   <p>قاعده پیشنهادی: <strong>{{.AILabel}}</strong></p>
+  {{with .Draft.AI.Title}}<p>عنوان پیشنهادی: <bdi>{{.}}</bdi></p>{{end}}
+  {{with .Draft.AI.Rule.Chapters}}<ol class="chapters">{{range .}}<li><bdi>{{.Title}}</bdi> <span class="note">(خط {{.Line}} تا {{.EndLine}})</span></li>{{end}}</ol>{{end}}
   <p dir="auto">{{.Draft.AI.Reason}}</p>
-  {{if ne .AIRule .RuleValue}}<form method="post" action="/roadmaps/drafts/{{.Draft.ID}}/selection">
+  {{if not .AIApplied}}<form method="post" action="/roadmaps/drafts/{{.Draft.ID}}/selection">
     <input type="hidden" name="csrf_token" value="{{.CSRF}}">
-    <input type="hidden" name="rule" value="{{.AIRule}}">
+    <input type="hidden" name="rule" value="ai">
     <button type="submit">اعمال پیشنهاد</button>
   </form>{{end}}
   {{end}}
@@ -55,7 +69,13 @@
         hx-post="/roadmaps/drafts/{{.Draft.ID}}/ai-assist" hx-target="#draft-ai" hx-swap="outerHTML">
     <input type="hidden" name="csrf_token" value="{{.CSRF}}">
     <button type="submit">{{if .AIRule}}تحلیل دوباره با AI{{else}}تحلیل ساختار با AI{{end}}</button>
-  </form>{{end}}
+  </form>
+  <form method="post" action="/roadmaps/drafts/{{.Draft.ID}}/chapters"
+        hx-post="/roadmaps/drafts/{{.Draft.ID}}/chapters" hx-target="#draft-ai" hx-swap="outerHTML">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <button type="submit">تشخیص فصل‌ها با AI</button>
+  </form>
+  <p class="note">بدون AI: قاعده «سرفصل‌های سطح ۲» هم هر سرفصل H2 را یک فصل می‌کند.</p>{{end}}
   {{with .Notice}}<p class="error" role="alert">{{.}}</p>{{end}}
 </section>
 {{end}}
