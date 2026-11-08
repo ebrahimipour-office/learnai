@@ -2,9 +2,11 @@ package roadmaps_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"learninghub/internal/fsx"
@@ -34,8 +36,8 @@ func TestConfirmRecordsKeptTopics(t *testing.T) {
 	if err != nil || n != 2 {
 		t.Fatalf("confirm: want 2 topics, got %d (%v)", n, err)
 	}
-	// R11.2-1: one topic row per confirmed topic; groups are Go > Basics only.
-	for table, want := range map[string]int{"roadmaps": 1, "roadmap_revisions": 1, "groups": 2, "topics": 2, "import_drafts": 0} {
+	// R11.2-1: one topic row per confirmed topic; the only group is Basics (the sole H1 "Go" is the title).
+	for table, want := range map[string]int{"roadmaps": 1, "roadmap_revisions": 1, "groups": 1, "topics": 2, "import_drafts": 0} {
 		if got := count(t, db, table); got != want {
 			t.Errorf("%s: want %d rows, got %d", table, want, got)
 		}
@@ -160,5 +162,72 @@ func TestConfirmRejects(t *testing.T) {
 	}
 	if n := count(t, db, "roadmaps"); n != 1 {
 		t.Errorf("double confirm imported %d roadmaps", n)
+	}
+}
+
+// T7.2 acceptance: the roadmap title is the first H1, else the file name; a preview edit is kept.
+func TestConfirmRoadmapTitle(t *testing.T) {
+	ctx := context.Background()
+	title := func(s *roadmaps.Service, db interface{ Writer() *sql.DB }, rid int64) string {
+		t.Helper()
+		var got string
+		if err := db.Writer().QueryRow(`SELECT title FROM roadmaps WHERE id = ?`, rid).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	confirm := func(s *roadmaps.Service, id string) int64 {
+		t.Helper()
+		rid, _, err := s.Confirm(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return rid
+	}
+
+	s, db := newService(t)
+	id, _ := s.CreateDraft(ctx, "book.md", []byte("# عنوان کتاب\n## فصل ۱\n"))
+	if d, _ := s.Draft(ctx, id); d.DefaultTitle() != "عنوان کتاب" || d.Title != "" {
+		t.Fatalf("default %q, stored %q", d.DefaultTitle(), d.Title)
+	}
+	if got := title(s, db, confirm(s, id)); got != "عنوان کتاب" {
+		t.Errorf("H1 title: got %q", got)
+	}
+
+	id, _ = s.CreateDraft(ctx, "notes.md", []byte("## a\n## b\n"))
+	if got := title(s, db, confirm(s, id)); got != "notes" {
+		t.Errorf("no H1: got %q, want file name", got)
+	}
+
+	id, _ = s.CreateDraft(ctx, "x.md", []byte("# Old\n## a\n"))
+	d, _ := s.Draft(ctx, id)
+	if err := s.SetTitle(ctx, d, "  عنوان من  "); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetTitle(ctx, d, strings.Repeat("ا", roadmaps.MaxTitleRunes+1)); !errors.Is(err, roadmaps.ErrInvalidSource) {
+		t.Fatalf("long title: %v", err)
+	}
+	if d, _ := s.Draft(ctx, id); d.Title != "عنوان من" {
+		t.Fatalf("stored title %q", d.Title)
+	}
+	rid := confirm(s, id)
+	if got := title(s, db, rid); got != "عنوان من" {
+		t.Errorf("edited title: got %q", got)
+	}
+
+	// re-import keeps the current title unless the user chose a replacement
+	id, _ = s.CreateReimport(ctx, rid, "x.md", []byte("# New\n## a\n"))
+	confirm(s, id)
+	if got := title(s, db, rid); got != "عنوان من" {
+		t.Errorf("re-import without replace: got %q", got)
+	}
+	id, _ = s.CreateReimport(ctx, rid, "x.md", []byte("# New\n## a\n"))
+	d, _ = s.Draft(ctx, id)
+	if err := s.SetTitle(ctx, d, d.DefaultTitle()); err != nil {
+		t.Fatal(err)
+	}
+	confirm(s, id)
+	if got := title(s, db, rid); got != "New" {
+		t.Errorf("re-import with replace: got %q", got)
 	}
 }

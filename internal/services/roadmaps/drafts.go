@@ -47,6 +47,18 @@ type Draft struct {
 	Choice     Choice
 	ExpiresAt  time.Time
 	AI         *Suggestion // T6.2: shown in the preview only; nil = never analyzed
+	Title      string      // import_drafts.title; "" = new import: DefaultTitle, re-import: keep the current title
+}
+
+// MaxTitleRunes bounds a roadmap title edited in the preview.
+const MaxTitleRunes = 200
+
+// DefaultTitle is the first H1 of the file, or the file name without its extension (design §12.2).
+func (d *Draft) DefaultTitle() string {
+	if t := roadmap.Title(roadmap.Parse(d.Content)); t != "" {
+		return t
+	}
+	return strings.TrimSuffix(d.SourceName, filepath.Ext(d.SourceName))
 }
 
 // Preview applies c to the draft content. Parsing is deterministic, so the content is the source of truth.
@@ -139,11 +151,11 @@ func (s *Service) createDraft(ctx context.Context, roadmapID int64, name string,
 func (s *Service) Draft(ctx context.Context, id string) (*Draft, error) {
 	var content, choice, expires string
 	var roadmapID sql.NullInt64
-	var suggestion sql.NullString
+	var suggestion, title sql.NullString
 	d := &Draft{ID: id}
 	err := s.db.Writer().QueryRowContext(ctx,
-		`SELECT roadmap_id, source_name, content, selection, expires_at, ai_suggestion FROM import_drafts WHERE id = ? AND expires_at > ?`,
-		id, s.ts(s.Now())).Scan(&roadmapID, &d.SourceName, &content, &choice, &expires, &suggestion)
+		`SELECT roadmap_id, source_name, content, selection, expires_at, ai_suggestion, title FROM import_drafts WHERE id = ? AND expires_at > ?`,
+		id, s.ts(s.Now())).Scan(&roadmapID, &d.SourceName, &content, &choice, &expires, &suggestion, &title)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrDraftNotFound
 	}
@@ -159,6 +171,7 @@ func (s *Service) Draft(ctx context.Context, id string) (*Draft, error) {
 		}
 	}
 	d.Content = []byte(content)
+	d.Title = title.String
 	d.RoadmapID = roadmapID.Int64
 	d.ExpiresAt, _ = time.Parse(tsFormat, expires)
 	return d, nil
@@ -182,6 +195,24 @@ func (s *Service) SetChoice(ctx context.Context, d *Draft, c Choice) error {
 		return ErrDraftNotFound
 	}
 	d.Choice = c
+	return nil
+}
+
+// SetTitle stores the title chosen in the preview; "" clears it (see Draft.Title).
+func (s *Service) SetTitle(ctx context.Context, d *Draft, title string) error {
+	title = strings.TrimSpace(title)
+	if utf8.RuneCountInString(title) > MaxTitleRunes {
+		return fmt.Errorf("%w: title longer than %d characters", ErrInvalidSource, MaxTitleRunes)
+	}
+	res, err := s.db.Writer().ExecContext(ctx, `UPDATE import_drafts SET title = ? WHERE id = ? AND expires_at > ?`,
+		sql.NullString{String: title, Valid: title != ""}, d.ID, s.ts(s.Now()))
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrDraftNotFound
+	}
+	d.Title = title
 	return nil
 }
 

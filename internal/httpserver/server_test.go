@@ -296,6 +296,50 @@ func TestConfirmImport(t *testing.T) {
 	}
 }
 
+// T7.2: the preview offers the first H1 as an editable title; the edit is what gets recorded,
+// and a re-import replaces the title only when the box is ticked.
+func TestConfirmImportTitle(t *testing.T) {
+	e := newEnv(t)
+	csrf := e.sm.CSRFToken()
+	title := func() (s string) {
+		t.Helper()
+		if err := e.db.Writer().QueryRow("SELECT title FROM roadmaps WHERE id = 1").Scan(&s); err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	draftURL := e.upload("go.md", []byte("# آموزش Go\n## Basics\n")).Header().Get("Location")
+	if page := e.do(httptest.NewRequest(http.MethodGet, draftURL, nil)).Body.String(); !strings.Contains(page, `name="title" value="آموزش Go"`) {
+		t.Fatalf("preview must prefill the H1 title:\n%s", page)
+	}
+	if rec := e.confirm(draftURL, url.Values{"csrf_token": {csrf}, "confirm": {"1"}, "title": {strings.Repeat("x", 201)}}); rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("long title: want 422, got %d", rec.Code)
+	}
+	if rec := e.confirm(draftURL, url.Values{"csrf_token": {csrf}, "confirm": {"1"}, "title": {"کتاب من"}}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("confirm: %d %s", rec.Code, rec.Body.String())
+	}
+	if got := title(); got != "کتاب من" {
+		t.Fatalf("title = %q", got)
+	}
+
+	for _, c := range []struct {
+		replace bool
+		want    string
+	}{{false, "کتاب من"}, {true, "Go 2"}} {
+		draftURL = e.uploadTo("1", "go.md", []byte("# Go 2\n## Basics\n")).Header().Get("Location")
+		form := url.Values{"csrf_token": {csrf}, "confirm": {"1"}, "title": {"Go 2"}}
+		if c.replace {
+			form.Set("replace_title", "1")
+		}
+		if rec := e.confirm(draftURL, form); rec.Code != http.StatusSeeOther {
+			t.Fatalf("re-import confirm: %d %s", rec.Code, rec.Body.String())
+		}
+		if got := title(); got != c.want {
+			t.Errorf("re-import replace=%v: title %q, want %q", c.replace, got, c.want)
+		}
+	}
+}
+
 func TestTopicListPage(t *testing.T) {
 	e := newEnv(t)
 	rec := e.do(httptest.NewRequest(http.MethodGet, "/", nil))

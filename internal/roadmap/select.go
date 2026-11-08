@@ -94,7 +94,59 @@ func Select(root *Node, r Rule) (*Selection, error) {
 		}
 	}
 	walk(root, nil)
+	// B2: a sole H1 is the roadmap title (Title), not a group. Keys were already computed with it in
+	// the path, so stable keys of existing roadmaps do not change.
+	if h := soleH1(root); h != nil {
+		if i, ok := groupIdx[h]; ok {
+			s.dropGroup(i)
+		}
+	}
 	return s, nil
+}
+
+// Title returns the text of the first H1 (always a root child), or "" when there is none.
+func Title(root *Node) string {
+	for _, c := range root.Children {
+		if c.Kind == KindHeading && c.Level == 1 {
+			return c.Title
+		}
+	}
+	return ""
+}
+
+func soleH1(root *Node) *Node {
+	var h1 *Node
+	for _, c := range root.Children {
+		if c.Kind == KindHeading && c.Level == 1 {
+			if h1 != nil {
+				return nil
+			}
+			h1 = c
+		}
+	}
+	return h1
+}
+
+// dropGroup removes group i; its children move to its parent. A parent precedes its children, so
+// Groups[i].Parent < i is unaffected by the shift.
+func (s *Selection) dropGroup(i int) {
+	up := s.Groups[i].Parent
+	fix := func(g int) int {
+		switch {
+		case g == i:
+			return up
+		case g > i:
+			return g - 1
+		}
+		return g
+	}
+	s.Groups = append(s.Groups[:i], s.Groups[i+1:]...)
+	for k := range s.Groups {
+		s.Groups[k].Parent = fix(s.Groups[k].Parent)
+	}
+	for k := range s.Topics {
+		s.Topics[k].Group = fix(s.Topics[k].Group)
+	}
 }
 
 func topicTest(r Rule) (func(c, parent *Node) bool, error) {

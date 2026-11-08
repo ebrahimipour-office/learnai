@@ -48,19 +48,19 @@ func TestSelectDeepestDefault(t *testing.T) {
 	// Leaf headings at any level are topics, including "Resources" which only has list items (B1).
 	s := mustSelect(t, nested, Rule{})
 	want := []Topic{
-		{Title: "Git", Line: 3, Group: 1, Outline: "- branching\n  - rebase\n- merge"},
-		{Title: "Linux", Line: 7, Group: 1},
-		{Title: "Images", Line: 10, Group: 3},
-		{Title: "Resources", Line: 11, Group: 0, Outline: "- a book"},
+		{Title: "Git", Line: 3, Group: 0, Outline: "- branching\n  - rebase\n- merge"},
+		{Title: "Linux", Line: 7, Group: 0},
+		{Title: "Images", Line: 10, Group: 2},
+		{Title: "Resources", Line: 11, Group: -1, Outline: "- a book"},
 	}
 	if !reflect.DeepEqual(s.Topics, want) {
 		t.Fatalf("topics = %+v", s.Topics)
 	}
+	// the sole H1 "Roadmap" is the title, not a group (B2)
 	wantGroups := []Group{
-		{Title: "Roadmap", Level: 1, Line: 1, Parent: -1},
-		{Title: "Phase 1", Level: 2, Line: 2, Parent: 0},
-		{Title: "Phase 2", Level: 2, Line: 8, Parent: 0},
-		{Title: "Docker", Level: 3, Line: 9, Parent: 2},
+		{Title: "Phase 1", Level: 2, Line: 2, Parent: -1},
+		{Title: "Phase 2", Level: 2, Line: 8, Parent: -1},
+		{Title: "Docker", Level: 3, Line: 9, Parent: 1},
 	}
 	if !reflect.DeepEqual(s.Groups, wantGroups) {
 		t.Fatalf("groups = %+v", s.Groups)
@@ -83,6 +83,42 @@ func TestSelectDeepestSampleBook(t *testing.T) {
 	}
 }
 
+// T7.2 (B2): the sole H1 is the title and not a group, but stays in the key path, so every key
+// equals the key the same heading gets when a second H1 makes the first one an ordinary group.
+func TestSoleH1IsTitleNotGroup(t *testing.T) {
+	root := Parse([]byte(nested))
+	if got := Title(root); got != "Roadmap" {
+		t.Fatalf("Title = %q", got)
+	}
+	sole, err := Select(root, Rule{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	two, err := Select(Parse([]byte(nested+"# Other\n## X\n")), Rule{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if two.Groups[0].Title != "Roadmap" {
+		t.Fatalf("with two H1s the first is a group: %+v", two.Groups)
+	}
+	for i, tp := range sole.Topics {
+		if tp.StableKey != two.Topics[i].StableKey {
+			t.Errorf("topic %q key %s, want %s", tp.Title, tp.StableKey, two.Topics[i].StableKey)
+		}
+	}
+	for i, g := range sole.Groups {
+		if g.StableKey != two.Groups[i+1].StableKey {
+			t.Errorf("group %q key changed", g.Title)
+		}
+	}
+	if got := Title(Parse([]byte("## a\n# B\n# C\n"))); got != "B" {
+		t.Fatalf("Title = %q, want first H1", got)
+	}
+	if got := Title(Parse([]byte("## a\n"))); got != "" {
+		t.Fatalf("Title without H1 = %q", got)
+	}
+}
+
 func TestSelectLevelNestedGroupsAndOutline(t *testing.T) {
 	s := mustSelect(t, nested, Rule{Kind: RuleLevel, Level: 3})
 	if got := titles(s); !reflect.DeepEqual(got, []string{"Git", "Linux", "Docker"}) {
@@ -90,17 +126,16 @@ func TestSelectLevelNestedGroupsAndOutline(t *testing.T) {
 	}
 	// "Resources" has no level-3 heading, so it is not listed as a group.
 	want := []Group{
-		{Title: "Roadmap", Level: 1, Line: 1, Parent: -1},
-		{Title: "Phase 1", Level: 2, Line: 2, Parent: 0},
-		{Title: "Phase 2", Level: 2, Line: 8, Parent: 0},
+		{Title: "Phase 1", Level: 2, Line: 2, Parent: -1},
+		{Title: "Phase 2", Level: 2, Line: 8, Parent: -1},
 	}
 	if !reflect.DeepEqual(s.Groups, want) {
 		t.Fatalf("groups = %+v", s.Groups)
 	}
 	wantTopics := []Topic{
-		{Title: "Git", Line: 3, Group: 1, Outline: "- branching\n  - rebase\n- merge"},
-		{Title: "Linux", Line: 7, Group: 1},
-		{Title: "Docker", Line: 9, Group: 2, Outline: "- Images"},
+		{Title: "Git", Line: 3, Group: 0, Outline: "- branching\n  - rebase\n- merge"},
+		{Title: "Linux", Line: 7, Group: 0},
+		{Title: "Docker", Line: 9, Group: 1, Outline: "- Images"},
 	}
 	if !reflect.DeepEqual(s.Topics, wantTopics) {
 		t.Fatalf("topics = %+v", s.Topics)

@@ -6,6 +6,12 @@
 <form method="post" action="/roadmaps/drafts/{{.Draft.ID}}/confirm">
   <input type="hidden" name="csrf_token" value="{{.CSRF}}">
   <input type="hidden" name="confirm" value="1">
+  <label>عنوان نقشه راه
+    <input type="text" name="title" value="{{or .Draft.Title .Draft.DefaultTitle}}" maxlength="200" dir="auto">
+  </label>
+  {{if .Draft.RoadmapID}}<label><input type="checkbox" name="replace_title" value="1"{{if .Draft.Title}} checked{{end}}> عنوان فعلی را با این عنوان جایگزین کن</label>
+  <p class="note">بدون این تیک، عنوان فعلی نقشه راه می‌ماند.</p>{{else}}
+  <p class="note">پیش‌فرض: اولین سرفصل H1 فایل، یا نام فایل اگر H1 ندارد.</p>{{end}}
   <button type="submit">تأیید و ثبت موضوعات انتخاب‌شده</button>
 </form>
 {{end}}

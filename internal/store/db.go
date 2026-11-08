@@ -117,35 +117,75 @@ func (d *DB) WithTx(ctx context.Context, fn func(tx *sql.Tx) error) error {
 	return tx.Commit()
 }
 
-// migrate applies pending embedded migrations in sequential order.
-func (d *DB) migrate() error {
-	currentVersion, err := d.UserVersion()
+// migrations run in order; file i sets user_version i+1.
+var migrations = []string{"0001_init.sql", "0002_eval_guards.sql", "0003_chapters.sql"}
+
+// migrate applies all pending embedded migrations.
+func (d *DB) migrate() error { return d.migrateTo(len(migrations)) }
+
+// migrateTo applies pending migrations up to version target. Each file runs in its own transaction on
+// one dedicated connection with foreign_keys OFF (the PRAGMA is a no-op inside a transaction), so a
+// file may rebuild a referenced table (design §12.6); foreign_key_check must be empty before commit.
+func (d *DB) migrateTo(target int) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	ctx := context.Background()
+	conn, err := d.writer.Conn(ctx)
 	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	var current int
+	if err := conn.QueryRowContext(ctx, "PRAGMA user_version;").Scan(&current); err != nil {
 		return fmt.Errorf("reading user_version: %w", err)
 	}
+	if current >= target {
+		return nil
+	}
+	if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys = OFF;"); err != nil {
+		return err
+	}
+	// Restored even on failure: the pool reuses this connection for every later query.
+	defer conn.ExecContext(ctx, "PRAGMA foreign_keys = ON;")
 
-	for i, name := range []string{"0001_init.sql", "0002_eval_guards.sql"} {
-		v := i + 1
-		if currentVersion >= v {
-			continue
-		}
+	for v := current + 1; v <= target; v++ {
+		name := migrations[v-1]
 		sqlContent, err := migrationsFS.ReadFile("migrations/" + name)
 		if err != nil {
 			return fmt.Errorf("reading migration %s: %w", name, err)
 		}
-		err = d.WithTx(context.Background(), func(tx *sql.Tx) error {
-			if _, err := tx.Exec(string(sqlContent)); err != nil {
-				return fmt.Errorf("executing %s: %w", name, err)
-			}
-			if _, err := tx.Exec(fmt.Sprintf("PRAGMA user_version = %d;", v)); err != nil {
-				return fmt.Errorf("updating user_version: %w", err)
-			}
-			return nil
-		})
-		if err != nil {
+		if err := applyMigration(ctx, conn, name, string(sqlContent), v); err != nil {
 			return err
 		}
 	}
-
 	return nil
+}
+
+func applyMigration(ctx context.Context, conn *sql.Conn, name, content string, v int) error {
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("beginning %s: %w", name, err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, content); err != nil {
+		return fmt.Errorf("executing %s: %w", name, err)
+	}
+	rows, err := tx.QueryContext(ctx, "PRAGMA foreign_key_check;")
+	if err != nil {
+		return fmt.Errorf("checking foreign keys after %s: %w", name, err)
+	}
+	broken := rows.Next()
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return fmt.Errorf("checking foreign keys after %s: %w", name, err)
+	}
+	rows.Close()
+	if broken {
+		return fmt.Errorf("executing %s: foreign_key_check reports broken references", name)
+	}
+	if _, err := tx.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version = %d;", v)); err != nil {
+		return fmt.Errorf("updating user_version: %w", err)
+	}
+	return tx.Commit()
 }

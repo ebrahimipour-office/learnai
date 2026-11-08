@@ -1,6 +1,7 @@
 package roadmaps
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -74,8 +75,9 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 		var slug string
 		revNo := 1
 		if d.RoadmapID == 0 {
-			title := strings.TrimSuffix(d.SourceName, filepath.Ext(d.SourceName))
-			if slug, err = s.freeRoadmapSlug(ctx, tx, title); err != nil {
+			title := cmp.Or(d.Title, d.DefaultTitle())
+			// the folder keeps the file name: a title edit must not rename roadmaps/<slug>
+			if slug, err = s.freeRoadmapSlug(ctx, tx, strings.TrimSuffix(d.SourceName, filepath.Ext(d.SourceName))); err != nil {
 				return err
 			}
 			res, err = tx.ExecContext(ctx, `INSERT INTO roadmaps (slug, title, select_rule) VALUES (?, ?, ?)`, slug, title, string(rule))
@@ -91,7 +93,9 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 				LEFT JOIN roadmap_revisions v ON v.roadmap_id = r.id WHERE r.id = ? GROUP BY r.id`, roadmapID).Scan(&slug, &revNo); err != nil {
 				return fmt.Errorf("loading roadmap %d: %w", roadmapID, err)
 			}
-			if _, err := tx.ExecContext(ctx, `UPDATE roadmaps SET select_rule = ? WHERE id = ?`, string(rule), roadmapID); err != nil {
+			// the title changes only when the user ticked "replace title" in the preview (§12.2)
+			if _, err := tx.ExecContext(ctx, `UPDATE roadmaps SET select_rule = ?, title = COALESCE(?, title) WHERE id = ?`,
+				string(rule), sql.NullString{String: d.Title, Valid: d.Title != ""}, roadmapID); err != nil {
 				return err
 			}
 		}

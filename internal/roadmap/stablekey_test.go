@@ -38,8 +38,8 @@ func TestNormalizeFoldsCosmeticDifferences(t *testing.T) {
 }
 
 func TestStableKeyIgnoresCosmeticChanges(t *testing.T) {
-	g1, t1 := keysOf(t, "# فاز ۱\n## كتاب علمي\n## نوع‌ها\n")
-	g2, t2 := keysOf(t, "# فاز 1\n## کتاب علمی\n## نوع  ها\n")
+	g1, t1 := keysOf(t, "# فاز ۱\n## كتاب علمي\n## نوع‌ها\n# پایان\n")
+	g2, t2 := keysOf(t, "# فاز 1\n## کتاب علمی\n## نوع  ها\n# پایان\n")
 	if g1[0] != g2[0] || t1[0] != t2[0] || t1[1] != t2[1] {
 		t.Fatalf("keys changed: %v %v vs %v %v", g1, t1, g2, t2)
 	}

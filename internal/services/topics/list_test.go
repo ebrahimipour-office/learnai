@@ -70,18 +70,19 @@ func list(t *testing.T, s *topics.Service, f topics.Filter) ([]*topics.Node, int
 func TestListGroupsInImportOrder(t *testing.T) {
 	s, _ := setup(t, md)
 	tree, matched, total := list(t, s, topics.Filter{})
-	if matched != 3 || total != 3 || len(tree) != 1 || tree[0].Kind != "roadmap" || tree[0].Title != "go" {
+	// the sole H1 is the roadmap title, not a group (T7.2)
+	if matched != 3 || total != 3 || len(tree) != 1 || tree[0].Kind != "roadmap" || tree[0].Title != "کتاب Go" {
 		t.Fatalf("want one roadmap with 3 topics, got %d/%d %+v", matched, total, tree)
 	}
 	book := tree[0].Items
-	if len(book) != 1 || book[0].Title != "کتاب Go" || len(book[0].Items) != 2 {
-		t.Fatalf("want group کتاب Go with 2 subgroups, got %+v", book)
+	if len(book) != 2 {
+		t.Fatalf("want 2 top-level groups, got %+v", book)
 	}
-	basics := book[0].Items[0]
+	basics := book[0]
 	if basics.Title != "مبانی" || len(basics.Items) != 2 || basics.Items[0].Title != "نوع‌ها" {
-		t.Errorf("first subgroup wrong: %+v", basics)
+		t.Errorf("first group wrong: %+v", basics)
 	}
-	if got := titles(tree); len(got) != 3 || got[2] != "گوروتین" || tree[0].Items[0].Items[0].Items[0].Status != "created" {
+	if got := titles(tree); len(got) != 3 || got[2] != "گوروتین" || tree[0].Items[0].Items[0].Status != "created" {
 		t.Errorf("document order: %v", got)
 	}
 }
@@ -101,8 +102,8 @@ func TestListSearchAndFilters(t *testing.T) {
 		}
 	}
 	// A match keeps only its own branch: the همروندی group disappears.
-	if tree, _, _ := list(t, s, topics.Filter{Query: "نوع"}); len(tree[0].Items[0].Items) != 1 {
-		t.Errorf("unmatched groups must be dropped: %+v", tree[0].Items[0].Items)
+	if tree, _, _ := list(t, s, topics.Filter{Query: "نوع"}); len(tree[0].Items) != 1 {
+		t.Errorf("unmatched groups must be dropped: %+v", tree[0].Items)
 	}
 
 	if _, err := db.Writer().Exec(`UPDATE topics SET status = 'content_ready', state = 'archived', origin = 'suggested' WHERE title = 'گوروتین'`); err != nil {
@@ -112,7 +113,7 @@ func TestListSearchAndFilters(t *testing.T) {
 	if matched != 1 {
 		t.Fatalf("status filter: want 1, got %d", matched)
 	}
-	g := tree[0].Items[0].Items[0].Items[0]
+	g := tree[0].Items[0].Items[0]
 	if g.State != "archived" || g.Origin != "suggested" || g.Score.Valid {
 		t.Errorf("topic fields: %+v", g)
 	}
@@ -140,7 +141,7 @@ func TestListShowsLatestAttemptOfCurrentSet(t *testing.T) {
 	}
 	exec(`UPDATE files SET presence = 'missing' WHERE id IN (1, 2)`)
 	tree, _, _ := list(t, s, topics.Filter{})
-	topic := tree[0].Items[0].Items[0]
+	topic := tree[0].Items[0] // "# A" is the title, so T is ungrouped
 	if !topic.Score.Valid || topic.Score.Float64 != 40 || !topic.Partial {
 		t.Errorf("want latest attempt 40 partial, got %+v", topic)
 	}

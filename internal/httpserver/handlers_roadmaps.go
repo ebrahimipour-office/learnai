@@ -282,6 +282,21 @@ func (a *app) confirmDraft(w http.ResponseWriter, r *http.Request) {
 		a.renderDraft(w, r, http.StatusConflict, d, "برای ثبت، تأیید لازم است.")
 		return
 	}
+	// T7.2: the title edited in the preview; on re-import it is used only when "replace" is ticked.
+	if _, ok := r.Form["title"]; ok {
+		title := r.FormValue("title")
+		if d.RoadmapID != 0 && r.FormValue("replace_title") != "1" {
+			title = ""
+		}
+		if err := a.drafts.SetTitle(r.Context(), d, title); err != nil {
+			if errors.Is(err, roadmaps.ErrDraftNotFound) {
+				a.renderNew(w, r, http.StatusNotFound, "پیش‌نویس پیدا نشد، منقضی شده یا قبلاً ثبت شده است.")
+				return
+			}
+			a.renderDraft(w, r, http.StatusUnprocessableEntity, d, fmt.Sprintf("عنوان نقشه راه حداکثر %d نویسه است.", roadmaps.MaxTitleRunes))
+			return
+		}
+	}
 	_, _, err := a.drafts.Confirm(r.Context(), d.ID)
 	switch {
 	case errors.Is(err, roadmaps.ErrNothingSelected):
