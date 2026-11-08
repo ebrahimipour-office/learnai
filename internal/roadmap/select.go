@@ -9,7 +9,7 @@ import (
 type RuleKind string
 
 const (
-	RuleDeepest RuleKind = "deepest" // default (A9): headings at the deepest heading level in the file
+	RuleDeepest RuleKind = "deepest" // default (A9): leaf headings, i.e. headings with no sub-heading (T7.0.a)
 	RuleLevel   RuleKind = "level"   // headings at Rule.Level
 	RuleItems   RuleKind = "items"   // top-level list items under headings (or the root)
 )
@@ -49,7 +49,7 @@ type Selection struct {
 // Select applies r to the tree produced by Parse. Everything below a topic goes into its outline;
 // headings above it become groups. An empty Kind means RuleDeepest.
 func Select(root *Node, r Rule) (*Selection, error) {
-	isTopic, err := topicTest(root, r)
+	isTopic, err := topicTest(r)
 	if err != nil {
 		return nil, err
 	}
@@ -97,13 +97,15 @@ func Select(root *Node, r Rule) (*Selection, error) {
 	return s, nil
 }
 
-func topicTest(root *Node, r Rule) (func(c, parent *Node) bool, error) {
+func topicTest(r Rule) (func(c, parent *Node) bool, error) {
 	headingAt := func(level int) func(c, _ *Node) bool {
 		return func(c, _ *Node) bool { return c.Kind == KindHeading && c.Level == level }
 	}
 	switch r.Kind {
 	case RuleDeepest, "":
-		return headingAt(maxHeadingLevel(root)), nil
+		// leaves, not the file-wide deepest level: that silently dropped chapters without sub-headings (B1).
+		// Every old-rule topic is also a leaf under the same groups, so existing stable keys are unchanged.
+		return func(c, _ *Node) bool { return c.Kind == KindHeading && !hasHeadingChild(c) }, nil
 	case RuleLevel:
 		if r.Level < 1 || r.Level > 6 {
 			return nil, fmt.Errorf("roadmap: heading level %d out of range 1-6", r.Level)
@@ -116,15 +118,13 @@ func topicTest(root *Node, r Rule) (func(c, parent *Node) bool, error) {
 	return nil, fmt.Errorf("roadmap: unknown selection rule %q", r.Kind)
 }
 
-// maxHeadingLevel returns the deepest heading level in the tree, or 0 if there are no headings.
-func maxHeadingLevel(n *Node) int {
-	deepest := 0
+func hasHeadingChild(n *Node) bool {
 	for _, c := range n.Children {
 		if c.Kind == KindHeading {
-			deepest = max(deepest, c.Level, maxHeadingLevel(c))
+			return true
 		}
 	}
-	return deepest
+	return false
 }
 
 func outline(n *Node) string {

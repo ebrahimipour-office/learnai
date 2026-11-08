@@ -458,7 +458,7 @@ func parseRule(v string) (roadmap.Rule, bool) {
 }
 
 func ruleOptions(selected string) []ruleOption {
-	opts := []ruleOption{{Value: "deepest", Label: "عمیق‌ترین سطح سرفصل (پیش‌فرض)"}}
+	opts := []ruleOption{{Value: "deepest", Label: "سرفصل‌های بدون زیرسرفصل (پیش‌فرض)"}}
 	for n := 1; n <= 6; n++ {
 		opts = append(opts, ruleOption{Value: fmt.Sprintf("level-%d", n), Label: fmt.Sprintf("سرفصل‌های سطح %d", n)})
 	}

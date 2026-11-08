@@ -1,6 +1,7 @@
 package roadmap
 
 import (
+	"os"
 	"reflect"
 	"testing"
 )
@@ -44,24 +45,41 @@ func titles(s *Selection) []string {
 }
 
 func TestSelectDeepestDefault(t *testing.T) {
-	// Deepest heading level is 4, so only "Images" is a topic.
+	// Leaf headings at any level are topics, including "Resources" which only has list items (B1).
 	s := mustSelect(t, nested, Rule{})
-	if got := titles(s); !reflect.DeepEqual(got, []string{"Images"}) {
-		t.Fatalf("topics = %v", got)
+	want := []Topic{
+		{Title: "Git", Line: 3, Group: 1, Outline: "- branching\n  - rebase\n- merge"},
+		{Title: "Linux", Line: 7, Group: 1},
+		{Title: "Images", Line: 10, Group: 3},
+		{Title: "Resources", Line: 11, Group: 0, Outline: "- a book"},
 	}
-	want := []Group{
+	if !reflect.DeepEqual(s.Topics, want) {
+		t.Fatalf("topics = %+v", s.Topics)
+	}
+	wantGroups := []Group{
 		{Title: "Roadmap", Level: 1, Line: 1, Parent: -1},
+		{Title: "Phase 1", Level: 2, Line: 2, Parent: 0},
 		{Title: "Phase 2", Level: 2, Line: 8, Parent: 0},
-		{Title: "Docker", Level: 3, Line: 9, Parent: 1},
+		{Title: "Docker", Level: 3, Line: 9, Parent: 2},
 	}
-	if !reflect.DeepEqual(s.Groups, want) {
+	if !reflect.DeepEqual(s.Groups, wantGroups) {
 		t.Fatalf("groups = %+v", s.Groups)
-	}
-	if s.Topics[0].Group != 2 {
-		t.Fatalf("topic group = %d, want 2", s.Topics[0].Group)
 	}
 	if !reflect.DeepEqual(mustSelect(t, nested, Rule{Kind: RuleDeepest}), s) {
 		t.Fatal(`Rule{} and Rule{Kind: "deepest"} differ`)
+	}
+}
+
+// T7.0.a acceptance: the chapter without sub-headings is a topic, not silently dropped.
+func TestSelectDeepestSampleBook(t *testing.T) {
+	src, err := os.ReadFile("../../testdata/sample-book.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := titles(mustSelect(t, string(src), Rule{}))
+	want := []string{"ثابت‌ها", "توابع متغیرآرگومان", "فصل ۳: برش‌ها (Slices)"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("topics = %q, want %q", got, want)
 	}
 }
 
