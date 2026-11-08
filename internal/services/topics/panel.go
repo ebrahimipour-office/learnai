@@ -16,6 +16,14 @@ type Panel struct {
 	Status, State, Origin string
 	Busy                  bool            // has a queued or running job of any kind: every action button is disabled
 	Lessons               []LessonVersion // newest first
+	Source                *Source         // chapter source text (§12.9); nil = topic has none
+}
+
+// Source is a chapter's source.md and its line range in the roadmap revision.
+type Source struct {
+	FileID     int64
+	RelPath    string
+	Start, End int64
 }
 
 type LessonVersion struct {
@@ -32,16 +40,25 @@ func Scope(id int64) string { return "topic:" + strconv.FormatInt(id, 10) }
 // Panel returns topic id or domain.ErrNotFound.
 func (s *Service) Panel(ctx context.Context, id int64) (*Panel, error) {
 	p := &Panel{ID: id}
+	var srcID sql.NullInt64
+	src := Source{}
 	err := s.db.Writer().QueryRowContext(ctx, `
 		SELECT t.title, COALESCE(g.title, ''), r.title, t.status, t.state, t.origin,
-		       EXISTS (SELECT 1 FROM jobs j WHERE j.topic_id = t.id AND j.status IN ('queued','running'))
+		       EXISTS (SELECT 1 FROM jobs j WHERE j.topic_id = t.id AND j.status IN ('queued','running')),
+		       f.id, COALESCE(f.rel_path, ''), COALESCE(t.source_start_line, 0), COALESCE(t.source_end_line, 0)
 		FROM topics t JOIN roadmaps r ON r.id = t.roadmap_id LEFT JOIN groups g ON g.id = t.group_id
-		WHERE t.id = ?`, id).Scan(&p.Title, &p.Group, &p.Roadmap, &p.Status, &p.State, &p.Origin, &p.Busy)
+		LEFT JOIN files f ON f.id = t.source_file_id
+		WHERE t.id = ?`, id).Scan(&p.Title, &p.Group, &p.Roadmap, &p.Status, &p.State, &p.Origin, &p.Busy,
+		&srcID, &src.RelPath, &src.Start, &src.End)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
 	if err != nil {
 		return nil, err
+	}
+	if srcID.Valid {
+		src.FileID = srcID.Int64
+		p.Source = &src
 	}
 	rows, err := s.db.Writer().QueryContext(ctx, `
 		SELECT v.version, f.rel_path, v.is_current, COALESCE(v.model, ''), v.created_at

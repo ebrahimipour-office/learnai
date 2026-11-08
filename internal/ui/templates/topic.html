@@ -6,6 +6,7 @@
   {{if eq .Panel.State "archived"}}<span class="badge">بایگانی‌شده</span>{{end}}
   {{if eq .Panel.Origin "suggested"}}<span class="badge suggested">پیشنهادی</span>{{end}}</p>
 <nav class="tabs">
+  {{if .Panel.Source}}<a href="/topics/{{.Panel.ID}}/source"{{if eq .Tab "source"}} aria-current="page"{{end}}>متن فصل</a>{{end}}
   <a href="/topics/{{.Panel.ID}}/lesson"{{if eq .Tab ""}} aria-current="page"{{end}}>درس</a>
   <a href="/topics/{{.Panel.ID}}/exercises"{{if eq .Tab "exercises"}} aria-current="page"{{end}}>تمرین‌ها</a>
   <a href="/topics/{{.Panel.ID}}/answers"{{if eq .Tab "answers"}} aria-current="page"{{end}}>فایل‌های پاسخ</a>
@@ -13,6 +14,12 @@
   <a href="/topics/{{.Panel.ID}}/suggestions"{{if eq .Tab "suggestions"}} aria-current="page"{{end}}>پیشنهادها</a>
 </nav>
 {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
+{{if eq .Tab "source"}}{{with .Panel.Source}}
+<section class="source">
+  <p class="note">خطوط {{.Start}} تا {{.End}} نقشه راه · <a href="/files/{{.FileID}}"><bdi>source.md</bdi></a></p>
+  {{if not $.Error}}<article class="md" dir="auto">{{$.Lesson}}</article>{{end}}
+</section>
+{{end}}{{else}}
 {{template "job-area" .}}
 {{if eq .Tab "suggestions"}}{{template "suggestions" .}}{{else if .Tab}}{{template "set-tab" .}}{{else}}
 <section class="lesson">
@@ -30,7 +37,7 @@
   <p class="note">هنوز درسی برای این موضوع ساخته نشده است.</p>
 {{end}}
 </section>
-{{end}}
+{{end}}{{end}}
 {{end}}
 
 {{define "set-tab"}}

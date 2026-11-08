@@ -111,3 +111,55 @@ func TestChaptersRunIndependently(t *testing.T) {
 		}
 	}
 }
+
+// TestChapterSourceTab is T7.8 (§12.9): the list shows the roadmap title then its chapters in order,
+// and a chapter panel has a «متن فصل» tab rendering its own source.md, sanitized, without a job card.
+func TestChapterSourceTab(t *testing.T) {
+	e := newEnv(t)
+	draft := e.upload("book.md", []byte("# Book\n\n## One\n\ntext of chapter one <script>alert(1)</script>\n\n## Two\n\ntext of chapter two\n")).Header().Get("Location")
+	keys := extractValues(e.do(httptest.NewRequest(http.MethodGet, draft, nil)).Body.String(), `name="include" value="`)
+	e.selection(draft, url.Values{"rule": {"deepest"}, "shown_rule": {"deepest"}, "include": keys}, true)
+	if rec := e.confirm(draft, url.Values{"csrf_token": {e.sm.CSRFToken()}, "confirm": {"1"}}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("confirm: %d %s", rec.Code, rec.Body.String())
+	}
+	list := e.do(httptest.NewRequest(http.MethodGet, "/topics", nil)).Body.String()
+	if b, o, w := strings.Index(list, "<bdi>Book</bdi>"), strings.Index(list, "<bdi>One</bdi>"), strings.Index(list, "<bdi>Two</bdi>"); b < 0 || !(b < o && o < w) {
+		t.Errorf("list order: Book=%d One=%d Two=%d", b, o, w)
+	}
+
+	var id int64
+	var rel string
+	if err := e.db.Writer().QueryRow(`SELECT t.id, f.rel_path FROM topics t JOIN files f ON f.id = t.source_file_id WHERE t.title = 'One'`).Scan(&id, &rel); err != nil {
+		t.Fatal(err)
+	}
+	src := fmt.Sprintf("/topics/%d/source", id)
+	if body := e.get(fmt.Sprintf("/topics/%d", id)).Body.String(); !strings.Contains(body, `href="`+src+`"`) {
+		t.Error("panel has no chapter text tab")
+	}
+	rec := e.do(httptest.NewRequest(http.MethodGet, src, nil))
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK || !strings.Contains(body, "text of chapter one") || strings.Contains(body, "chapter two") {
+		t.Fatalf("source tab: %d %s", rec.Code, body)
+	}
+	if strings.Contains(body, "<script>alert") || strings.Contains(body, `id="job-area"`) || !strings.Contains(body, `aria-current="page">متن فصل`) {
+		t.Errorf("source tab: unsanitized, has a job card, or tab not current:\n%s", body)
+	}
+
+	if err := os.Remove(filepath.Join(e.base, filepath.FromSlash(rel))); err != nil {
+		t.Fatal(err)
+	}
+	if body := e.do(httptest.NewRequest(http.MethodGet, src, nil)).Body.String(); !strings.Contains(body, "فایل متن فصل روی دیسک پیدا نشد: "+rel) {
+		t.Errorf("missing source.md: no message:\n%s", body)
+	}
+
+	// A topic without source text has no tab and no route.
+	if _, err := e.db.Writer().Exec(`UPDATE topics SET source_file_id = NULL WHERE id = ?`, id); err != nil {
+		t.Fatal(err)
+	}
+	if body := e.get(fmt.Sprintf("/topics/%d", id)).Body.String(); strings.Contains(body, src) {
+		t.Error("topic without source shows the tab")
+	}
+	if rec := e.do(httptest.NewRequest(http.MethodGet, src, nil)); rec.Code != http.StatusNotFound {
+		t.Errorf("topic without source: %d, want 404", rec.Code)
+	}
+}

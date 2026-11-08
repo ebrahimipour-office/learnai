@@ -70,6 +70,33 @@ func (a *app) showTopic(w http.ResponseWriter, r *http.Request) {
 	a.render(w, http.StatusOK, "topic", "layout", d)
 }
 
+// showSource is the chapter text tab (§12.9): source.md as on disk now; no job card (T7.0.e).
+func (a *app) showSource(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	d, err := a.panelData(r, id, "source", nil)
+	if errors.Is(err, domain.ErrNotFound) || (err == nil && d.Panel.Source == nil) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		slog.Error("loading topic panel", "topic", id, "error", err)
+		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
+		return
+	}
+	b, err := a.root.ReadFile(d.Panel.Source.RelPath)
+	if err != nil {
+		slog.Warn("reading chapter source", "path", d.Panel.Source.RelPath, "error", err)
+		d.Error = "فایل متن فصل روی دیسک پیدا نشد: " + d.Panel.Source.RelPath
+	} else {
+		d.Lesson = render.Markdown(b)
+	}
+	a.render(w, http.StatusOK, "topic", "layout", d)
+}
+
 // fillLesson renders the version in ?v= (default: current). The file is the user's, so it may be gone or edited.
 func (a *app) fillLesson(r *http.Request, d *pageData) {
 	want, _ := strconv.ParseInt(r.URL.Query().Get("v"), 10, 64)

@@ -66,11 +66,11 @@ type pageData struct {
 
 	Panel   *topics.Panel
 	Viewing *topics.LessonVersion // lesson version shown; nil = none
-	Lesson  template.HTML         // sanitized by render.Markdown
+	Lesson  template.HTML         // sanitized by render.Markdown; also the chapter text on the source tab
 	Job     *jobs.Info            // latest job of the topic; nil = none
 	Notice  string                // job action feedback inside the job area
 
-	Tab         string // "" (lesson) | "exercises" | "answers" | "reports" | "suggestions"
+	Tab         string // "" (lesson) | "source" | "exercises" | "answers" | "reports" | "suggestions"
 	Sets        []topics.SetVersion
 	Set         *topics.SetVersion // set shown; nil = none
 	Exercises   []exerciseRow
