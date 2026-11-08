@@ -8,19 +8,22 @@
       "kind": "item",
       "level": 1,
       "title": "Closures",
-      "line": 3
+      "line": 3,
+      "end_line": 3
     },
     {
       "kind": "item",
       "level": 1,
       "title": "Iterators",
       "line": 4,
+      "end_line": 4,
       "children": [
         {
           "kind": "item",
           "level": 2,
           "title": "Range-over-func",
-          "line": 5
+          "line": 5,
+          "end_line": 5
         }
       ]
     },
@@ -28,13 +31,15 @@
       "kind": "item",
       "level": 1,
       "title": "Errors",
-      "line": 7
+      "line": 7,
+      "end_line": 7
     },
     {
       "kind": "item",
       "level": 1,
       "title": "Testing",
-      "line": 8
+      "line": 8,
+      "end_line": 8
     }
   ]
 }

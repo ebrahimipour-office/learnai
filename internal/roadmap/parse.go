@@ -22,11 +22,14 @@ const (
 
 // Node is one entry of the parsed roadmap tree. It is serialized as-is into import_drafts.parsed_tree.
 type Node struct {
-	Kind     NodeKind `json:"kind"`
-	Level    int      `json:"level"` // heading: 1-6; item: list depth starting at 1; root: 0
-	Title    string   `json:"title"`
-	Line     int      `json:"line"` // 1-based source line; 0 for root
-	Children []*Node  `json:"children,omitempty"`
+	Kind  NodeKind `json:"kind"`
+	Level int      `json:"level"` // heading: 1-6; item: list depth starting at 1; root: 0
+	Title string   `json:"title"`
+	Line  int      `json:"line"` // 1-based source line; 0 for root
+	// EndLine is the last line of the node's text: for a heading, the line before the next heading
+	// of the same or higher level (or the last line); for an item, Line. Absent in older trees.
+	EndLine  int     `json:"end_line,omitempty"`
+	Children []*Node `json:"children,omitempty"`
 }
 
 var md = goldmark.New() // CommonMark only: no raw-HTML rendering is involved, we only read the AST.
@@ -35,8 +38,7 @@ var md = goldmark.New() // CommonMark only: no raw-HTML rendering is involved, w
 // (or the root). Paragraphs, code blocks, block quotes and HTML are ignored, so a '#' inside a
 // fenced block never becomes a heading. Headings with no text are dropped.
 func Parse(src []byte) *Node {
-	src = bytes.TrimPrefix(src, []byte("\xEF\xBB\xBF"))
-	src = bytes.ReplaceAll(src, []byte("\r\n"), []byte("\n"))
+	src = normalize(src)
 
 	doc := md.Parser().Parse(text.NewReader(src))
 	lines := lineStarts(src)
@@ -52,10 +54,12 @@ func Parse(src []byte) *Node {
 			if title == "" {
 				continue
 			}
+			line := lineOf(b, lines)
 			for len(stack) > 1 && stack[len(stack)-1].Level >= b.Level {
+				stack[len(stack)-1].EndLine = line - 1
 				stack = stack[:len(stack)-1]
 			}
-			h := &Node{Kind: KindHeading, Level: b.Level, Title: title, Line: lineOf(b, lines)}
+			h := &Node{Kind: KindHeading, Level: b.Level, Title: title, Line: line}
 			parent := stack[len(stack)-1]
 			parent.Children = append(parent.Children, h)
 			stack = append(stack, h)
@@ -64,7 +68,42 @@ func Parse(src []byte) *Node {
 			parent.Children = append(parent.Children, listItems(b, 1, src, lines)...)
 		}
 	}
+	last := lineCount(src)
+	for _, h := range stack[1:] {
+		h.EndLine = last
+	}
 	return root
+}
+
+// Slice returns lines start..end (1-based, inclusive) of src after the same BOM/CRLF
+// normalization Parse applies, so Node.Line/EndLine index it directly. end is clamped to the
+// last line; an empty range yields nil.
+func Slice(src []byte, start, end int) []byte {
+	src = normalize(src)
+	starts := lineStarts(src)
+	end = min(end, lineCount(src))
+	if start < 1 || end < start {
+		return nil
+	}
+	stop := len(src)
+	if end < len(starts) {
+		stop = starts[end]
+	}
+	return src[starts[start-1]:stop]
+}
+
+func normalize(src []byte) []byte {
+	src = bytes.TrimPrefix(src, []byte("\xEF\xBB\xBF"))
+	return bytes.ReplaceAll(src, []byte("\r\n"), []byte("\n"))
+}
+
+// lineCount is the number of lines; a trailing newline does not start a new line.
+func lineCount(src []byte) int {
+	n := bytes.Count(src, []byte("\n"))
+	if len(src) > 0 && src[len(src)-1] != '\n' {
+		n++
+	}
+	return n
 }
 
 // listItems converts the items of list l (at nesting depth) into nodes. An item with no text of
@@ -89,7 +128,7 @@ func listItems(l *ast.List, depth int, src []byte, lines []int) []*Node {
 			out = append(out, kids...)
 			continue
 		}
-		out = append(out, &Node{Kind: KindItem, Level: depth, Title: title, Line: line, Children: kids})
+		out = append(out, &Node{Kind: KindItem, Level: depth, Title: title, Line: line, EndLine: line, Children: kids})
 	}
 	return out
 }

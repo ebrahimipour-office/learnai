@@ -9,36 +9,42 @@
       "level": 1,
       "title": "Data Structures",
       "line": 1,
+      "end_line": 13,
       "children": [
         {
           "kind": "item",
           "level": 1,
           "title": "Linear",
           "line": 3,
+          "end_line": 3,
           "children": [
             {
               "kind": "item",
               "level": 2,
               "title": "Arrays",
               "line": 4,
+              "end_line": 4,
               "children": [
                 {
                   "kind": "item",
                   "level": 3,
                   "title": "Static arrays",
-                  "line": 5
+                  "line": 5,
+                  "end_line": 5
                 },
                 {
                   "kind": "item",
                   "level": 3,
                   "title": "Dynamic arrays",
                   "line": 6,
+                  "end_line": 6,
                   "children": [
                     {
                       "kind": "item",
                       "level": 4,
                       "title": "Amortized growth",
-                      "line": 7
+                      "line": 7,
+                      "end_line": 7
                     }
                   ]
                 }
@@ -48,7 +54,8 @@
               "kind": "item",
               "level": 2,
               "title": "Linked lists",
-              "line": 8
+              "line": 8,
+              "end_line": 8
             }
           ]
         },
@@ -57,18 +64,21 @@
           "level": 1,
           "title": "Non-linear",
           "line": 9,
+          "end_line": 9,
           "children": [
             {
               "kind": "item",
               "level": 2,
               "title": "Trees",
-              "line": 10
+              "line": 10,
+              "end_line": 10
             },
             {
               "kind": "item",
               "level": 2,
               "title": "Graphs",
-              "line": 11
+              "line": 11,
+              "end_line": 11
             }
           ]
         },
@@ -76,7 +86,8 @@
           "kind": "item",
           "level": 2,
           "title": "Promoted item",
-          "line": 13
+          "line": 13,
+          "end_line": 13
         }
       ]
     }

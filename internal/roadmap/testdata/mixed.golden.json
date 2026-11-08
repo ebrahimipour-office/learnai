@@ -9,30 +9,35 @@
       "level": 1,
       "title": "Roadmap — نقشه راه",
       "line": 1,
+      "end_line": 9,
       "children": [
         {
           "kind": "heading",
           "level": 2,
           "title": "Phase 1: پایه‌ها",
           "line": 3,
+          "end_line": 9,
           "children": [
             {
               "kind": "heading",
               "level": 3,
               "title": "Git و GitHub",
               "line": 5,
+              "end_line": 8,
               "children": [
                 {
                   "kind": "item",
                   "level": 1,
                   "title": "Pro Git کتاب",
-                  "line": 6
+                  "line": 6,
+                  "end_line": 6
                 },
                 {
                   "kind": "item",
                   "level": 1,
                   "title": "branching و merge",
-                  "line": 7
+                  "line": 7,
+                  "end_line": 7
                 }
               ]
             },
@@ -40,7 +45,8 @@
               "kind": "heading",
               "level": 3,
               "title": "خط فرمان Linux",
-              "line": 9
+              "line": 9,
+              "end_line": 9
             }
           ]
         }

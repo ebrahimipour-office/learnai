@@ -82,3 +82,48 @@ func TestKeepsZWNJ(t *testing.T) {
 		t.Errorf("ZWNJ lost: %q", got)
 	}
 }
+
+func TestSliceChapters(t *testing.T) {
+	ch1 := "## Chapter 1\nintro\n```go\n# not a heading\n## nor this\n```\n### Sub\nsub text\n"
+	ch2 := "## Chapter 2\nlast\n"
+	lf := "# Book\npreface\n" + ch1 + ch2
+	for name, src := range map[string]string{
+		"lf":       lf,
+		"crlf+bom": "\xEF\xBB\xBF" + strings.ReplaceAll(lf, "\n", "\r\n"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			book := Parse([]byte(src)).Children[0]
+			if book.Line != 1 || book.EndLine != 12 {
+				t.Fatalf("book range %d..%d, want 1..12", book.Line, book.EndLine)
+			}
+			if len(book.Children) != 2 {
+				t.Fatalf("got %d chapters, want 2 (code-block '#' must not split)", len(book.Children))
+			}
+			for i, want := range []string{ch1, ch2} {
+				c := book.Children[i]
+				if got := string(Slice([]byte(src), c.Line, c.EndLine)); got != want {
+					t.Errorf("chapter %d slice = %q, want %q", i+1, got, want)
+				}
+			}
+			sub := book.Children[0].Children[0]
+			if got := string(Slice([]byte(src), sub.Line, sub.EndLine)); got != "### Sub\nsub text\n" {
+				t.Errorf("sub slice = %q", got)
+			}
+		})
+	}
+}
+
+func TestSliceEdges(t *testing.T) {
+	src := []byte("a\nb\nc") // no trailing newline
+	for _, tc := range []struct {
+		start, end int
+		want       string
+	}{{1, 1, "a\n"}, {2, 3, "b\nc"}, {3, 99, "c"}, {0, 2, ""}, {3, 2, ""}, {4, 4, ""}} {
+		if got := string(Slice(src, tc.start, tc.end)); got != tc.want {
+			t.Errorf("Slice(%d,%d) = %q, want %q", tc.start, tc.end, got, tc.want)
+		}
+	}
+	if items := Parse([]byte("- x\n- y\n")).Children; items[1].EndLine != 2 {
+		t.Errorf("item EndLine = %d, want its Line 2", items[1].EndLine)
+	}
+}

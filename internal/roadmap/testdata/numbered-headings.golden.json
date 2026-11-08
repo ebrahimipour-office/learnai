@@ -9,18 +9,21 @@
       "level": 1,
       "title": "۱. مقدمه",
       "line": 1,
+      "end_line": 6,
       "children": [
         {
           "kind": "heading",
           "level": 2,
           "title": "۱.۱ تاریخچه",
-          "line": 3
+          "line": 3,
+          "end_line": 4
         },
         {
           "kind": "heading",
           "level": 2,
           "title": "۱.۲ نصب",
-          "line": 5
+          "line": 5,
+          "end_line": 6
         }
       ]
     },
@@ -29,18 +32,21 @@
       "level": 1,
       "title": "۲. Advanced",
       "line": 7,
+      "end_line": 11,
       "children": [
         {
           "kind": "heading",
           "level": 2,
           "title": "2.1 Generics",
-          "line": 9
+          "line": 9,
+          "end_line": 10
         },
         {
           "kind": "heading",
           "level": 2,
           "title": "2.2 Reflection",
-          "line": 11
+          "line": 11,
+          "end_line": 11
         }
       ]
     }

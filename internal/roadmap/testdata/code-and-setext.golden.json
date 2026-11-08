@@ -9,18 +9,21 @@
       "level": 1,
       "title": "Setext Title",
       "line": 1,
+      "end_line": 18,
       "children": [
         {
           "kind": "heading",
           "level": 2,
           "title": "Setext Section",
           "line": 11,
+          "end_line": 18,
           "children": [
             {
               "kind": "heading",
               "level": 3,
               "title": "Deep under setext",
-              "line": 18
+              "line": 18,
+              "end_line": 18
             }
           ]
         }
