@@ -24,6 +24,7 @@
 9. فهرست کارها به تفکیک مراحل و معیار پذیرش (مورد ۷)
 10. ریسک‌ها
 11. فرض‌ها و موارد باز (شامل تفسیرهای نیازمند تأیید)
+12. فصل‌محوری (فاز ۷): عنوان فایل، فصل، `source.md`، Job `chapter_detect`، مهاجرت `0003`
 
 
 ---
@@ -163,7 +164,7 @@ learninghub/
 │  │  └─ testdata/*.md             # فایل‌های golden (فارسی/انگلیسی/مختلط)
 │  ├─ store/
 │  │  ├─ db.go                     # باز کردن، PRAGMAها، pool نویسنده/خواننده، tx helper
-│  │  ├─ migrations/               # 0001_init.sql ... (embed)
+│  │  ├─ migrations/               # 0001_init.sql، 0002_eval_guards.sql، 0003_chapters.sql (بخش ۱۲.۶) ... (embed)
 │  │  └─ *.go                      # queries به‌ازای aggregate: roadmaps, topics, jobs, files, attempts...
 │  ├─ fsx/
 │  │  ├─ root.go                   # پوشش os.Root؛ تنها نقطه ورود I/O فایل
@@ -232,6 +233,8 @@ LearningHub/                              # دایرکتوری پایه (قاب�
 │     └─ rev-002.md
 ├─ topics/
 │  └─ 05-http-basics/
+│     ├─ source.md                        # متن خام فصل از Roadmap (فاز ۷، بخش ۱۲.۶)
+│     ├─ source-history/source.0001.md    # نسخه قبلی source.md پیش از جایگزینی در ورود مجدد
 │     ├─ lesson/lesson.md
 │     ├─ lesson/history/lesson.0001.md    # نسخه‌های قبلی درس (R3.1 بازتولید)
 │     ├─ exercises/v1/{exercises.md, manifest.json}
@@ -532,6 +535,7 @@ CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- base_id، ن
 | **نسخه‌ها** | `is_current` + ایندکس یکتای جزئی؛ نسخه‌های قدیمی هرگز حذف نمی‌شوند (R3.1/R3.2). |
 | **ارجاع با ID** | کلیدهای خارجی از `files` و `owner_*` استفاده می‌کنند؛ مسیر فقط یک ویژگی فایل است نه کلید ارتباط (R5.3). |
 | **بازسازی از فایل‌ها** | `manifest.json` و `result.json` و سربرگ فایل‌های پاسخ شامل `stable_key` موضوع، نسخه مجموعه و `ex_id` هستند تا ابزار اختیاری `hub rebuild` (کار T6.8) بتواند جداول را بازسازی کند. |
+| **مهاجرت‌های بعدی** | `0002_eval_guards.sql` (T5.6: `attempt_items.flags`، `exercises.template_norm_sha256`)؛ `0003_chapters.sql` (فاز ۷: ستون‌های منبع فصل، `import_drafts.title`، `files.kind += source`، `jobs.kind += chapter_detect` با بازسازی جدول؛ بخش ۱۲.۶). |
 | **نمونه کوئری مهم** | وضعیت فهرست موضوعات با یک کوئری: `topics` ⟕ آخرین `attempts` (با زیرکوئری `MAX(attempt_no)` روی مجموعه جاری) و شمارش `files` با `presence='missing'`. |
 
 ---
@@ -908,7 +912,7 @@ CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- base_id، ن
 
 ### ۵.۵. اسکیمای خروجی AI (قراردادهای Adapter)
 
-AI فقط یکی از این سه ساختار (به‌علاوه `suggestions`) را برمی‌گرداند. اسکیمای دقیق در `internal/schema/ai/*.schema.json` است؛ این‌جا شکل کلی آمده:
+AI فقط یکی از این ساختارها (به‌علاوه `suggestions`) را برمی‌گرداند؛ خروجی‌های پیش‌نمایش ورود (`roadmap_analyze` و `chapter_detect`، بخش ۱۲.۷) نیز ساختار خود را دارند. اسکیمای دقیق در `internal/schema/ai/*.schema.json` است؛ این‌جا شکل کلی آمده:
 
 ```jsonc
 // ai-lesson-output
@@ -957,7 +961,7 @@ AI فقط یکی از این سه ساختار (به‌علاوه `suggestions`)
 ```go
 package ai
 
-type Task string // "lesson" | "exercises" | "evaluate" | "roadmap_analyze"
+type Task string // "lesson" | "exercises" | "evaluate" | "roadmap_analyze" | "chapter_detect" (۱۲.۵)
 
 type Adapter interface {
     // Name برای ثبت در Job و فایل‌های خروجی (مثلاً "antigravity").
@@ -1065,6 +1069,8 @@ cwd = WorkDir
 └─ inputs/
    ├─ task.json          # پارامترها: عنوان موضوع، جایگاه (گروه، قبلی/بعدی)، سطح، زبان، تعداد تمرین
    ├─ roadmap_excerpt.md # (درس/تمرین) سرفصل‌ها و زیرموارد
+   ├─ source.md          # (درس/تمرین/ارزیابی) متن خام همان فصل، اگر موضوع متن منبع دارد (۱۲.۸)
+   ├─ outline.json       # (chapter_detect) سرفصل‌ها با شماره خط و پیش‌نمایش کوتاه بدنه (۱۲.۵)
    ├─ lesson.md          # (تمرین) درس جاری برای ثبات
    ├─ question.md        # (ارزیابی) صورت تمرین واحد
    ├─ rubric.json        # (ارزیابی) فقط Rubric همان تمرین
@@ -1148,10 +1154,11 @@ Enqueue ──▶ جدول jobs (queued) ──▶ Dispatcher goroutine ──�
 
 | Job | ورودی‌ها | خروجی commit | نکات |
 |---|---|---|---|
-| `lesson` | عنوان، گروه، موضوعات قبل/بعد، `outline`، پروفایل | `lesson/lesson.md`؛ نسخه قبلی (در صورت وجود) به `lesson/history/lesson.NNNN.md` کپی می‌شود **سپس** فایل جاری با جایگزینی اتمیک (tmp + rename) عوض می‌شود | **نرم‌افزار** بخش «کلیدواژه‌ها» را از `keywords[]` به **انتهای** فایل اضافه می‌کند (تضمین معیار R11.2). بازتولید فقط با `params.confirm_regenerate=true`. پیشنهادها در `suggestions` با وضعیت `pending` ذخیره می‌شوند. |
-| `exercises` | درس جاری، پروفایل، تعداد/دشواری پیش‌فرض | پوشه `exercises/vN/` (exercises.md، manifest.json)، `answers/vN/*`، `.internal/rubric-vN.json` | نرم‌افزار `exercises.md` را از `statement_markdown`ها می‌سازد و دوباره پارس می‌کند؛ قالب پاسخ‌ها از `fsx.answertpl` ساخته می‌شود؛ اگر فایل پاسخی از قبل وجود داشته باشد **کل commit رد می‌شود** (R3.3). مجموعه جدید همیشه `N = max+1` است و مجموعه‌های قبلی دست‌نخورده می‌مانند. |
-| `evaluate` | مجموعه جاری، فایل‌های پاسخ، rubric، آخرین attempt | `reports/vN/attempt-K/` (`qNN-report.md`، `summary.md`، `result.json`) | فقط پاسخ‌های جدید/تغییرکرده (یا همه در حالت `full`) به AI می‌روند؛ «بدون پاسخ» هرگز ارسال نمی‌شود. `step_key='exercise:qNN'` برای هر تمرین؛ خروجی هر مرحله در `staging` ذخیره می‌شود. K هنگام commit محاسبه می‌شود (امن است چون scope یکتاست). |
+| `lesson` | عنوان، گروه، موضوعات قبل/بعد، `outline`، `source.md` فصل (در صورت وجود، ۱۲.۸)، پروفایل | `lesson/lesson.md`؛ نسخه قبلی (در صورت وجود) به `lesson/history/lesson.NNNN.md` کپی می‌شود **سپس** فایل جاری با جایگزینی اتمیک (tmp + rename) عوض می‌شود | **نرم‌افزار** بخش «کلیدواژه‌ها» را از `keywords[]` به **انتهای** فایل اضافه می‌کند (تضمین معیار R11.2). بازتولید فقط با `params.confirm_regenerate=true`. پیشنهادها در `suggestions` با وضعیت `pending` ذخیره می‌شوند. |
+| `exercises` | درس جاری، `source.md` فصل (در صورت وجود)، پروفایل، تعداد/دشواری پیش‌فرض | پوشه `exercises/vN/` (exercises.md، manifest.json)، `answers/vN/*`، `.internal/rubric-vN.json` | نرم‌افزار `exercises.md` را از `statement_markdown`ها می‌سازد و دوباره پارس می‌کند؛ قالب پاسخ‌ها از `fsx.answertpl` ساخته می‌شود؛ اگر فایل پاسخی از قبل وجود داشته باشد **کل commit رد می‌شود** (R3.3). مجموعه جدید همیشه `N = max+1` است و مجموعه‌های قبلی دست‌نخورده می‌مانند. |
+| `evaluate` | مجموعه جاری، فایل‌های پاسخ، rubric، `source.md` فصل (در صورت وجود)، آخرین attempt | `reports/vN/attempt-K/` (`qNN-report.md`، `summary.md`، `result.json`) | فقط پاسخ‌های جدید/تغییرکرده (یا همه در حالت `full`) به AI می‌روند؛ «بدون پاسخ» هرگز ارسال نمی‌شود. `step_key='exercise:qNN'` برای هر تمرین؛ خروجی هر مرحله در `staging` ذخیره می‌شود. K هنگام commit محاسبه می‌شود (امن است چون scope یکتاست). |
 | `roadmap_analyze` | درخت پارس‌شده (فقط عنوان‌ها) | `import_drafts.ai_suggestion` | هیچ فایل یا رکوردی ایجاد نمی‌کند؛ فقط پیشنهاد در پیش‌نمایش (R2.2). |
+| `chapter_detect` | سرفصل‌ها با شماره خط + پیش‌نمایش کوتاه بدنه (`outline.json`) | `import_drafts.ai_suggestion` (قاعده `chapters` + عنوان) | مانند `roadmap_analyze` هیچ فایل یا رکوردی ایجاد نمی‌کند؛ خروجی با `ValidateChapters` بررسی می‌شود (۱۲.۵). |
 
 **گزارش تصحیح (R3.5):** `qNN-report.md` توسط قالب نرم‌افزار ساخته می‌شود: شناسه و صورت تمرین (از `exercises.md`)، **متن خام پاسخ** (بایت‌به‌بایت از فایل + hash)، نمره و جدول معیارها، خطاها (دسته‌بندی‌شده)، پاسخ اصلاح‌شده، توضیح آموزشی، شماره تلاش، تاریخ، نسخه Rubric و نسخه Skill. `summary.md` شامل نمره موضوع، برچسب «ناقص» و جدول تمرین‌هاست؛ `result.json` طبق بخش ۵.۳.
 
@@ -1183,6 +1190,7 @@ Enqueue ──▶ جدول jobs (queued) ──▶ Dispatcher goroutine ──�
 | `/` | — | هدایت به `/topics` |
 | `/topics` | فهرست موضوعات (R2.4) | گروه‌ها قابل جمع‌شدن، جست‌وجو (`?q=`)، فیلتر وضعیت، نمره و برچسب «ناقص»، نشان متمایز برای «بایگانی‌شده» و «پیشنهادی»، نشانگر Job در حال اجرا |
 | `/topics/{id}` | پنل موضوع | نوار تب‌ها؛ تب پیش‌فرض: درس (یا وضعیت کلی اگر درس نیست) |
+| `/topics/{id}/source` | تب متن فصل (فاز ۷) | رندر `source.md`، بازه خطوط؛ فقط برای موضوع دارای متن منبع (۱۲.۹) |
 | `/topics/{id}/lesson` | تب درس | رندر Markdown (RTL با `dir="auto"` و کد LTR)، نسخه‌ها، دکمه «تولید/بازتولید» (با تأیید) |
 | `/topics/{id}/exercises` | تب تمرین‌ها | انتخاب نسخه مجموعه (v1، v2...)، فهرست تمرین‌ها با نوع/دشواری/وزن، متن `exercises.md`، دکمه «مجموعه جدید» (با تأیید) |
 | `/topics/{id}/answers` | تب فایل‌های پاسخ | جدول: شناسه، عنوان، نام فایل، **مسیر کامل قابل کپی**، وضعیت (بدون پاسخ/پاسخ‌داده‌شده/تغییرکرده پس از ارزیابی/گم‌شده)، دکمه «باز کردن» (اختیاری، T6.6) |
@@ -1193,7 +1201,7 @@ Enqueue ──▶ جدول jobs (queued) ──▶ Dispatcher goroutine ──�
 | `/topics/{id}/jobs` | تب کارها | تاریخچه، وضعیت، خطا، مدت، لغو/تلاش مجدد |
 | `/roadmaps` | Roadmapها | فهرست؛ ورود جدید؛ نسخه‌ها |
 | `/roadmaps/new` | ورود Roadmap | فرم آپلود `.md` (حداکثر ۱ مگابایت) |
-| `/roadmaps/drafts/{draftId}` | **پیش‌نمایش ورود** | درخت پارس‌شده، انتخاب سطح «موضوع»، تیک‌گذاری دستی، پیشنهاد AI (متمایز)، تعداد موضوعات؛ در ورود مجدد: جدول تفاوت (جدید/تغییرکرده/ناپدیدشده + حدس فازی) |
+| `/roadmaps/drafts/{draftId}` | **پیش‌نمایش ورود** | عنوان قابل ویرایش (اولین H1، ۱۲.۲)، فهرست فصل‌ها (قاعده `chapters`، ۱۲.۴)، درخت پارس‌شده، انتخاب سطح «موضوع»، تیک‌گذاری دستی، پیشنهاد AI (متمایز)، تعداد موضوعات؛ در ورود مجدد: جدول تفاوت (جدید/تغییرکرده/ناپدیدشده + حدس فازی) |
 | `/roadmaps/{id}` | جزئیات Roadmap | ریشه گروه‌ها، تاریخچه ورودها، دکمه «ورود نسخه جدید» |
 | `/jobs` ، `/jobs/{id}` | Jobها | فهرست سراسری؛ جزئیات (فاز، پیشرفت، خطا، لاگ خلاصه) |
 | `/sync` | همگام‌سازی | نتیجه آخرین اسکن؛ گزینه‌های تأیید برای هر یافته |
@@ -1208,6 +1216,7 @@ Enqueue ──▶ جدول jobs (queued) ──▶ Dispatcher goroutine ──�
 | `POST /roadmaps/drafts` | ساخت پیش‌نمایش از فایل آپلودی | `file` (multipart)، `roadmap_id` (اختیاری برای ورود مجدد) | `303` به صفحه پیش‌نمایش؛ `413`/`422` |
 | `POST /roadmaps/drafts/{id}/selection` | تغییر قاعده انتخاب یا تیک‌ها | `rule`، `toggles[]` | fragment درخت به‌روز |
 | `POST /roadmaps/drafts/{id}/ai-assist` | درخواست تحلیل AI (Job نوع `roadmap_analyze`) | — | `202` + نشانگر Job؛ `409` اگر مشغول |
+| `POST /roadmaps/drafts/{id}/chapters` | تشخیص فصل‌ها با AI (Job نوع `chapter_detect`، ۱۲.۵) | — | `202` + نشانگر Job؛ `409` اگر مشغول |
 | `POST /roadmaps/drafts/{id}/confirm` | تأیید و ثبت رکوردها (یک تراکنش) | `confirm=1` | `303` به فهرست؛ `409 confirmation_required` |
 | `POST /topics/{id}/jobs/lesson` | تولید/بازتولید درس | `confirm_regenerate` (لازم اگر درس هست) | `202`؛ `409 scope_busy` |
 | `POST /topics/{id}/jobs/exercises` | تولید مجموعه تمرین | `confirm_new_version` (لازم اگر مجموعه هست) | `202`؛ `409` |
@@ -1459,7 +1468,7 @@ Enqueue ──▶ جدول jobs (queued) ──▶ Dispatcher goroutine ──�
 | **A6** | اتصال اینترنت برای فراخوانی AI در دسترس است؛ بدون اینترنت فقط مشاهده و همگام‌سازی کار می‌کند. |
 | **A7** | اندازه‌ها: فایل Roadmap ≤ ۱ مگابایت و ≤ ۱۰۰۰ موضوع؛ هر پاسخ متنی ≤ ۲۰۰ کیلوبایت UTF-8؛ هر مجموعه تمرین ۳ تا ۱۲ تمرین (پیش‌فرض ۶). |
 | **A8** | زبان توضیحات فارسی؛ اصطلاحات و کد انگلیسی (فرض R13.1). |
-| **A9** | «موضوع» = سرفصل‌های برگ (هر سرفصل بدون زیرسرفصل، در هر سطح؛ T7.0.a) مگر کاربر در پیش‌نمایش تغییر دهد (فرض R13.1). |
+| **A9** | «موضوع» = سرفصل‌های برگ (هر سرفصل بدون زیرسرفصل، در هر سطح؛ T7.0.a) مگر کاربر در پیش‌نمایش تغییر دهد (فرض R13.1). فاز ۷: قاعده `chapters` (پیشنهاد AI یا ویرایش کاربر) و `level` فصل‌محورند و هر موضوع حاصل بازه منبع دارد (۱۲.۴). |
 | **A10** | تمرین بدون پاسخ نمره ۰ می‌گیرد و نمره موضوع تا تکمیل پاسخ‌ها «ناقص» نمایش داده می‌شود (فرض R13.1). |
 | **A11** | تمرین = دقیقاً یک فایل پاسخ؛ تمرین چندفایلی پشتیبانی نمی‌شود. |
 | **A12** | زمان‌ها در DB و فایل‌ها UTC هستند و در UI به زمان محلی سیستم نمایش داده می‌شوند؛ تقویم میلادی (نمایش جلالی گزینه آینده). |
@@ -1496,6 +1505,8 @@ Enqueue ──▶ جدول jobs (queued) ──▶ Dispatcher goroutine ──�
 | **I7** | هر تمرین با یک فراخوانی AI جداگانه ارزیابی می‌شود (D10)؛ این هزینه و زمان بیشتری دارد ولی تلاش مجدد جزئی را ممکن می‌کند. | ۵ |
 | **I8** | پوشه داخلی `.app/` به ساختار R5.1 اضافه شده و پروفایل یادگیرنده فایل جدا `profile.md` است (نه بخشی از `AGENTS.md`). | ۱ |
 | **I9** | موضوع تأییدشده از پیشنهاد AI در فهرست، کنار موضوع مبدأ و با برچسب «پیشنهادی» نمایش داده می‌شود و ترتیب Roadmap اصلی را تغییر نمی‌دهد. | ۶ |
+| **I10** | قاعده پیش‌فرض پیش‌نمایش همچنان `deepest` می‌ماند (A9)؛ فصل‌محوری با دکمه «تشخیص فصل‌ها با AI» یا انتخاب قاعده `level` فعال می‌شود. گزینه دیگر: پیش‌فرض = `level` سطحِ زیر H1 یکتا (برای کتاب‌ها H2). | ۷ |
+| **I11** | `source.md` فایل نرم‌افزار است نه پاسخ کاربر: در ورود مجدد با فصل تغییرکرده، بایت‌های فعلی روی دیسک به `source-history/` کپی و سپس فایل جاری اتمیک جایگزین می‌شود (مانند درس، I1). | ۷ |
 
 ---
 
@@ -1535,6 +1546,7 @@ allowed_answer_exts = [".go", ".py", ".js", ".ts", ".java", ".c", ".cpp", ".rs",
 max_roadmap_bytes = 1048576
 max_answer_bytes  = 204800
 max_lesson_bytes  = 204800
+max_source_bytes  = 204800                # سقف source.md فصل که به AI می‌رود (۱۲.۸)
 
 [editor]
 command = ""                              # خالی = دکمه «باز کردن» پنهان
@@ -1553,3 +1565,124 @@ command = ""                              # خالی = دکمه «باز کرد�
 ### پیوست پ — فهرست وابستگی‌های بیرونی
 
 `modernc.org/sqlite`، `github.com/yuin/goldmark`، `github.com/microcosm-cc/bluemonday`، `github.com/santhosh-tekuri/jsonschema/v6`، `github.com/BurntSushi/toml`، `github.com/gofrs/flock`، `golang.org/x/sys`، `golang.org/x/text` (نرمال‌سازی Unicode)، و فایل محلی `htmx.min.js` (نسخه قفل‌شده در مخزن). هر وابستگی جدید باید در `docs/adr/` با دلیل ثبت شود.
+
+---
+
+## ۱۲. فصل‌محوری (فاز ۷)
+
+> **چرا:** بازخورد کاربر (۲۰۲۶-۱۱-۰۸) و باگ‌های B2/B3 در T7.0: عنوان نقشه راه باید عنوان خود فایل باشد، و درس، تمرین و ارزیابی هر فصل باید از **متن همان فصل** ساخته شوند، نه از عنوان و دانش عمومی مدل. این بخش مرجع T7.2 تا T7.8 است؛ هر جا با بخش‌های قبلی ناهمخوان بود، این بخش معتبر است.
+
+### ۱۲.۱. مفهوم «فصل»
+
+- **فصل = همان `topic`** با یک **بازه منبع** (`source_start_line..source_end_line` در آخرین snapshot نقشه راه) و فایل `topics/NN-slug/source.md` (متن خام همان بازه). جدول، پوشه، scope Job (`topic:<id>`)، `stable_key` و همه مسیرهای فعلی دست نمی‌خورند؛ فصل فقط «موضوعی است که متن منبع دارد».
+- **موضوع بدون متن منبع** (موضوعات قدیمی پیش از مهاجرت، موضوعات قاعده `items`، موضوعات تأییدشده از پیشنهاد AI) مثل قبل کار می‌کند: درس از عنوان + `outline` ساخته می‌شود (T7.6).
+- **قانون ثابت (بدون تغییر):** AI فقط JSON برمی‌گرداند (عنوان‌ها و شماره خط‌ها). برش متن، ساخت رکورد، پوشه و فایل کار نرم‌افزار است.
+
+### ۱۲.۲. عنوان نقشه راه (T7.2)
+
+- عنوان پیش‌فرض = متن **اولین H1** فایل؛ اگر H1 نبود = نام فایل بدون پسوند (رفتار فعلی). در پیش‌نمایش نشان داده و قابل ویرایش است و در ستون جدید `import_drafts.title` ذخیره می‌شود (`NULL` = همان پیش‌فرض).
+- **ورود مجدد:** `roadmaps.title` فقط وقتی عوض می‌شود که کاربر در پیش‌نمایش تیک «جایگزینی عنوان» را بزند؛ پیش‌فرض: عنوان فعلی می‌ماند.
+- **H1 یکتا (B2):** اگر سند دقیقاً یک H1 دارد، آن H1 عنوان است و در پیش‌نمایش و فهرست **به‌عنوان گروه نشان داده نمی‌شود** و ردیف `groups` برایش ساخته نمی‌شود. **محاسبه `stable_key` تغییر نمی‌کند** (H1 همچنان جزء مسیر کلید موضوعات و گروه‌های زیرش است) تا ورود مجدد نقشه‌های موجود همه موضوعات را «جدید/ناپدیدشده» نشان ندهد؛ گروه H1 قدیمیِ نقشه‌های موجود حذف نمی‌شود (هیچ حذفی در نرم‌افزار نیست، I5).
+- درخت کامل سرفصل‌ها (با سطح و شماره خط) همچنان در `roadmap_revisions.parsed_tree` می‌ماند.
+
+### ۱۲.۳. بازه متن هر سرفصل در پارسر (T7.3)
+
+- `roadmap.Node` فیلد `EndLine` می‌گیرد: آخرین خط متعلق به سرفصل = خط پیش از سرفصل بعدی **هم‌سطح یا بالاتر** (یا آخر فایل). شماره خط‌ها روی همان متن نرمال‌شده‌ای است که `Parse` می‌بیند (BOM حذف، CRLF ⇒ LF)، پس با `rev-NNN.md` ذخیره‌شده هم‌خوان است.
+- چون تشخیص سرفصل از AST goldmark است، `#` داخل بلوک کد هرگز مرز فصل نمی‌شود.
+- تابع خالص `roadmap.Slice(src, start, end) []byte` خطوط `start..end` (شامل هر دو، ۱-مبنا) را برمی‌گرداند. برای آیتم‌های لیست `EndLine` = همان `Line`.
+- `EndLine` در JSON درخت ذخیره می‌شود (`end_line`، `omitempty`)؛ درخت‌های قدیمی بدون آن معتبرند. `Select` و `stable_key` تغییری نمی‌کنند (تست‌های golden فعلی سبز می‌مانند).
+
+### ۱۲.۴. قاعده انتخاب `chapters` و بازه منبع موضوعات
+
+قاعده جدید `roadmap.Rule{Kind: "chapters", Chapters: [...]}` کنار `deepest`/`level`/`items`:
+
+```jsonc
+// import_drafts.selection (Choice) با قاعده chapters
+{ "rule": { "kind": "chapters",
+            "chapters": [ { "line": 3,  "end_line": 41, "title": "مقدمات زبان" },
+                          { "line": 42, "end_line": 97, "title": "توابع" } ] },
+  "excluded": [ "<stable_key>" ] }
+```
+
+- **`line` باید خط یک سرفصل در درخت باشد.** موضوع حاصل همان سرفصل است، پس `stable_key` و گروه‌ها با همان الگوریتم فعلی (از مسیر سرفصل) محاسبه می‌شوند؛ `title` فصل فقط `topics.title` را تعیین می‌کند و **در کلید نقشی ندارد** (تغییر نام فصل کلید را عوض نمی‌کند).
+- **بازه منبع هر موضوع پس از تأیید:** قاعده `chapters` ⇒ همان `line..end_line`؛ قاعده‌های `deepest` و `level` ⇒ `Line..EndLine` همان سرفصل (پس قاعده قطعی `level=2` بدون AI هم فصل‌محور واقعی است)؛ قاعده `items` ⇒ بدون بازه (`NULL`، بدون `source.md`).
+- **قواعد اعتبار** (هم برای خروجی AI و هم برای ویرایش کاربر در پیش‌نمایش؛ تابع خالص `roadmap.ValidateChapters(tree, lines, chapters)`): حداقل یک فصل؛ `line` خط یک سرفصل؛ `line ≤ end_line ≤ تعداد خطوط`؛ مرتب صعودی بر اساس `line`؛ **بدون هم‌پوشانی** (`end_line[i] < line[i+1]`)؛ هیچ سرفصل فصلی نواده سرفصل فصل دیگری نیست (فصل تودرتو)؛ `title` پس از trim غیرخالی و حداکثر ۲۰۰ نویسه. فاصله بین فصل‌ها (مثلاً پیش‌گفتار) مجاز است و جزو هیچ فصلی نمی‌شود.
+- **ویرایش در پیش‌نمایش:** تیک‌زدن (همان `excluded` فعلی)، تغییر نام (`title` در فهرست)، **ادغام** فصل `i` با `i+1` (= حذف `i+1` و `end_line[i] ← end_line[i+1]`؛ اگر حاصل نامعتبر شود رد می‌شود). هر تغییر از `ValidateChapters` می‌گذرد.
+
+### ۱۲.۵. Job `chapter_detect` (T7.4)
+
+| مورد | تصمیم |
+|---|---|
+| نوع و scope | نوع جدید `chapter_detect`، scope همان `draft:<id>` (یک تحلیل هم‌زمان در هر پیش‌نمایش، مثل `roadmap_analyze`). `roadmap_analyze` دست نمی‌خورد. |
+| Skill | مهارت جدید `skills/chapter-detector/SKILL.md` (نسخه `1.0.0`)؛ نصب مثل بقیه (نسخه نصب‌شده کاربر بازنویسی نمی‌شود). |
+| ورودی‌ها | `inputs/task.json` (`source_name`، `total_lines`، `h1_title`) و `inputs/outline.json`: آرایه سرفصل‌ها به ترتیب سند `{line, end_line, level, title, preview}` که `preview` = حداکثر ۵ خط غیرخالی اول بدنه، کل آن حداکثر ۳۰۰ نویسه. متن کامل فایل به AI نمی‌رود. |
+| خروجی | اسکیمای `ai-chapter-detect-output.schema.json` (بخش ۱۲.۷). |
+| اعتبارسنجی | اسکیما ⇐ `ValidateChapters`؛ نامعتبر ⇐ یک‌بار retry با فهرست خطاها (همان `ai.WatchValid`) و سپس `invalid_output`. |
+| commit | فقط `import_drafts.ai_suggestion` = `{"rule": {"kind":"chapters", ...}, "title": "...", "reason": "...", "job_id": N}`. **هیچ فایل یا رکورد `roadmaps`/`topics` پیش از «تأیید» ساخته نمی‌شود.** دکمه «اعمال پیشنهاد» قاعده و (در ورود اول) عنوان را در `Choice`/`import_drafts.title` می‌گذارد، دقیقاً مثل اعمال پیشنهاد `roadmap_analyze`. |
+| سقف زمان | `jobs.timeout_analyze` (۳ دقیقه؛ ورودی کوچک است). |
+| بدون AI | کاربر قاعده قطعی `level` (مثلاً H2) را انتخاب می‌کند؛ بازه‌ها از `EndLine` می‌آیند (۱۲.۴). |
+
+### ۱۲.۶. ثبت فصل‌ها، `source.md` و مهاجرت `0003_chapters.sql` (T7.5)
+
+**commit تأیید** (`roadmaps.Confirm`، همان یک تراکنش فعلی) برای هر موضوعی که بازه دارد: متن `roadmap.Slice(rev, start, end)` با `fsx.WriteNew` در `topics/NN-slug/source.md` نوشته و ردیف `files` با `kind='source'`، `owner_type='topic'` ثبت می‌شود. ترتیب مانند پروتکل commit بخش ۶.۶: ابتدا فهرست فایل‌ها، سپس نوشتن، سپس تراکنش DB؛ اگر تراکنش شکست بخورد فایل‌های همین commit (با hash برابر) پاک می‌شوند ⇒ **صفر رکورد و صفر فایل**.
+
+**ورود مجدد:** برای موضوع موجودی که hash برش جدید ≠ `topics.source_sha256`: بایت‌های **فعلی روی دیسک** `source.md` (شاید کاربر ویرایش کرده باشد) با `fsx.WriteNew` به `topics/NN-slug/source-history/source.NNNN.md` کپی و در `files` ثبت می‌شود، **سپس** `source.md` با `fsx.WriteAtomic` جایگزین می‌شود (همان الگوی درس، I1). اگر `source.md` گم شده باشد، فقط فایل جدید با `WriteNew` ساخته می‌شود. موضوعی که بازه‌اش تغییر نکرده دست نمی‌خورد. موضوع ناپدیدشده بایگانی می‌شود و `source.md` آن می‌ماند.
+
+**مهاجرت `0003_chapters.sql`:**
+
+```sql
+ALTER TABLE topics ADD COLUMN source_start_line INTEGER;          -- NULL = بدون متن منبع
+ALTER TABLE topics ADD COLUMN source_end_line   INTEGER;
+ALTER TABLE topics ADD COLUMN source_sha256     TEXT;             -- hash برشی که آخرین بار نوشته شد
+ALTER TABLE topics ADD COLUMN source_file_id    INTEGER REFERENCES files(id);
+ALTER TABLE import_drafts ADD COLUMN title TEXT;                  -- NULL = پیش‌فرض (اولین H1 یا نام فایل)
+-- files.kind += 'source' و jobs.kind += 'chapter_detect':
+-- SQLite قید CHECK را با ALTER عوض نمی‌کند ⇒ بازسازی دو جدول (۱۲ گام مستند SQLite):
+-- CREATE TABLE files_new (... همان ستون‌ها، CHECK جدید ...); INSERT INTO files_new SELECT * FROM files;
+-- DROP TABLE files; ALTER TABLE files_new RENAME TO files; + بازسازی ایندکس‌ها. همین برای jobs
+-- (+ ایندکس یکتای uq_jobs_active_scope).
+```
+
+- **اجرای مهاجرت با بازسازی جدول:** اجراکننده فعلی (`store.migrate`) هر فایل را در یک تراکنش با `foreign_keys=ON` اجرا می‌کند و `PRAGMA foreign_keys` داخل تراکنش اثری ندارد. پس T7.5 اجراکننده را این‌گونه گسترش می‌دهد: روی **یک اتصال اختصاصی** (`db.Conn`) پیش از `BEGIN`، `PRAGMA foreign_keys=OFF`؛ اجرای فایل در تراکنش؛ پیش از `COMMIT`، `PRAGMA foreign_key_check` باید خالی باشد وگرنه rollback؛ پس از آن `foreign_keys=ON`. شناسه‌ها حفظ می‌شوند، پس ارجاع‌های `lesson_versions.file_id`، `job_steps.job_id` و مانند آن‌ها سالم می‌مانند.
+- **تست مهاجرت:** پایگاه با داده نسخه ۲ ⇐ مهاجرت ⇐ همه ردیف‌ها و ارجاع‌ها برقرار، `user_version=3`، درج `kind='source'` و `kind='chapter_detect'` مجاز، Job فعال دوم در یک scope همچنان رد.
+- **`hub rebuild` و `syncsvc`:** `source.md` و `source-history/*` را می‌شناسند (رابطه موضوع از نام پوشه، مانند `lesson.md`)؛ `source.md` گم‌شده/تغییرکرده مثل بقیه فایل‌ها گزارش می‌شود و نرم‌افزار آن را خودکار بازنمی‌سازد.
+
+### ۱۲.۷. اسکیمای خروجی AI برای `chapter_detect`
+
+```jsonc
+// ai-chapter-detect-output  (internal/schema/ai-chapter-detect-output.schema.json)
+{ "title": "string (عنوان پیشنهادی نقشه راه، 1..200 نویسه)",
+  "chapters": [ { "title": "string (1..200)",
+                  "start_line": 3,          // integer ≥ 1؛ باید خط یک سرفصل در outline.json باشد
+                  "end_line": 41 } ],       // integer ≥ start_line
+  "reason": "string (کوتاه؛ در پیش‌نمایش نشان داده می‌شود)" }
+```
+
+`additionalProperties: false` در همه سطوح؛ `chapters` با `minItems: 1` و `maxItems: 200`. قواعد بین‌آیتمی (مرتب، بدون هم‌پوشانی، بدون تودرتویی، در محدوده) فقط در `ValidateChapters` بررسی می‌شوند، چون JSON Schema نمی‌تواند. نرم‌افزار `start_line` را به `line` قاعده `chapters` نگاشت می‌کند.
+
+### ۱۲.۸. درس، تمرین و ارزیابی از متن فصل (T7.6، T7.7)
+
+- فهرست سفید `inputs/` در `prompt.Compose` (بخش ۶.۳) فایل‌های `source.md` و `outline.json` را می‌پذیرد.
+- **`lesson`:** اگر موضوع `source_file_id` دارد، بایت‌های فعلی روی دیسک `source.md` به `inputs/source.md` کپی می‌شود (`roadmap_excerpt.md` همچنان برای جایگاه فصل). فایل بزرگ‌تر از `limits.max_source_bytes` (پیش‌فرض ۲۰۴۸۰۰) ⇐ Job با پیام فارسی قابل اقدام شکست می‌خورد (`source_too_large`؛ «متن فصل بزرگ‌تر از سقف است؛ فصل را در پیش‌نمایش کوچک‌تر کنید یا سقف را افزایش دهید»)؛ **هرگز برش بی‌صدا**. `source.md` گم‌شده ⇐ Job با پیام «فایل متن فصل پیدا نشد» شکست می‌خورد (رفتار قدیمی بی‌صدا جایگزین نمی‌شود چون کاربر انتظار درس از متن دارد). موضوع بدون `source_file_id` ⇐ رفتار قبلی.
+- **`exercises` و `evaluate`:** همان `inputs/source.md` را کنار `lesson.md` (و در ارزیابی کنار `question.md`/`rubric.json`/پاسخ) می‌گیرند، با همان سقف و همان خطاها.
+- **Skillها:** `lesson-generator` (درس بر پایه `source.md`، نه دانش عمومی؛ مفاهیم خارج از متن فقط با برچسب صریح)، `exercise-generator` (تمرین‌ها در محدوده `source.md` + درس؛ هر چیز بیرون ⇐ `external_knowledge`) و `answer-evaluator` (مرجع درستی: Rubric، سپس `source.md`). نسخه هر سه بالا می‌رود (minor)؛ نسخه نصب‌شده کاربر بازنویسی نمی‌شود و نرم‌افزار در تنظیمات پیشنهاد به‌روزرسانی می‌دهد (بخش ۶.۳).
+- scope هر Job همان فصل است (موجود)؛ دو فصل هم‌زمان و مستقل Job می‌گیرند (در حد `max_concurrent`).
+
+### ۱۲.۹. UI (T7.8)
+
+- **فهرست `/topics`:** نقشه راه با **عنوان فایل** ⇐ گروه‌ها ⇐ فصل‌ها به ترتیب سند، هر فصل با وضعیت درس/تمرین و نمره (همان ستون‌های فعلی).
+- **پنل فصل:** تب جدید «متن فصل» (`GET /topics/{id}/source`) پیش از تب «درس»: رندر `source.md` روی دیسک با `render.Markdown` (همان پاک‌سازی bluemonday)، به‌همراه بازه خطوط و پیوند `/files/{id}`. فایل گم‌شده ⇐ پیام «فایل متن فصل روی دیسک پیدا نشد: <مسیر>». موضوع بدون متن منبع ⇐ تب نشان داده نمی‌شود. کارت Job در این تب نیست (T7.0.e).
+- **پیش‌نمایش ورود:** فیلد عنوان (۱۲.۲)، دکمه «تشخیص فصل‌ها با AI» (`POST /roadmaps/drafts/{id}/chapters` ⇐ `202`؛ `409` اگر مشغول)، فهرست فصل‌ها با بازه خط، تیک، تغییر نام و ادغام (`POST /roadmaps/drafts/{id}/selection` با قاعده `chapters`؛ پاسخ نامعتبر ⇐ `422` با پیام خطای `ValidateChapters`).
+
+### ۱۲.۱۰. نگاشت به کارها
+
+| کار | بخش |
+|---|---|
+| T7.2 | ۱۲.۲ (+ ستون `import_drafts.title` از ۱۲.۶) |
+| T7.3 | ۱۲.۳ |
+| T7.4 | ۱۲.۴، ۱۲.۵، ۱۲.۷ |
+| T7.5 | ۱۲.۶ |
+| T7.6، T7.7 | ۱۲.۸ |
+| T7.8 | ۱۲.۹ |
+
+> **ترتیب پیاده‌سازی:** مهاجرت `0003` در T7.5 است، ولی T7.2 به ستون `import_drafts.title` نیاز دارد و T7.4 به نوع `chapter_detect`. پس فایل `0003_chapters.sql` (با گسترش اجراکننده مهاجرت) **در T7.2 ساخته می‌شود** و کارهای بعدی فقط از آن استفاده می‌کنند.
