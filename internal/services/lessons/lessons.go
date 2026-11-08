@@ -31,13 +31,14 @@ type Params struct {
 }
 
 type Service struct {
-	DB       *store.DB
-	Root     *fsx.Root
-	Adapter  ai.Adapter
-	Model    string
-	Language string
-	Timeout  time.Duration // config jobs.timeout_lesson
-	Stall    time.Duration // config jobs.stall_timeout
+	DB        *store.DB
+	Root      *fsx.Root
+	Adapter   ai.Adapter
+	Model     string
+	Language  string
+	Timeout   time.Duration // config jobs.timeout_lesson
+	Stall     time.Duration // config jobs.stall_timeout
+	MaxSource int64         // config limits.max_source_bytes
 }
 
 // Output is the AI's structured answer (ai-lesson-output.schema.json).
@@ -59,6 +60,7 @@ type topic struct {
 	Title, Outline, Group, Roadmap string
 	Prev, Next                     string
 	Dir                            string
+	Source                         string // rel path of the chapter's source.md; "" = no source text
 }
 
 type current struct { // the lesson version being replaced; ID 0 = first generation
@@ -141,9 +143,11 @@ func (s *Service) loadTopic(ctx context.Context, id int64) (topic, error) {
 	t := topic{ID: id}
 	var rm int64
 	var ord float64
-	err := s.DB.Writer().QueryRowContext(ctx, `SELECT t.title, COALESCE(t.outline, ''), COALESCE(g.title, ''), r.title, r.id, t.ord, t.dir_name
-		FROM topics t JOIN roadmaps r ON r.id = t.roadmap_id LEFT JOIN groups g ON g.id = t.group_id WHERE t.id = ?`, id).
-		Scan(&t.Title, &t.Outline, &t.Group, &t.Roadmap, &rm, &ord, &t.Dir)
+	err := s.DB.Writer().QueryRowContext(ctx, `SELECT t.title, COALESCE(t.outline, ''), COALESCE(g.title, ''), r.title, r.id, t.ord, t.dir_name,
+		COALESCE(f.rel_path, '')
+		FROM topics t JOIN roadmaps r ON r.id = t.roadmap_id LEFT JOIN groups g ON g.id = t.group_id
+		LEFT JOIN files f ON f.id = t.source_file_id WHERE t.id = ?`, id).
+		Scan(&t.Title, &t.Outline, &t.Group, &t.Roadmap, &rm, &ord, &t.Dir, &t.Source)
 	if errors.Is(err, sql.ErrNoRows) {
 		return t, fmt.Errorf("%w: topic %d", domain.ErrNotFound, id)
 	}
@@ -210,6 +214,11 @@ func (s *Service) input(jobID int64, t topic) (prompt.Input, error) {
 		excerpt += "\n" + t.Outline + "\n"
 	}
 	in.Files = map[string][]byte{"task.json": task, "roadmap_excerpt.md": []byte(excerpt)}
+	if t.Source != "" { // the current bytes on disk: the user may have edited source.md
+		if in.Files["source.md"], err = prompt.ReadSource(s.Root, t.Source, s.MaxSource); err != nil {
+			return in, err
+		}
+	}
 	return in, nil
 }
 

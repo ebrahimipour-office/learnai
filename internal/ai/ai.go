@@ -90,6 +90,9 @@ var (
 	ErrRateLimited    = errors.New("ai: rate limited")
 	ErrToolFailed     = errors.New("ai: tool failed")
 	ErrInvalidOutput  = errors.New("ai: invalid output")
+	// Chapter source.md problems found while preparing inputs (TDD §12.8); never truncated or skipped.
+	ErrSourceTooLarge = errors.New("ai: chapter source too large")
+	ErrSourceMissing  = errors.New("ai: chapter source missing")
 )
 
 // Code maps an adapter error to jobs.error_code (TDD §6.1 table); "" for nil.
@@ -111,6 +114,10 @@ func Code(err error) string {
 		return "rate_limited"
 	case errors.Is(err, ErrInvalidOutput):
 		return "invalid_output"
+	case errors.Is(err, ErrSourceTooLarge):
+		return "source_too_large"
+	case errors.Is(err, ErrSourceMissing):
+		return "source_missing"
 	default:
 		return "tool_error"
 	}
@@ -123,11 +130,13 @@ func Message(code string) string {
 }
 
 var messages = map[string]string{
-	"auth_required":   "ابتدا یک‌بار در ترمینال `agy` را اجرا و وارد شوید؛ سپس در صفحه تنظیمات بررسی را دوباره اجرا کنید.",
-	"adapter_missing": "فایل `agy` پیدا نشد؛ آن را نصب کنید یا مسیرش را در `adapter.binary` فایل config.toml اصلاح کنید.",
-	"timeout":         "زمان اجرا از سقف مجاز گذشت.",
-	"stalled":         "ابزار AI مدتی پاسخ نداد؛ دوباره تلاش کنید. اگر تکرار شد، `jobs.stall_timeout` را در config.toml افزایش دهید.",
-	"rate_limited":    "سهمیه یا محدودیت نرخ؛ بعداً دوباره تلاش کنید.",
-	"tool_error":      "ابزار AI با خطا پایان یافت (جزئیات در لاگ).",
-	"invalid_output":  "خروجی AI معتبر نبود.",
+	"auth_required":    "ابتدا یک‌بار در ترمینال `agy` را اجرا و وارد شوید؛ سپس در صفحه تنظیمات بررسی را دوباره اجرا کنید.",
+	"adapter_missing":  "فایل `agy` پیدا نشد؛ آن را نصب کنید یا مسیرش را در `adapter.binary` فایل config.toml اصلاح کنید.",
+	"timeout":          "زمان اجرا از سقف مجاز گذشت.",
+	"stalled":          "ابزار AI مدتی پاسخ نداد؛ دوباره تلاش کنید. اگر تکرار شد، `jobs.stall_timeout` را در config.toml افزایش دهید.",
+	"rate_limited":     "سهمیه یا محدودیت نرخ؛ بعداً دوباره تلاش کنید.",
+	"tool_error":       "ابزار AI با خطا پایان یافت (جزئیات در لاگ).",
+	"invalid_output":   "خروجی AI معتبر نبود.",
+	"source_too_large": "متن فصل بزرگ‌تر از سقف است؛ فصل را در پیش‌نمایش کوچک‌تر کنید یا سقف `limits.max_source_bytes` را در config.toml افزایش دهید.",
+	"source_missing":   "فایل متن فصل پیدا نشد؛ `source.md` فصل را بازگردانید یا نقشه راه را دوباره وارد کنید (جزئیات فنی مسیر را نشان می‌دهد).",
 }

@@ -303,7 +303,7 @@ func runServe(args []string) {
 	runner.Files = root
 	runner.Register(domain.JobKindLesson, (&lessons.Service{
 		DB: db, Root: root, Adapter: adapter, Model: cfg.Adapter.Model, Language: cfg.Language,
-		Timeout: cfg.Jobs.TimeoutLesson, Stall: cfg.Jobs.StallTimeout,
+		Timeout: cfg.Jobs.TimeoutLesson, Stall: cfg.Jobs.StallTimeout, MaxSource: cfg.Limits.MaxSourceBytes,
 	}).Handle)
 	runner.Register(domain.JobKindExercises, (&exercises.Service{
 		DB: db, Root: root, Adapter: adapter, Model: cfg.Adapter.Model, Language: cfg.Language,

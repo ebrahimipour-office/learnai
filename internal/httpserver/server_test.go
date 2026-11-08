@@ -65,7 +65,7 @@ func newEnv(t *testing.T, opts ...func(*httpserver.Settings)) *env {
 	runner := jobs.New(db, 2)
 	runner.Poll, runner.Heartbeat, runner.Files = 20*time.Millisecond, time.Hour, root
 	runner.Register(domain.JobKindLesson, (&lessons.Service{DB: db, Root: root, Adapter: ad, Model: "m1",
-		Language: "fa", Timeout: time.Minute, Stall: time.Minute}).Handle)
+		Language: "fa", Timeout: time.Minute, Stall: time.Minute, MaxSource: 204800}).Handle)
 	exCfg := config.DefaultConfig(base).Exercises
 	runner.Register(domain.JobKindExercises, (&exercises.Service{DB: db, Root: root, Adapter: ad, Model: "m1",
 		Language: "fa", Timeout: time.Minute, Stall: time.Minute, Config: exCfg}).Handle)

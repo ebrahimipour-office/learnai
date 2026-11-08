@@ -478,7 +478,7 @@ CREATE TABLE jobs (
   phase              TEXT,                             -- 'prepare'|'ai'|'validate'|'commit'
   progress_done      INTEGER NOT NULL DEFAULT 0,
   progress_total     INTEGER NOT NULL DEFAULT 0,
-  error_code         TEXT,                             -- timeout|canceled|auth_required|invalid_output|interrupted|...
+  error_code         TEXT,                             -- timeout|canceled|auth_required|invalid_output|interrupted|source_too_large|source_missing|...
   error_message      TEXT,                             -- پیام قابل اقدام برای کاربر
   commit_journal     TEXT,                             -- JSON فهرست فایل‌هایی که commit می‌نویسد (بازیابی)
   result_ref         TEXT,                             -- JSON: شناسه موجودیت‌های ساخته‌شده
@@ -1026,6 +1026,8 @@ type Capabilities struct {
 | `ErrRateLimited` | `rate_limited` | خیر | «سهمیه یا محدودیت نرخ؛ بعداً دوباره تلاش کنید.» |
 | `ErrToolFailed` | `tool_error` | یک‌بار (برای خطاهای گذرا) | «ابزار AI با خطا پایان یافت (جزئیات در لاگ).» |
 | `ErrInvalidOutput` | `invalid_output` | **یک‌بار** (R3.2) با ارسال فهرست خطاهای اعتبارسنجی | «خروجی AI معتبر نبود.» |
+| `ErrSourceTooLarge` | `source_too_large` | خیر (پیش از فراخوانی AI) | «متن فصل بزرگ‌تر از سقف است؛ فصل را در پیش‌نمایش کوچک‌تر کنید یا سقف `limits.max_source_bytes` را افزایش دهید.» (۱۲.۸) |
+| `ErrSourceMissing` | `source_missing` | خیر (پیش از فراخوانی AI) | «فایل متن فصل پیدا نشد …» (۱۲.۸) |
 
 > نگاشت پیام‌های `stderr` به `ErrRateLimited` و مانند آن با فهرست الگوهای قابل پیکربندی انجام می‌شود، چون متن دقیق خطاها در مستندات نیامده (کار T1.1).
 

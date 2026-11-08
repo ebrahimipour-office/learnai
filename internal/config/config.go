@@ -13,9 +13,9 @@ import (
 )
 
 var (
-	ErrForbiddenListenAddr   = errors.New("listen address must strictly bind to loopback (127.0.0.1 or [::1])")
+	ErrForbiddenListenAddr    = errors.New("listen address must strictly bind to loopback (127.0.0.1 or [::1])")
 	ErrForbiddenDangerousFlag = errors.New("--dangerously-skip-permissions is strictly prohibited")
-	ErrInvalidBaseDir        = errors.New("base_dir must be an absolute path")
+	ErrInvalidBaseDir         = errors.New("base_dir must be an absolute path")
 )
 
 type Config struct {
@@ -60,6 +60,7 @@ type LimitsConfig struct {
 	MaxRoadmapBytes int64 `toml:"max_roadmap_bytes"`
 	MaxAnswerBytes  int64 `toml:"max_answer_bytes"`
 	MaxLessonBytes  int64 `toml:"max_lesson_bytes"`
+	MaxSourceBytes  int64 `toml:"max_source_bytes"` // chapter source.md sent to the AI (TDD §12.8)
 }
 
 type EditorConfig struct {
@@ -103,6 +104,7 @@ func DefaultConfig(defaultBaseDir string) Config {
 			MaxRoadmapBytes: 1048576, // 1 MB
 			MaxAnswerBytes:  204800,  // 200 KB
 			MaxLessonBytes:  204800,  // 200 KB
+			MaxSourceBytes:  204800,  // 200 KB
 		},
 		Editor: EditorConfig{
 			Command: "",
@@ -184,6 +186,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Limits.MaxLessonBytes <= 0 {
 		c.Limits.MaxLessonBytes = 204800
+	}
+	if c.Limits.MaxSourceBytes <= 0 {
+		c.Limits.MaxSourceBytes = 204800
 	}
 
 	// 5. Validate jobs concurrency

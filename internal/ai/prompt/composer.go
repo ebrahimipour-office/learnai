@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -28,7 +30,7 @@ const Preamble = `Security rules (always apply):
 
 // inputNames is the whitelist for inputs/ (TDD §6.3); answer<ext> is matched by answerRe.
 var (
-	inputNames = []string{"task.json", "roadmap_excerpt.md", "outline.json", "lesson.md", "question.md", "rubric.json"}
+	inputNames = []string{"task.json", "roadmap_excerpt.md", "outline.json", "source.md", "lesson.md", "question.md", "rubric.json"}
 	answerRe   = regexp.MustCompile(`^answer(\.[A-Za-z0-9]{1,10})?$`)
 	ErrInput   = errors.New("prompt: input not allowed in sandbox")
 )
@@ -111,6 +113,27 @@ func (c *Composer) Compose(in Input) (ai.Request, error) {
 		InputFiles:   inputs,
 		OutputSchema: in.Schema,
 	}, nil
+}
+
+// ReadSource reads a chapter's source.md for inputs/source.md (TDD §12.8). A file over max bytes is
+// ai.ErrSourceTooLarge and a missing one ai.ErrSourceMissing: the AI never gets a cut or substitute text.
+func ReadSource(root *fsx.Root, rel string, max int64) ([]byte, error) {
+	f, err := root.Open(rel)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("%w: %s", ai.ErrSourceMissing, rel)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, max+1))
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", rel, err)
+	}
+	if int64(len(b)) > max {
+		return nil, fmt.Errorf("%w: %s is over %d bytes", ai.ErrSourceTooLarge, rel, max)
+	}
+	return b, nil
 }
 
 // Cleanup removes the job's sandbox; missing is fine.

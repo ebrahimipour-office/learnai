@@ -62,7 +62,7 @@ func setup(t *testing.T) *env {
 	ad := &fake.Adapter{Scenario: fake.OK}
 	r := jobs.New(db, 1)
 	r.Poll, r.Heartbeat, r.Files = 20*time.Millisecond, time.Hour, root
-	svc := &lessons.Service{DB: db, Root: root, Adapter: ad, Model: "m1", Language: "fa", Timeout: time.Minute, Stall: time.Minute}
+	svc := &lessons.Service{DB: db, Root: root, Adapter: ad, Model: "m1", Language: "fa", Timeout: time.Minute, Stall: time.Minute, MaxSource: 64}
 	r.Register(domain.JobKindLesson, svc.Handle)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -155,7 +155,7 @@ func TestFirstLesson(t *testing.T) {
 	if n := e.count(`SELECT COUNT(*) FROM topics WHERE id = 2 AND status = 'content_ready'`); n != 1 {
 		t.Error("topic status not content_ready")
 	}
-	if n := e.count(`SELECT COUNT(*) FROM jobs WHERE skill = 'lesson-generator' AND skill_version = '1.0.0' AND model = 'm1' AND result_ref IS NOT NULL`); n != 1 {
+	if n := e.count(`SELECT COUNT(*) FROM jobs WHERE skill = 'lesson-generator' AND skill_version = '1.1.0' AND model = 'm1' AND result_ref IS NOT NULL`); n != 1 {
 		t.Error("job metadata not recorded")
 	}
 	if e.root.Exists(".app/work/1") {
@@ -268,4 +268,93 @@ func TestTaskInputs(t *testing.T) {
 		t.Errorf("task.json: %v", task)
 	}
 	e.runner.Cancel(context.Background(), id)
+}
+
+// withSource gives topic 2 a chapter source.md the way roadmaps.Confirm records it (TDD §12.6).
+func (e *env) withSource(text string) string {
+	e.t.Helper()
+	rel := "topics/02-http/source.md"
+	if err := e.root.MkdirAll("topics/02-http", 0o755); err != nil {
+		e.t.Fatal(err)
+	}
+	if err := e.root.WriteNew(rel, []byte(text), 0o644); err != nil {
+		e.t.Fatal(err)
+	}
+	sha := fsx.HashString(text)
+	if _, err := e.db.Writer().Exec(`INSERT INTO files (id, topic_id, kind, owner_type, owner_id, rel_path, sha256, size_bytes, observed_sha256)
+		VALUES (99, 2, 'source', 'topic', 2, ?, ?, ?, ?)`, rel, sha, len(text), sha); err != nil {
+		e.t.Fatal(err)
+	}
+	if _, err := e.db.Writer().Exec(`UPDATE topics SET source_file_id = 99, source_sha256 = ? WHERE id = 2`, sha); err != nil {
+		e.t.Fatal(err)
+	}
+	return rel
+}
+
+func TestChapterSourceInput(t *testing.T) {
+	e := setup(t)
+	e.withSource("## HTTP\n\nchapter text\n")
+	// Another chapter's source must never reach topic 2's sandbox.
+	if err := e.root.WriteNew("topics/01-intro/source.md", []byte("## Intro\n\nother chapter\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.db.Writer().Exec(`INSERT INTO files (id, topic_id, kind, owner_type, owner_id, rel_path, sha256, size_bytes, observed_sha256)
+		VALUES (98, 1, 'source', 'topic', 1, 'topics/01-intro/source.md', 'x', 1, 'x')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.db.Writer().Exec(`UPDATE topics SET source_file_id = 98 WHERE id = 1`); err != nil {
+		t.Fatal(err)
+	}
+	e.ad.Scenario = fake.Hang
+	id, err := e.runner.Enqueue(context.Background(), jobs.Job{Kind: domain.JobKindLesson, Scope: "topic:2", TopicID: 2, Params: json.RawMessage(`{}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.runner.Cancel(context.Background(), id)
+	for len(e.ad.Calls()) == 0 { // Run is called only after the sandbox is complete
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !strings.Contains(e.ad.Calls()[0], "inputs/source.md") {
+		t.Errorf("prompt does not list inputs/source.md:\n%s", e.ad.Calls()[0])
+	}
+	if got := e.read(prompt.WorkRel(id) + "/inputs/source.md"); got != "## HTTP\n\nchapter text\n" {
+		t.Errorf("inputs/source.md = %q", got)
+	}
+	if !e.root.Exists(prompt.WorkRel(id) + "/inputs/roadmap_excerpt.md") {
+		t.Error("roadmap_excerpt.md dropped")
+	}
+}
+
+func TestChapterSourceErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name, text, code string
+		remove           bool
+	}{
+		{"exactly at limit", strings.Repeat("a", 64), "", false},
+		{"too large", strings.Repeat("a", 65), "source_too_large", false},
+		{"missing", "x", "source_missing", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := setup(t)
+			rel := e.withSource(tc.text)
+			if tc.remove {
+				if err := e.root.Remove(rel); err != nil {
+					t.Fatal(err)
+				}
+			}
+			st, code := e.run(output("# HTTP\n\nchapter lesson", "a"), `{}`)
+			if tc.code == "" {
+				if st != "succeeded" {
+					t.Fatalf("status %s (%s)", st, code)
+				}
+				return
+			}
+			if st != "failed" || code != tc.code {
+				t.Errorf("status %s code %s, want failed %s", st, code, tc.code)
+			}
+			if len(e.ad.Calls()) != 0 || e.root.Exists(lessonRel) {
+				t.Error("AI called or lesson written despite a bad source")
+			}
+		})
+	}
 }
