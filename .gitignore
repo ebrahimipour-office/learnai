@@ -39,3 +39,10 @@ go.work.sum
 Thumbs.db
 ehthumbs.db
 desktop.ini
+
+# Local build and runtime data (app run from the repo folder)
+/hub
+/.agent/
+/roadmaps/
+/topics/
+/profile.md
