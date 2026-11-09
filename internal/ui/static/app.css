@@ -157,6 +157,8 @@ pre { overflow-x: auto; padding: .75rem 1rem; background: var(--surface-2); bord
 code { font-family: var(--mono); font-size: .88em; }
 :not(pre) > code { background: var(--surface-2); padding: .05em .35em; border-radius: .3em; }
 pre, code { direction: ltr; unicode-bidi: plaintext; }
+/* plaintext picks direction per line, so "// persian comment" lines flipped RTL; blocks stay LTR */
+pre, pre code { unicode-bidi: isolate; }
 details.versions { margin: .75rem 0; }
 details.versions ul { margin: .25rem 0; }
 
