@@ -46,3 +46,6 @@ desktop.ini
 /roadmaps/
 /topics/
 /profile.md
+
+# Claude Code local worktrees
+.claude/worktrees/
