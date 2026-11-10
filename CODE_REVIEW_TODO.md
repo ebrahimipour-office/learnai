@@ -287,6 +287,7 @@ There are **no P0 tasks**.
   - At Confirm, write `roadmaps/<slug>/rule.json` (`WriteAtomic`) holding the rule and the chapter ranges, or a per-topic `topic.json` with key, roadmap slug and range.
   - Rebuild reads it, falling back to `deepest`, and chooses the fallback roadmap per folder (from the `roadmaps/<slug>` that the topic's `source.md` came from).
 - **Required regression tests:** confirm a chapters-rule import → delete the DB → rebuild → keys and roadmaps match; legacy roadmap without `rule.json` → current behaviour plus a warning.
+- **Phase 8 (TDD §13):** the rule file must also cover the `tree` rule, and rebuild must restore `topics.parent_id` (parent = nearest chosen ancestor heading); add a tree-rule case to the regression test.
 - **Acceptance criteria:**
   - [ ] Both tests pass.
   - [ ] The TDD rebuild section is updated.
