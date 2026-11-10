@@ -11,7 +11,8 @@ import (
 var ErrForbiddenArg = errors.New("antigravity: forbidden argument")
 
 // forbidden flags (dashes stripped, since Go flag parsing accepts -x and --x alike):
-// permission bypass, edit modes, workspace widening, and flags the adapter owns.
+// permission bypass (owned by the adapter via SkipPermissions), edit modes, workspace widening,
+// and flags the adapter owns.
 var forbidden = map[string]bool{
 	"dangerously-skip-permissions": true,
 	"mode":                         true,
@@ -37,14 +38,15 @@ var efforts = map[string]bool{"low": true, "medium": true, "high": true, "xhigh"
 const schemaFile = "output.schema.json"
 
 type argSpec struct {
-	Prompt    string
-	WorkDir   string
-	HasSchema bool
-	Model     string
-	Effort    string
-	Timeout   time.Duration
-	Sandbox   bool
-	Extra     []string
+	Prompt          string
+	WorkDir         string
+	HasSchema       bool
+	Model           string
+	Effort          string
+	Timeout         time.Duration
+	Sandbox         bool
+	SkipPermissions bool
+	Extra           []string
 }
 
 // buildArgs returns the agy argv (never run through a shell).
@@ -57,6 +59,9 @@ func buildArgs(s argSpec) ([]string, error) {
 	}
 	if s.Model == "" || strings.HasPrefix(s.Model, "-") {
 		return nil, fmt.Errorf("antigravity: invalid model %q", s.Model)
+	}
+	if s.SkipPermissions && !s.Sandbox {
+		return nil, errors.New("antigravity: skip permissions requires the sandbox")
 	}
 	if s.Effort != "" && !efforts[s.Effort] {
 		return nil, fmt.Errorf("antigravity: invalid effort %q", s.Effort)
@@ -74,6 +79,9 @@ func buildArgs(s argSpec) ([]string, error) {
 	}
 	if s.Sandbox {
 		args = append(args, "--sandbox")
+	}
+	if s.SkipPermissions {
+		args = append(args, "--dangerously-skip-permissions")
 	}
 	return append(args, s.Extra...), nil
 }

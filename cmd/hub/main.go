@@ -319,7 +319,7 @@ func runServe(args []string) {
 	runner.Register(domain.JobKindRoadmapAnalyze, analyzer.Handle)
 	runner.Register(domain.JobKindChapterDetect, analyzer.DetectChapters)
 	srv := httpserver.NewServer(cfg.Listen, sm, drafts, topics.NewService(db), runner, root,
-		httpserver.Settings{DB: db, Adapter: adapter, Switch: adapter, Model: cfg.Adapter.Model, Exercises: cfg.Exercises, MaxAnswerBytes: cfg.Limits.MaxAnswerBytes, Editor: cfg.Editor.Command})
+		httpserver.Settings{DB: db, Adapter: adapter, Switch: adapter, Model: cfg.Adapter.Model, SkipPermissions: cfg.Adapter.SkipPermissions, Exercises: cfg.Exercises, MaxAnswerBytes: cfg.Limits.MaxAnswerBytes, Editor: cfg.Editor.Command})
 	// Maintenance at startup and hourly: expired job dirs/logs, daily DB backup, expired import drafts.
 	maint := &maintenance.Service{DB: db, Root: root, LogRetention: time.Duration(cfg.LogRetentionDays) * 24 * time.Hour}
 	go func() {
@@ -378,7 +378,7 @@ func newAdapter(cfg config.Config, logs *fsx.Root, kind string) *ai.Switch {
 		return antigravity.New(antigravity.Config{Kind: k, Binary: t.Binary, Model: t.Model, Effort: t.Effort, ExtraArgs: t.ExtraArgs, Logs: logs})
 	}
 	return ai.NewSwitch(kind,
-		antigravity.New(antigravity.Config{Binary: ad.Binary, Model: ad.Model, Effort: ad.Effort, Sandbox: ad.Sandbox, ExtraArgs: ad.ExtraArgs, Logs: logs}),
+		antigravity.New(antigravity.Config{Binary: ad.Binary, Model: ad.Model, Effort: ad.Effort, Sandbox: ad.Sandbox, SkipPermissions: ad.SkipPermissions, ExtraArgs: ad.ExtraArgs, Logs: logs}),
 		tool(antigravity.KindClaude, ad.Claude),
 		tool(antigravity.KindCodex, ad.Codex))
 }

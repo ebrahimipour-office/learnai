@@ -30,6 +30,24 @@ func TestBuildArgs(t *testing.T) {
 	}
 }
 
+// T8.9: the bypass flag comes only from SkipPermissions, never from extra_args.
+func TestBuildArgsSkipPermissions(t *testing.T) {
+	const flag = "--dangerously-skip-permissions"
+	s := argSpec{Prompt: "x", WorkDir: "/w", Model: "m", Sandbox: true}
+	got, err := buildArgs(s)
+	if err != nil || slices.Contains(got, flag) {
+		t.Fatalf("without SkipPermissions: %q, %v", got, err)
+	}
+	s.SkipPermissions = true
+	if got, err = buildArgs(s); err != nil || !slices.Contains(got, flag) || !slices.Contains(got, "--sandbox") {
+		t.Fatalf("with SkipPermissions: %q, %v", got, err)
+	}
+	s.Extra = []string{flag}
+	if _, err := buildArgs(s); !errors.Is(err, ErrForbiddenArg) {
+		t.Fatalf("flag in extra: want ErrForbiddenArg, got %v", err)
+	}
+}
+
 func TestBuildArgsRejects(t *testing.T) {
 	base := argSpec{Prompt: "x", WorkDir: "/w", Model: "m"}
 	for _, extra := range []string{
@@ -52,10 +70,11 @@ func TestBuildArgsRejects(t *testing.T) {
 		}
 	}
 	for name, s := range map[string]argSpec{
-		"empty prompt": {Prompt: "  ", Model: "m"},
-		"no model":     {Prompt: "x"},
-		"flag model":   {Prompt: "x", Model: "--sandbox"},
-		"bad effort":   {Prompt: "x", Model: "m", Effort: "turbo"},
+		"empty prompt":         {Prompt: "  ", Model: "m"},
+		"no model":             {Prompt: "x"},
+		"flag model":           {Prompt: "x", Model: "--sandbox"},
+		"bad effort":           {Prompt: "x", Model: "m", Effort: "turbo"},
+		"skip without sandbox": {Prompt: "x", Model: "m", SkipPermissions: true},
 	} {
 		if _, err := buildArgs(s); err == nil {
 			t.Errorf("%s: want error", name)

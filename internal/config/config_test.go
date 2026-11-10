@@ -38,6 +38,25 @@ func TestConfig_Validation(t *testing.T) {
 	})
 }
 
+// T8.9: skip_permissions is on by default and only valid together with the sandbox.
+func TestSkipPermissions(t *testing.T) {
+	cfg := config.DefaultConfig(`C:\LearningHub`)
+	if !cfg.Adapter.SkipPermissions || !cfg.Adapter.Sandbox {
+		t.Fatalf("defaults: skip=%v sandbox=%v", cfg.Adapter.SkipPermissions, cfg.Adapter.Sandbox)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Adapter.Sandbox = false
+	if err := cfg.Validate(); !errors.Is(err, config.ErrSkipWithoutSandbox) {
+		t.Fatalf("want ErrSkipWithoutSandbox, got %v", err)
+	}
+	cfg.Adapter.SkipPermissions = false
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // B4: agy can go silent for >2m while writing a long final answer, so the stall guard must be
 // generous but still fire before the whole-job timeout of lessons and exercises.
 func TestDefaultStallTimeout(t *testing.T) {

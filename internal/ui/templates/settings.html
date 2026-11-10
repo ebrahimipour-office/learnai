@@ -50,6 +50,7 @@
   <dt>احراز هویت</dt><dd>{{if .Caps.Authenticated}}بله{{else}}خیر{{end}}</dd>
   <dt>خروجی JSON بدون رابط</dt><dd>{{if .Caps.HeadlessJSON}}بله{{else}}خیر{{end}}</dd>
   <dt>خروجی ساختاریافته (<code>--json-schema</code>)</dt><dd>{{if .Caps.StructuredOutput}}بله{{else}}خیر{{end}}</dd>
+  {{if eq $.Adapter "antigravity"}}<dt>رد نشدن مجوزها (<code>--dangerously-skip-permissions</code>، <code>adapter.skip_permissions</code>)</dt><dd>{{if $.SkipPermissions}}فعال (فقط همراه <code>--sandbox</code>){{else}}غیرفعال{{end}}</dd>{{end}}
   <dt>مدل پیکربندی‌شده</dt><dd><bdi>{{or $.Model "پیش‌فرض ابزار"}}</bdi></dd>
   <dt>مدل‌های در دسترس</dt><dd>{{range .Caps.Models}}<code>{{.}}</code> {{else}}—{{end}}</dd>
 </dl>

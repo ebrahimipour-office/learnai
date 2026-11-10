@@ -17,10 +17,11 @@ import (
 
 // Settings is what the settings page shows and checks (TDD §7.2 /settings, R7.3, R9).
 type Settings struct {
-	DB      *store.DB
-	Adapter ai.Adapter
-	Switch  *ai.Switch // the same adapter when the tool is selectable on this page; nil hides the selector
-	Model   string     // configured adapter.model; "" = the tool's default
+	DB              *store.DB
+	Adapter         ai.Adapter
+	Switch          *ai.Switch // the same adapter when the tool is selectable on this page; nil hides the selector
+	Model           string     // configured adapter.model; "" = the tool's default
+	SkipPermissions bool       // config adapter.skip_permissions (agy only)
 
 	Exercises      config.ExercisesConfig // count bounds for the exercises form
 	MaxAnswerBytes int64                  // config limits.max_answer_bytes (evaluation selection)
@@ -101,7 +102,7 @@ func (a *app) renderSettings(w http.ResponseWriter, r *http.Request, status int,
 	}
 	d := a.doctor(r.Context(), false)
 	a.render(w, status, "settings", "layout", &pageData{Title: "تنظیمات", Error: msg, Doctor: &d,
-		Model: ai.ModelFor(a.settings.Adapter, a.settings.Model), Adapter: a.settings.Adapter.Name(),
+		Model: ai.ModelFor(a.settings.Adapter, a.settings.Model), Adapter: a.settings.Adapter.Name(), SkipPermissions: a.settings.SkipPermissions,
 		Adapters: a.adapterNames(), PrivacyAck: ack, Privacy: PrivacyNotice, SkillUpdates: ups})
 }
 

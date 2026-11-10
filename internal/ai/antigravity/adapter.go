@@ -26,12 +26,14 @@ import (
 )
 
 type Config struct {
-	Kind      string // KindAgy (default), KindClaude or KindCodex
-	Binary    string
-	Model     string
-	Effort    string
-	Sandbox   bool
-	ExtraArgs []string
+	Kind    string // KindAgy (default), KindClaude or KindCodex
+	Binary  string
+	Model   string
+	Effort  string
+	Sandbox bool
+	// SkipPermissions adds --dangerously-skip-permissions (agy only; needs Sandbox).
+	SkipPermissions bool
+	ExtraArgs       []string
 	// Logs is the base-dir root; job logs go to .app/logs/jobs/<id>/. nil disables logging.
 	Logs *fsx.Root
 	// KillGrace is how long past Request.Timeout we wait for agy's own --print-timeout
@@ -128,14 +130,15 @@ func (a *Adapter) Run(ctx context.Context, req ai.Request, events chan<- ai.Even
 		return nil, fmt.Errorf("antigravity: WorkDir must be absolute: %q", req.WorkDir)
 	}
 	spec := argSpec{
-		Prompt:    req.Prompt,
-		WorkDir:   req.WorkDir,
-		HasSchema: len(req.OutputSchema) > 0,
-		Model:     cmp.Or(req.Model, a.cfg.Model),
-		Effort:    cmp.Or(req.Effort, a.cfg.Effort),
-		Timeout:   req.Timeout,
-		Sandbox:   a.cfg.Sandbox,
-		Extra:     a.cfg.ExtraArgs,
+		Prompt:          req.Prompt,
+		WorkDir:         req.WorkDir,
+		HasSchema:       len(req.OutputSchema) > 0,
+		Model:           cmp.Or(req.Model, a.cfg.Model),
+		Effort:          cmp.Or(req.Effort, a.cfg.Effort),
+		Timeout:         req.Timeout,
+		Sandbox:         a.cfg.Sandbox,
+		SkipPermissions: a.cfg.SkipPermissions,
+		Extra:           a.cfg.ExtraArgs,
 	}
 	var args []string
 	var err error

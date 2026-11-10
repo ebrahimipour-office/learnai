@@ -91,6 +91,7 @@ type pageData struct {
 
 	Doctor              *Doctor
 	Adapter, Model      string
+	SkipPermissions     bool            // settings: agy runs with --dangerously-skip-permissions
 	Adapters            []string        // selectable AI tools on the settings page
 	Privacy, PrivacyAck string          // notice text; RFC3339 time of acknowledgement or ""
 	SkillUpdates        []skills.Update // settings: installed skills older than the embedded ones (§13.2)

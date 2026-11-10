@@ -15,7 +15,8 @@ import (
 
 var (
 	ErrForbiddenListenAddr    = errors.New("listen address must strictly bind to loopback (127.0.0.1 or [::1])")
-	ErrForbiddenDangerousFlag = errors.New("--dangerously-skip-permissions is strictly prohibited")
+	ErrForbiddenDangerousFlag = errors.New("--dangerously-skip-permissions is not allowed in extra_args; use adapter.skip_permissions")
+	ErrSkipWithoutSandbox     = errors.New("adapter.skip_permissions requires adapter.sandbox = true")
 	ErrInvalidBaseDir         = errors.New("base_dir must be an absolute path")
 )
 
@@ -34,14 +35,17 @@ type Config struct {
 // AdapterConfig: the top-level keys configure agy; [adapter.claude] and [adapter.codex] the other
 // tools. Kind is the tool used until one is picked on the settings page (saved in the database).
 type AdapterConfig struct {
-	Kind      string     `toml:"kind"` // antigravity | claude | codex
-	Binary    string     `toml:"binary"`
-	Model     string     `toml:"model"`
-	Effort    string     `toml:"effort"`
-	Sandbox   bool       `toml:"sandbox"`
-	ExtraArgs []string   `toml:"extra_args"`
-	Claude    ToolConfig `toml:"claude"`
-	Codex     ToolConfig `toml:"codex"`
+	Kind    string `toml:"kind"` // antigravity | claude | codex
+	Binary  string `toml:"binary"`
+	Model   string `toml:"model"`
+	Effort  string `toml:"effort"`
+	Sandbox bool   `toml:"sandbox"`
+	// SkipPermissions passes --dangerously-skip-permissions to agy: headless mode denies every
+	// permission prompt and the turn then ends with no output (T8.9). Requires Sandbox.
+	SkipPermissions bool       `toml:"skip_permissions"`
+	ExtraArgs       []string   `toml:"extra_args"`
+	Claude          ToolConfig `toml:"claude"`
+	Codex           ToolConfig `toml:"codex"`
 }
 
 // ToolConfig is one more AI CLI; Model/Effort "" use the tool's own default.
@@ -88,14 +92,15 @@ func DefaultConfig(defaultBaseDir string) Config {
 		Language:         "fa",
 		LogRetentionDays: 30,
 		Adapter: AdapterConfig{
-			Kind:      "antigravity",
-			Binary:    "agy",
-			Model:     "gemini-3.8-flash-medium",
-			Effort:    "medium",
-			Sandbox:   true,
-			ExtraArgs: nil,
-			Claude:    ToolConfig{Binary: "claude"},
-			Codex:     ToolConfig{Binary: "codex"},
+			Kind:            "antigravity",
+			Binary:          "agy",
+			Model:           "gemini-3.8-flash-medium",
+			Effort:          "medium",
+			Sandbox:         true,
+			SkipPermissions: true,
+			ExtraArgs:       nil,
+			Claude:          ToolConfig{Binary: "claude"},
+			Codex:           ToolConfig{Binary: "codex"},
 		},
 		Jobs: JobsConfig{
 			MaxConcurrent:       1,
@@ -178,6 +183,9 @@ func (c *Config) Validate() error {
 		if strings.Contains(arg, "dangerously") {
 			return ErrForbiddenDangerousFlag
 		}
+	}
+	if c.Adapter.SkipPermissions && !c.Adapter.Sandbox {
+		return ErrSkipWithoutSandbox
 	}
 	if !slices.Contains([]string{"antigravity", "claude", "codex"}, c.Adapter.Kind) {
 		return fmt.Errorf("adapter.kind must be antigravity, claude or codex, not %q", c.Adapter.Kind)
