@@ -100,3 +100,23 @@ func TestMigrateRollsBackOnBrokenReference(t *testing.T) {
 		t.Fatalf("title column present after rollback (n=%d, %v)", n, err)
 	}
 }
+
+// CR-01: old 'suggestion-N' keys become 16 hex; other keys are untouched.
+func TestMigrate0004RewritesSuggestionKeys(t *testing.T) {
+	d := openAt(t, 3)
+	w := d.writer
+	mustExec(t, w, `INSERT INTO roadmaps (id, slug, title, select_rule) VALUES (1, 'r', 'R', '{}')`)
+	mustExec(t, w, `INSERT INTO topics (id, roadmap_id, stable_key, title, title_norm, ord, slug, dir_name, origin) VALUES
+		(7, 1, 'a3f9c2d41b7e8f06', 'T', 't', 1, 't', '01-t', 'roadmap'),
+		(8, 1, 'suggestion-7', 'S', 's', 2, 's', '02-s', 'suggested'),
+		(9, 1, 'suggestion-12', 'S2', 's2', 3, 's2', '03-s2', 'suggested')`)
+	if err := d.migrateTo(4); err != nil {
+		t.Fatalf("migrate to 4: %v", err)
+	}
+	for id, want := range map[int]string{7: "a3f9c2d41b7e8f06", 8: "0000000000000008", 9: "0000000000000009"} {
+		var got string
+		if err := w.QueryRow(`SELECT stable_key FROM topics WHERE id = ?`, id).Scan(&got); err != nil || got != want {
+			t.Errorf("topic %d: stable_key = %q (%v), want %q", id, got, err, want)
+		}
+	}
+}

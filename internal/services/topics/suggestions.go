@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"learninghub/internal/domain"
+	"learninghub/internal/fsx"
 	"learninghub/internal/services/roadmaps"
 )
 
@@ -93,7 +94,7 @@ func (s *Service) AcceptSuggestion(ctx context.Context, id int64) (newID int64, 
 		slug, dir := roadmaps.TopicDir(seq+1, title)
 		res, err := tx.ExecContext(ctx, `INSERT INTO topics (roadmap_id, group_id, stable_key, title, title_norm, ord, slug, dir_name, origin)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'suggested')`,
-			roadmapID, group, "suggestion-"+strconv.FormatInt(id, 10), title, titleNorm, (ord+edge)/2, slug, dir)
+			roadmapID, group, fsx.HashString("suggestion:" + strconv.FormatInt(id, 10))[:16], title, titleNorm, (ord+edge)/2, slug, dir)
 		if err != nil {
 			return err
 		}

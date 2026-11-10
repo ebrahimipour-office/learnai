@@ -3,6 +3,7 @@ package topics_test
 import (
 	"context"
 	"errors"
+	"regexp"
 	"slices"
 	"testing"
 
@@ -76,6 +77,13 @@ func TestSuggestionDecisions(t *testing.T) {
 	}
 	if err := w.QueryRow(`SELECT COALESCE(group_id, '') FROM topics WHERE id = ?`, src).Scan(&srcGroup); err != nil {
 		t.Fatal(err)
+	}
+	var key string
+	if err := w.QueryRow(`SELECT stable_key FROM topics WHERE id = ?`, pre).Scan(&key); err != nil {
+		t.Fatal(err)
+	}
+	if !regexp.MustCompile(`^[0-9a-f]{16}$`).MatchString(key) { // CR-01: must pass the manifest schema
+		t.Fatalf("stable_key = %q, want 16 hex", key)
 	}
 	if origin != "suggested" || group != srcGroup {
 		t.Fatalf("origin=%s group=%s, want suggested in group %s", origin, group, srcGroup)

@@ -1,7 +1,11 @@
 package httpserver_test
 
 import (
+	"encoding/json"
 	"net/http"
+	"net/url"
+	"os"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -44,4 +48,43 @@ func TestSuggestionsTab(t *testing.T) {
 	if body := e.get("/topics/2/suggestions").Body.String(); strings.Contains(body, `action="/suggestions/1/accept"`) || !strings.Contains(body, "موضوع ساخته‌شده") {
 		t.Fatalf("decided tab: %s", body)
 	}
+}
+
+// CR-01: an accepted suggestion goes all the way: lesson, exercises (manifest schema), evaluation (result schema).
+func TestSuggestedTopicFullFlow(t *testing.T) {
+	e := newEnv(t)
+	e.seedTopics()
+	w := e.db.Writer()
+	if _, err := w.Exec(`INSERT INTO suggestions (id, topic_id, kind, title, title_norm, reason) VALUES (1, 2, 'supplementary', 'Middleware', 'middleware', 'r')`); err != nil {
+		t.Fatal(err)
+	}
+	if rec := e.post("/suggestions/1/accept", nil, false); rec.Code != http.StatusSeeOther {
+		t.Fatalf("accept: %d", rec.Code)
+	}
+	var topic int64
+	if err := w.QueryRow(`SELECT id FROM topics WHERE origin = 'suggested'`).Scan(&topic); err != nil {
+		t.Fatal(err)
+	}
+	base := "/topics/" + strconv.FormatInt(topic, 10) + "/jobs/"
+	run := func(kind string, form url.Values, out json.RawMessage) {
+		t.Helper()
+		e.ad.Output = out
+		if rec := e.post(base+kind, form, true); rec.Code != http.StatusAccepted {
+			t.Fatalf("enqueue %s: %d %s", kind, rec.Code, rec.Body.String())
+		}
+		id, _ := e.lastJob()
+		e.pollUntilDone(id)
+		if _, st := e.lastJob(); st != "succeeded" {
+			var msg string
+			_ = w.QueryRow(`SELECT COALESCE(error_message, '') FROM jobs WHERE id = ?`, id).Scan(&msg)
+			t.Fatalf("%s job %s: %s", kind, st, msg)
+		}
+	}
+	run("lesson", nil, lessonOutput("درس"))
+	run("exercises", url.Values{"count": {"3"}}, exOutput())
+	_, abs := e.answerID("q01")
+	if err := os.WriteFile(abs, []byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run("evaluate", url.Values{"mode": {"full"}}, evalOutput("q01", 70))
 }

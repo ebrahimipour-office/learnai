@@ -118,7 +118,7 @@ func (d *DB) WithTx(ctx context.Context, fn func(tx *sql.Tx) error) error {
 }
 
 // migrations run in order; file i sets user_version i+1.
-var migrations = []string{"0001_init.sql", "0002_eval_guards.sql", "0003_chapters.sql"}
+var migrations = []string{"0001_init.sql", "0002_eval_guards.sql", "0003_chapters.sql", "0004_suggestion_keys.sql"}
 
 // migrate applies all pending embedded migrations.
 func (d *DB) migrate() error { return d.migrateTo(len(migrations)) }

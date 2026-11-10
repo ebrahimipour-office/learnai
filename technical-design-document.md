@@ -25,7 +25,7 @@
 10. ریسک‌ها
 11. فرض‌ها و موارد باز (شامل تفسیرهای نیازمند تأیید)
 12. فصل‌محوری (فاز ۷): عنوان فایل، فصل، `source.md`، Job `chapter_detect`، مهاجرت `0003`
-13. هر سرفصل یک رکورد و تشخیص خودکار با AI (فاز ۸): قاعده `tree`، `parent_id`، مهاجرت `0004`
+13. هر سرفصل یک رکورد و تشخیص خودکار با AI (فاز ۸): قاعده `tree`، `parent_id`، مهاجرت `0005`
 
 
 ---
@@ -1729,7 +1729,7 @@ ALTER TABLE import_drafts ADD COLUMN title TEXT;                  -- NULL = پی
 - در حال اجرا: پیش‌نمایش کارت Job (polling) و فهرست قطعی را فقط برای مشاهده نشان می‌دهد؛ دکمه تأیید غیرفعال است.
 - **شکست** (هر کد: `adapter_missing`، `auth_required`، `stalled`، `invalid_output`، نبود تأیید حریم خصوصی، …): پیش‌نمایش نشان می‌دهد (۱) پیام فارسی `ai.Message(code)`؛ (۲) «جزئیات فنی»: `jobs.error_message` و مسیر پوشه لاگ Job (`.app/logs/jobs/<id>/`)؛ پیوند تنظیمات برای `adapter_missing`/`auth_required`؛ (۳) پرسش: «هوش مصنوعی در دسترس نیست. با روش قطعی «هر سرفصل یک رکورد (بدون AI)» وارد شود؟» با دو دکمه: **ادامه بدون AI** (فرم تأیید با `no_ai=1` و قاعده `tree` خالی) و **تلاش دوباره** (`/jobs/{id}/retry` موجود).
 
-### ۱۳.۴. DB — مهاجرت `0004_topic_tree.sql`
+### ۱۳.۴. DB — مهاجرت `0005_topic_tree.sql`
 
 ```sql
 ALTER TABLE topics ADD COLUMN parent_id INTEGER REFERENCES topics(id); -- NULL = رکورد سطح بالا

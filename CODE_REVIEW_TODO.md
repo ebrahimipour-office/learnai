@@ -21,7 +21,7 @@ There are **no P0 tasks**.
 
 ## P1 — High
 
-### - [ ] CR-01 — Suggested topics can never get exercises (invalid `stable_key`)
+### - [x] CR-01 — Suggested topics can never get exercises (invalid `stable_key`)
 - **Problem:** `AcceptSuggestion` stores `stable_key = "suggestion-N"`. The manifest schema requires `^[0-9a-f]{16}$`, so `exercises.Build` rejects every set for a suggested topic. The AI is called twice and the job fails with `invalid_output`.
 - **Affected files:**
   - `internal/services/topics/suggestions.go:89-96`
