@@ -387,7 +387,7 @@ func TestTopicListPage(t *testing.T) {
 	}
 	slices.Sort(times)
 	t.Logf("500 topics: p95 %v", times[18])
-	if p95 := times[18]; p95 > 300*time.Millisecond {
+	if p95 := times[18]; !raceEnabled && p95 > 300*time.Millisecond {
 		t.Errorf("500 topics: p95 %v > 300ms", p95)
 	}
 	if body := rec.Body.String(); strings.Count(body, `class="topic"`) != 500 || !strings.Contains(body, "Topic 499") {

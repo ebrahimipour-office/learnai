@@ -304,15 +304,15 @@ There are **no P0 tasks**.
   - [ ] Manual check: restart the server with a tab open, click an action → page reloads and the action works.
 - **Depends on:** none.
 
-### - [ ] CR-21 — Upgrade `golang.org/x/net` and run govulncheck
+### - [x] CR-21 — Upgrade `golang.org/x/net` and run govulncheck
 - **Problem:** the indirect `x/net v0.26.0` (used by bluemonday's tokenizer) predates fixes such as GO-2025-3595.
 - **Affected files:** `go.mod:24`, `go.sum`; `PROGRESS.md` (record the `make vuln` result).
 - **Expected outcome:** current `x/net`, and a clean govulncheck report recorded.
 - **Suggested implementation:** `go get golang.org/x/net@latest && go mod tidy`; `make vuln` with network access; also upgrade other modules if govulncheck reports anything reachable.
 - **Required regression tests:** the existing `render` XSS corpus, plus a payload from CVE-2025-22872 (unquoted attribute ending in `/`).
 - **Acceptance criteria:**
-  - [ ] `govulncheck ./...` reports no reachable vulnerabilities.
-  - [ ] The output is pasted into `PROGRESS.md`.
+  - [x] `govulncheck ./...` reports no reachable vulnerabilities.
+  - [x] The output is pasted into `PROGRESS.md`.
 - **Depends on:** none. Unblocks the govulncheck CI step in CR-58.
 
 ---
@@ -664,15 +664,15 @@ There are **no P0 tasks**.
   - [ ] 200 iterations pass.
 - **Depends on:** none.
 
-### - [ ] CR-55 — gofmt, dead code and the reserved-name list in `fsx`
+### - [x] CR-55 — gofmt, dead code and the reserved-name list in `fsx`
 - **Problem:** three files are not gofmt-clean; `validSegmentRegex` is unused; there is a no-op `if`; the reserved-name list is incomplete.
 - **Affected files:** `internal/fsx/fsx_test.go`, `internal/fsx/root.go`, `internal/fsx/safename.go:25-63`; `Makefile` (test target).
 - **Expected outcome:** clean formatting, no dead code, full reserved list (`CONIN$`, `CONOUT$`, `COM0`, `LPT0`, superscript ¹²³ variants).
 - **Suggested implementation:** `gofmt -w`; delete the dead code; extend the list; add `test -z "$(gofmt -l .)"` to `make test`.
 - **Required regression tests:** a reserved-name table test; the `make test` gofmt gate.
 - **Acceptance criteria:**
-  - [ ] `gofmt -l .` is empty.
-  - [ ] Tests pass.
+  - [x] `gofmt -l .` is empty.
+  - [x] Tests pass.
 - **Depends on:** none.
 
 ### - [ ] CR-56 — Reproducible release artifacts

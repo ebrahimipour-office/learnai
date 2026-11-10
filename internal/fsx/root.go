@@ -11,8 +11,8 @@ import (
 )
 
 var (
-	ErrFileExists   = errors.New("file already exists: cannot overwrite protected file")
-	ErrRootClosed   = errors.New("root directory handle is closed")
+	ErrFileExists = errors.New("file already exists: cannot overwrite protected file")
+	ErrRootClosed = errors.New("root directory handle is closed")
 )
 
 // Root wraps Go 1.24+ os.Root to provide hardened, secure file access inside the base directory (D12).

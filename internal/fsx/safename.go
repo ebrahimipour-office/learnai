@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"path"
-	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -13,12 +12,12 @@ import (
 )
 
 var (
-	ErrInvalidPath       = errors.New("invalid path: contains forbidden patterns or characters")
-	ErrPathEscapesRoot   = errors.New("path escapes root directory")
-	ErrReservedName      = errors.New("name is a reserved Windows device name")
-	ErrPathTooLong       = errors.New("path exceeds maximum allowed length of 220 characters")
+	ErrInvalidPath        = errors.New("invalid path: contains forbidden patterns or characters")
+	ErrPathEscapesRoot    = errors.New("path escapes root directory")
+	ErrReservedName       = errors.New("name is a reserved Windows device name")
+	ErrPathTooLong        = errors.New("path exceeds maximum allowed length of 220 characters")
 	ErrForbiddenExtension = errors.New("file extension is not permitted")
-	ErrEmptyName         = errors.New("filename or slug cannot be empty")
+	ErrEmptyName          = errors.New("filename or slug cannot be empty")
 )
 
 // Windows reserved device names (case-insensitive)
@@ -28,6 +27,8 @@ var windowsReservedNames = map[string]struct{}{
 	"COM6": {}, "COM7": {}, "COM8": {}, "COM9": {},
 	"LPT1": {}, "LPT2": {}, "LPT3": {}, "LPT4": {}, "LPT5": {},
 	"LPT6": {}, "LPT7": {}, "LPT8": {}, "LPT9": {},
+	"CONIN$": {}, "CONOUT$": {}, "COM0": {}, "LPT0": {},
+	"COM¹": {}, "COM²": {}, "COM³": {}, "LPT¹": {}, "LPT²": {}, "LPT³": {},
 }
 
 // Dangerous executable extensions that are unconditionally forbidden (Section 8.2)
@@ -44,8 +45,6 @@ var DefaultAllowedExtensions = []string{
 	".sql", ".sh", ".md", ".txt", ".json", ".yaml", ".yml",
 }
 
-var validSegmentRegex = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
-
 // SanitizeSlug converts input text into a clean, safe slug (R5.2).
 // Normalizes to Unicode NFC, lowercases, replaces non-alphanumeric chars with '-',
 // enforces max length, and verifies no Windows reserved names.
@@ -56,11 +55,6 @@ func SanitizeSlug(s string) (string, error) {
 
 	// 1. Unicode NFC normalization
 	s = norm.NFC.String(s)
-
-	// 2. Reject colons (NTFS Alternate Data Streams) and backslashes
-	if strings.ContainsAny(s, `:\/<>|"?*`) {
-		// Filter out or sanitize characters
-	}
 
 	var sb strings.Builder
 	lastDash := false

@@ -7,6 +7,7 @@ export CGO_ENABLED = 0
 .PHONY: test vuln release clean
 
 test:
+	test -z "$$(gofmt -l .)"
 	go vet ./...
 	go test ./...
 

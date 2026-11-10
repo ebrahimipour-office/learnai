@@ -9,8 +9,8 @@
 | مشخصه | وضعیت |
 |---|---|
 | **فاز فعال کنونی** | **فاز ۷.۵ — پرداخت بدهی بازبینی (R1 تا R12) 🚀**، سپس فاز ۸ (فازهای ۱ تا ۷ کامل ✅؛ معوق‌های T5.8 واقعی، چک‌لیست ویندوز و `make vuln` در R6 تا R8 قرار گرفتند) |
-| **کار بعدی برای اجرا** | **R6** (پیش‌نیازهای فاز ۸ از `PROJECT_REVIEW.md`)؛ بعد از آن **T8.0** و **T8.2**. I10 بسته شد (§۱۳.۲) |
-| **آخرین کامیت Git** | `fix(rebuild): persist the selection choice per revision so rebuild reproduces the topics (CR-19)` |
+| **کار بعدی برای اجرا** | **T8.0** و **T8.2** (R1 تا R6 بسته شد؛ R7 تا R12 موازی). I10 بسته شد (§۱۳.۲) |
+| **آخرین کامیت Git** | `ci: add GitHub Actions, gofmt gate and a clean govulncheck (R6, CR-21, CR-55)` |
 | **✅ بسته‌شده از T3.1** | **۲۰۲۶-۱۱-۰۱:** اجرای واقعی دستی با `agy` 1.4.12 (`gemini-3.8-flash-high`، `--json-schema`، `--sandbox`) موفق بود. تأیید شد: خروجی ساختاریافته در `result.structured_output` است؛ `response` متن آزاد + JSON است (fallback فقط برای JSON خالص)؛ رویدادهای میانی `init` و `step_update` درست‌اند. خط واقعی در `TestRealSuccessEnvelope` ثبت شد. |
 | **وضعیت آزمون‌های خودکار** | **۱۰۰٪ سبز و موفق** (`go test ./...` روی همه پکیج‌ها) |
 | **مسیر دایرکتوری پایه** | `C:\Users\Asus\Desktop\Leaning-appication\prj` |
@@ -231,8 +231,9 @@
 - [x] **R5**: رفع CR-19 — ذخیره قاعده انتخاب (`select_rule`) به‌شکلی که `hub rebuild` همان موضوعات را بازتولید کند؛ پیش‌نیاز T8.3 (در فاز ۸ `parent_id` هم بازسازی شود)
   - **معیار پذیرش:** تست rebuild روی نقشه با قاعده `level`/`chapters` ⇐ همان رکوردها
   - ✅ انجام شد (۲۰۲۶-۱۱-۱۰): `Confirm` کنار هر بازنگری `roadmaps/<slug>/rev-NNN.choice.json` (قاعده + `excluded`، با `WriteNew` و در پشته `undo`) می‌نویسد؛ `rebuild` هر بازنگری را با انتخاب خودش بازتولید می‌کند، کنارگذاشته‌ها را رد می‌کند و `select_rule` را از آخرین بازنگری می‌گذارد. بدون فایل ⇐ `deepest` + هشدار — `TestRebuildKeepsSelectionRule` (ورود با `level` و یک موضوع کنارگذاشته، ورود مجدد با `chapters`، حذف DB، rebuild ⇐ کلید، عنوان، وضعیت، ترتیب، گروه، بازه و پوشه برابر؛ روی کد قبلی شکست می‌خورد). ⚠️ عنوان نقشه همچنان از نام پوشه است؛ موضوع بی‌تطبیق هنوز به اولین نقشه می‌رود؛ `parent_id`/`tree` با T8.3
-- [ ] **R6**: CI حداقلی — `.gitlab-ci.yml` (یا GitHub Actions) با `gofmt -l` (خروجی خالی)، `go vet`، `go test -race ./...`، `make vuln`؛ همراه آن: `gofmt -w internal/fsx` (CR-55)، ارتقای `golang.org/x/net` و اجرای یک‌باره `make vuln` (CR-21)
+- [x] **R6**: CI حداقلی — `.gitlab-ci.yml` (یا GitHub Actions) با `gofmt -l` (خروجی خالی)، `go vet`، `go test -race ./...`، `make vuln`؛ همراه آن: `gofmt -w internal/fsx` (CR-55)، ارتقای `golang.org/x/net` و اجرای یک‌باره `make vuln` (CR-21)
   - **معیار پذیرش:** pipeline سبز روی `main`؛ `gofmt -l .` خالی؛ `govulncheck` بدون یافته
+  - ✅ انجام شد (۲۰۲۶-۱۱-۱۰): `.github/workflows/ci.yml` (ubuntu؛ `make test` + `CGO_ENABLED=1 go test -race ./...` + `make vuln`)؛ `make test` حالا دروازه `gofmt -l` دارد. CR-55: `gofmt -w internal/fsx`، حذف `validSegmentRegex` و `if` بی‌اثر، افزودن `CONIN$`/`CONOUT$`/`COM0`/`LPT0`/`COM¹²³`/`LPT¹²³` + `TestReservedNames`. CR-21: `x/net` 0.26.0 ⇐ 0.62.0؛ `goldmark` 1.7.13 ⇐ 1.8.7 (GO-2026-5320، XSS قابل‌دسترس)؛ **`go` 1.26.4 ⇐ 1.26.10** چون govulncheck با 1.26.4 ۱۹ آسیب‌پذیری قابل‌دسترس stdlib یافت (از جمله GO-2026-4970 فرار از `os.Root`). خروجی نهایی `make vuln`: `No vulnerabilities found.` بودجه p95 در `TestTopicListPage` زیر `-race` رد می‌شود (`raceEnabled`). payload CVE-2025-22872 به پیکره XSS `render` اضافه شد. ⚠️ اجرای pipeline روی GitHub پس از push تأیید شود؛ ماتریس ویندوز و staticcheck با CR-58
 
 **موازی با فاز ۸:**
 - [ ] **R7**: اجرای واقعی T5.8 — ارزیابی یک تمرین با `agy` واقعی؛ یادداشت نتیجه (مدت، تلاش‌ها، کد خطا) در T5.8

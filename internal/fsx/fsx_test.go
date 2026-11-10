@@ -53,8 +53,8 @@ func TestSanitizeSlug(t *testing.T) {
 		{"Hello World", "hello-world", false},
 		{"HTTP & Networking (v2)", "http-networking-v2", false},
 		{"مبانی برنامه نویسی", "مبانی-برنامه-نویسی", false},
-		{"CON", "", true},     // Windows reserved
-		{"nul", "", true},     // Windows reserved
+		{"CON", "", true},      // Windows reserved
+		{"nul", "", true},      // Windows reserved
 		{"COM3.txt", "", true}, // Windows reserved
 		{"", "", true},
 		{"---", "", true},
@@ -254,6 +254,19 @@ func TestAnswerTemplate_EncodingAndCommentStyle(t *testing.T) {
 		}
 		if ext == ".md" && strings.Count(s, "-->") != 4 {
 			t.Errorf(".md: title closed the comment early: %q", s)
+		}
+	}
+}
+
+func TestReservedNames(t *testing.T) {
+	for _, name := range []string{"con", "CONIN$", "conout$.txt", "com0", "LPT0", "com¹", "lpt³.md", "nul.tar.gz"} {
+		if err := fsx.ValidateSegment(name); !errors.Is(err, fsx.ErrReservedName) {
+			t.Errorf("ValidateSegment(%q) = %v, want ErrReservedName", name, err)
+		}
+	}
+	for _, name := range []string{"console", "com10", "lpt", "conin"} {
+		if err := fsx.ValidateSegment(name); err != nil {
+			t.Errorf("ValidateSegment(%q) = %v, want nil", name, err)
 		}
 	}
 }

@@ -77,6 +77,8 @@ func TestXSS(t *testing.T) {
 		`<base href="https://evil.com/">`,
 		`javascript:alert(1)`,
 		`<math><mi xlink:href="javascript:alert(1)">x</mi></math>`,
+		`<a href=x/><img src=x onerror=alert(1)>`, // CVE-2025-22872: unquoted attribute ending in /
+		`<math><style><img src=x onerror=alert(1)//></style></math>`,
 	}
 	bad := regexp.MustCompile(`(?i)<(script|img|svg|iframe|object|embed|form|input|meta|style|link|base|div|details|math)\b|\son\w+=|javascript:|vbscript:|data:`)
 	for _, p := range payloads {
