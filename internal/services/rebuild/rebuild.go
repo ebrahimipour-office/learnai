@@ -1,8 +1,9 @@
 // Package rebuild recreates the database tables from the files under the base directory (T6.8,
 // RK9): roadmaps/<slug>/rev-NNN.md, topics/<dir>/lesson, exercises/v<N>/manifest.json, the rubric,
-// the answer files and reports/v<N>/attempt-<K>/result.json. It only reads files and writes into
+// the answer files and reports/v<N>/attempt-<K>/result.json. Each revision's topics are re-selected
+// with the choice in rev-NNN.choice.json (CR-19; deepest when missing). It only reads files and writes into
 // an empty database in one transaction. What exists only in the database is not recoverable and
-// gets a default: select_rule (deepest), lesson keywords, suggestions, jobs and the audit log.
+// gets a default: lesson keywords, suggestions, jobs and the audit log.
 package rebuild
 
 import (
@@ -149,14 +150,30 @@ func (r *run) roadmaps() (map[string][]*candidate, error) {
 				VALUES (?, ?, ?, ?, ?) RETURNING id`, rid, num[rel], rel, fsx.HashBytes(b), string(tree)).Scan(&revID); err != nil {
 				return nil, err
 			}
-			sel, err := roadmap.Select(node, roadmap.Rule{Kind: roadmap.RuleDeepest})
+			choice := r.choice(rel)
+			latest := i == len(revs)-1
+			if latest {
+				rule, _ := json.Marshal(choice.Rule)
+				if _, err := r.tx.ExecContext(r.ctx, `UPDATE roadmaps SET select_rule = ? WHERE id = ?`, string(rule), rid); err != nil {
+					return nil, err
+				}
+			}
+			sel, err := roadmap.Select(node, choice.Rule)
 			if err != nil {
-				r.warn("%s: no topics with the default rule: %v", rel, err)
+				r.warn("%s: no topics with rule %s: %v", rel, choice.Rule.Kind, err)
 				continue
 			}
-			latest := i == len(revs)-1
-			for j, t := range sel.Topics {
-				c := &candidate{roadmapID: rid, revID: revID, sel: sel, t: t, ord: j + 1, active: latest}
+			excluded := map[string]bool{}
+			for _, k := range choice.Excluded {
+				excluded[k] = true
+			}
+			ord := 0
+			for _, t := range sel.Topics {
+				if excluded[t.StableKey] {
+					continue
+				}
+				ord++
+				c := &candidate{roadmapID: rid, revID: revID, sel: sel, t: t, ord: ord, active: latest}
 				// A later revision replaces the same key's entry from an earlier one of this roadmap.
 				list := cands[t.StableKey]
 				if k := len(list) - 1; k >= 0 && list[k].roadmapID == rid {
@@ -169,6 +186,21 @@ func (r *run) roadmaps() (map[string][]*candidate, error) {
 		}
 	}
 	return cands, nil
+}
+
+// choice reads the Choice confirmed with revision rel; without a readable one (an import older than
+// CR-19) it is the default rule with nothing excluded, and a warning.
+func (r *run) choice(rel string) roadmaps.Choice {
+	c := roadmaps.Choice{Rule: roadmap.Rule{Kind: roadmap.RuleDeepest}}
+	b, err := r.root.ReadFile(roadmaps.ChoiceRel(rel))
+	if err == nil {
+		err = json.Unmarshal(b, &c)
+	}
+	if err != nil {
+		r.warn("%s: no readable selection file, the default rule (deepest) is applied: %v", rel, err)
+		return roadmaps.Choice{Rule: roadmap.Rule{Kind: roadmap.RuleDeepest}}
+	}
+	return c
 }
 
 // group records sel.Groups[i] and its parents once per roadmap; -1 is no group.

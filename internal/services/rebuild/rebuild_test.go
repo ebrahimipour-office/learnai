@@ -115,7 +115,7 @@ func TestRebuildFromFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rep.Roadmaps != 1 || rep.Topics != 4 || rep.Lessons != 4 || rep.Sets != 1 || rep.Attempts != 1 || rep.Files != 14 || len(rep.Warnings) != 1 {
+	if rep.Roadmaps != 1 || rep.Topics != 4 || rep.Lessons != 4 || rep.Sets != 1 || rep.Attempts != 1 || rep.Files != 14 || len(rep.Warnings) != 2 { // the orphan, and no rev-001.choice.json (legacy: deepest)
 		t.Errorf("report = %+v", rep)
 	}
 

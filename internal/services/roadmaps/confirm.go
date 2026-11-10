@@ -208,6 +208,16 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 			return fmt.Errorf("writing %s: %w", rel, err)
 		}
 		undo = append(undo, func() { _ = s.root.Remove(rel) })
+		// The choice beside the revision lets hub rebuild re-select the same topics (CR-19).
+		choiceRel := ChoiceRel(rel)
+		choice, err := json.Marshal(Choice{Rule: d.Choice.Rule, Excluded: d.Choice.Excluded})
+		if err != nil {
+			return err
+		}
+		if err := s.root.WriteNew(choiceRel, choice, 0o644); err != nil {
+			return fmt.Errorf("writing %s: %w", choiceRel, err)
+		}
+		undo = append(undo, func() { _ = s.root.Remove(choiceRel) })
 		for _, w := range writes {
 			if err := s.writeSource(w, &undo); err != nil {
 				return err
@@ -321,6 +331,9 @@ func (s *Service) freeRoadmapSlug(ctx context.Context, tx *sql.Tx, title string)
 		}
 	}
 }
+
+// ChoiceRel is the file holding the Choice confirmed with revision rel: roadmaps/<slug>/rev-NNN.choice.json.
+func ChoiceRel(rel string) string { return strings.TrimSuffix(rel, ".md") + ".choice.json" }
 
 // TopicDir returns the slug and dir_name (NN-slug) of the seq-th topic ever created. seq must be
 // COUNT(*) of topics + 1 inside the inserting transaction: topics are never deleted, so it is unique.

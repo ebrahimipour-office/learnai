@@ -9,8 +9,8 @@
 | مشخصه | وضعیت |
 |---|---|
 | **فاز فعال کنونی** | **فاز ۷.۵ — پرداخت بدهی بازبینی (R1 تا R12) 🚀**، سپس فاز ۸ (فازهای ۱ تا ۷ کامل ✅؛ معوق‌های T5.8 واقعی، چک‌لیست ویندوز و `make vuln` در R6 تا R8 قرار گرفتند) |
-| **کار بعدی برای اجرا** | **R5** (رفع CR-19) و سپس R6 (پیش‌نیازهای فاز ۸ از `PROJECT_REVIEW.md`)؛ بعد از آن **T8.0** و **T8.2**. I10 بسته شد (§۱۳.۲) |
-| **آخرین کامیت Git** | `fix(jobs): replay commit journals on start so a crash before the transaction leaves no orphan files (CR-03)` |
+| **کار بعدی برای اجرا** | **R6** (پیش‌نیازهای فاز ۸ از `PROJECT_REVIEW.md`)؛ بعد از آن **T8.0** و **T8.2**. I10 بسته شد (§۱۳.۲) |
+| **آخرین کامیت Git** | `fix(rebuild): persist the selection choice per revision so rebuild reproduces the topics (CR-19)` |
 | **✅ بسته‌شده از T3.1** | **۲۰۲۶-۱۱-۰۱:** اجرای واقعی دستی با `agy` 1.4.12 (`gemini-3.8-flash-high`، `--json-schema`، `--sandbox`) موفق بود. تأیید شد: خروجی ساختاریافته در `result.structured_output` است؛ `response` متن آزاد + JSON است (fallback فقط برای JSON خالص)؛ رویدادهای میانی `init` و `step_update` درست‌اند. خط واقعی در `TestRealSuccessEnvelope` ثبت شد. |
 | **وضعیت آزمون‌های خودکار** | **۱۰۰٪ سبز و موفق** (`go test ./...` روی همه پکیج‌ها) |
 | **مسیر دایرکتوری پایه** | `C:\Users\Asus\Desktop\Leaning-appication\prj` |
@@ -228,8 +228,9 @@
 - [x] **R4**: رفع CR-03 — بازپخش `commit_journal` هنگام شروع Runner برای commit درس/تمرین/ارزیابی
   - **معیار پذیرش:** تست crash شبیه‌سازی‌شده بین نوشتن فایل و تراکنش ⇐ پس از restart، DB و دیسک هم‌خوان
   - ✅ انجام شد (۲۰۲۶-۱۱-۱۰): `jobs.Runner.Recover` پس از علامت‌گذاری `interrupted`، journal هر Job غیرموفق را بازپخش می‌کند (`internal/jobs/journal.go`): فایل بدون ردیف `files` با SHA برابر حذف می‌شود؛ `lesson.md` بازنویسی‌شده از نسخه history (`restore_from`) بازگردانده می‌شود؛ فایل با SHA متفاوت دست نمی‌خورد و در `error_message` همان Job گزارش می‌شود؛ سپس `commit_journal = NULL`. Job موفق هم journal را پاک می‌کند. یک journal خراب فقط log می‌شود و شروع برنامه را متوقف نمی‌کند. قلاب تستی `beforeCommitTx` (panic پیش از تراکنش) در هر سه commit — `TestCrashBeforeTx*` در `lessons` (درس اول، بازتولید با بازگردانی بایت‌به‌بایت، فایل تغییرکرده)، `exercises` و `evaluation`؛ بدون بازپخش هر ۵ تست شکست می‌خورند. ⚠️ پوشه‌های خالی (`exercises/vN`، `attempt-K`) باقی می‌مانند؛ بازپخش فقط هنگام شروع اجرا می‌شود
-- [ ] **R5**: رفع CR-19 — ذخیره قاعده انتخاب (`select_rule`) به‌شکلی که `hub rebuild` همان موضوعات را بازتولید کند؛ پیش‌نیاز T8.3 (در فاز ۸ `parent_id` هم بازسازی شود)
+- [x] **R5**: رفع CR-19 — ذخیره قاعده انتخاب (`select_rule`) به‌شکلی که `hub rebuild` همان موضوعات را بازتولید کند؛ پیش‌نیاز T8.3 (در فاز ۸ `parent_id` هم بازسازی شود)
   - **معیار پذیرش:** تست rebuild روی نقشه با قاعده `level`/`chapters` ⇐ همان رکوردها
+  - ✅ انجام شد (۲۰۲۶-۱۱-۱۰): `Confirm` کنار هر بازنگری `roadmaps/<slug>/rev-NNN.choice.json` (قاعده + `excluded`، با `WriteNew` و در پشته `undo`) می‌نویسد؛ `rebuild` هر بازنگری را با انتخاب خودش بازتولید می‌کند، کنارگذاشته‌ها را رد می‌کند و `select_rule` را از آخرین بازنگری می‌گذارد. بدون فایل ⇐ `deepest` + هشدار — `TestRebuildKeepsSelectionRule` (ورود با `level` و یک موضوع کنارگذاشته، ورود مجدد با `chapters`، حذف DB، rebuild ⇐ کلید، عنوان، وضعیت، ترتیب، گروه، بازه و پوشه برابر؛ روی کد قبلی شکست می‌خورد). ⚠️ عنوان نقشه همچنان از نام پوشه است؛ موضوع بی‌تطبیق هنوز به اولین نقشه می‌رود؛ `parent_id`/`tree` با T8.3
 - [ ] **R6**: CI حداقلی — `.gitlab-ci.yml` (یا GitHub Actions) با `gofmt -l` (خروجی خالی)، `go vet`، `go test -race ./...`، `make vuln`؛ همراه آن: `gofmt -w internal/fsx` (CR-55)، ارتقای `golang.org/x/net` و اجرای یک‌باره `make vuln` (CR-21)
   - **معیار پذیرش:** pipeline سبز روی `main`؛ `gofmt -l .` خالی؛ `govulncheck` بدون یافته
 

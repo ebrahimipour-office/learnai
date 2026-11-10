@@ -279,7 +279,7 @@ There are **no P0 tasks**.
   - [ ] The CLI prints the warning.
 - **Depends on:** none.
 
-### - [ ] CR-19 — Persist the selection rule so rebuild can reproduce topics
+### - [x] CR-19 — Persist the selection rule so rebuild can reproduce topics
 - **Problem:** rebuild always applies `deepest` and puts unmatched topics in the first roadmap, which distorts roadmaps imported with chapters, items or level rules.
 - **Affected files:** `internal/services/rebuild/rebuild.go:152,307-318`; `internal/services/roadmaps/confirm.go` (to write the rule file).
 - **Expected outcome:** after a rebuild, topic keys and roadmap membership equal the originals.
@@ -289,9 +289,10 @@ There are **no P0 tasks**.
 - **Required regression tests:** confirm a chapters-rule import → delete the DB → rebuild → keys and roadmaps match; legacy roadmap without `rule.json` → current behaviour plus a warning.
 - **Phase 8 (TDD §13):** the rule file must also cover the `tree` rule, and rebuild must restore `topics.parent_id` (parent = nearest chosen ancestor heading); add a tree-rule case to the regression test.
 - **Acceptance criteria:**
-  - [ ] Both tests pass.
-  - [ ] The TDD rebuild section is updated.
+  - [x] Both tests pass.
+  - [x] The TDD rebuild section is updated.
 - **Depends on:** CR-06 (numbering helper reused by rebuild), CR-18.
+- **Done (2026-11-10, R5):** per-revision `roadmaps/<slug>/rev-NNN.choice.json` (rule + excluded keys) instead of one `rule.json`, because the rule can change on re-import. `TestRebuildKeepsSelectionRule` (level rule with an exclusion, then a chapters re-import); legacy case in `TestRebuildFromFiles`. Not done: per-folder fallback roadmap for unmatched topics (still the first roadmap); `tree` + `parent_id` left to T8.3.
 
 ### - [ ] CR-20 — Surface htmx errors and recover from a stale CSRF token
 - **Problem:** responses not in 2xx/409/413/422 are neither swapped nor shown. After a server restart every htmx POST silently returns 403.
