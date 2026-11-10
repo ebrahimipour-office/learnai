@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -89,10 +90,34 @@ func fakeAgy(sc string, args []string) int {
 		return 2
 	case "silent_exit":
 		return 0
+	case "linger", "linger_setsid": // valid result, then a helper keeps stdout open after exit 0
+		fmt.Fprintln(out, success(`"response":"done","structured_output":{"lesson_markdown":"# x"}`))
+		if err := holdStdout(sc == "linger_setsid"); err != nil {
+			fmt.Fprintln(errw, err)
+			return 4
+		}
+	case "slow_setsid": // no result; an escaped helper holds stdout while the leader hangs
+		if err := holdStdout(true); err != nil {
+			fmt.Fprintln(errw, err)
+			return 4
+		}
+		time.Sleep(30 * time.Second)
 	case "slow":
 		time.Sleep(30 * time.Second)
 	}
 	return 0
+}
+
+// holdStdout starts a helper that inherits stdout and outlives the fake CLI;
+// with escape it also leaves the process group (setsid).
+func holdStdout(escape bool) error {
+	argv := []string{"sleep", "30"}
+	if escape {
+		argv = append([]string{"setsid"}, argv...)
+	}
+	helper := exec.Command(argv[0], argv[1:]...)
+	helper.Stdout = os.Stdout
+	return helper.Start()
 }
 
 func newRun(t *testing.T, sc string, logs *fsx.Root) (*Adapter, ai.Request) {
@@ -203,6 +228,50 @@ func TestRunTimeoutAndCancel(t *testing.T) {
 	time.AfterFunc(200*time.Millisecond, cancel)
 	if _, err := a.Run(ctx, req, nil); !errors.Is(err, ai.ErrCanceled) {
 		t.Fatalf("cancel: got %v", err)
+	}
+}
+
+// CR-02: a helper holding stdout must neither discard a received result nor hang Run.
+func TestRunLingeringStdoutHolder(t *testing.T) {
+	for _, bin := range []string{"sleep", "setsid"} {
+		if _, err := exec.LookPath(bin); err != nil {
+			t.Skip(bin + " not available")
+		}
+	}
+	old := waitDelay
+	waitDelay = time.Second
+	defer func() { waitDelay = old }()
+	for _, tc := range []struct {
+		sc      string
+		timeout time.Duration
+	}{
+		{"linger", 20 * time.Second},
+		{"linger_setsid", 20 * time.Second},
+		{"linger", 0},
+		{"linger_setsid", 0},
+	} {
+		a, req := newRun(t, tc.sc, nil)
+		req.Timeout = tc.timeout
+		start := time.Now()
+		resp, err := a.Run(context.Background(), req, nil)
+		if err != nil || string(resp.Structured) != `{"lesson_markdown":"# x"}` {
+			t.Fatalf("%s/%s: resp=%+v err=%v", tc.sc, tc.timeout, resp, err)
+		}
+		if d := time.Since(start); d > 4*time.Second {
+			t.Fatalf("%s/%s: Run took %s", tc.sc, tc.timeout, d)
+		}
+	}
+
+	// Cancel with an escaped helper still returns within the bound.
+	a, req := newRun(t, "slow_setsid", nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(300*time.Millisecond, cancel)
+	start := time.Now()
+	if _, err := a.Run(ctx, req, nil); !errors.Is(err, ai.ErrCanceled) {
+		t.Fatalf("cancel: got %v", err)
+	}
+	if d := time.Since(start); d > 4*time.Second {
+		t.Fatalf("cancel took %s", d)
 	}
 }
 

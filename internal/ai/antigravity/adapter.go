@@ -175,23 +175,41 @@ func (a *Adapter) Run(ctx context.Context, req ai.Request, events chan<- ai.Even
 
 	cmd := exec.CommandContext(runCtx, bin, args...)
 	cmd.Dir = req.WorkDir
-	cmd.WaitDelay = 5 * time.Second
+	cmd.WaitDelay = waitDelay
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
-	stdout, err := cmd.StdoutPipe()
+	// Own pipe, not StdoutPipe: Wait must return when the leader exits even if a helper still holds stdout.
+	stdout, stdoutW, err := os.Pipe()
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ai.ErrToolFailed, err)
 	}
+	defer stdout.Close()
+	cmd.Stdout = stdoutW
 
 	start := time.Now()
 	group, err := procgroup.Start(cmd) // cancel/timeout kills agy's whole process tree
+	stdoutW.Close()
 	if err != nil {
 		log.finish(args, nil, stderr.String(), -1, 0, err)
 		return nil, fmt.Errorf("%w: start: %v", ai.ErrToolFailed, err)
 	}
-	res, rawRes := readStream(runCtx, stdout, events, log, dec)
+	var res *result
+	var rawRes []byte
+	read := make(chan struct{})
+	go func() {
+		defer close(read)
+		res, rawRes = readStream(runCtx, stdout, events, log, dec)
+	}()
 	waitErr := cmd.Wait()
-	group.Close()
+	group.Close() // kills helpers left in the group, so the reader normally sees EOF at once
+	select {
+	case <-read:
+	case <-time.After(waitDelay):
+		// A helper that left the group (setsid) still holds stdout: stop reading, keep what arrived.
+		// shortcut: on windows Close does not interrupt a blocked pipe read; the Job Object kill above covers it.
+		stdout.Close()
+		<-read
+	}
 	dur := time.Since(start)
 
 	resp := &ai.Response{Duration: dur, RawLogDir: log.absDir()}
@@ -257,6 +275,9 @@ func (d *agyDecoder) line(b []byte) string {
 
 func (d *agyDecoder) final() (*result, []byte) { return d.res, d.raw }
 
+// waitDelay bounds how long Run keeps reading stdout after the CLI itself has exited.
+var waitDelay = 5 * time.Second
+
 // readStream consumes the CLI's stdout, forwarding progress and keeping the final result.
 func readStream(ctx context.Context, r io.Reader, events chan<- ai.Event, log *jobLog, dec decoder) (*result, []byte) {
 	br := bufio.NewReader(r)
@@ -278,6 +299,10 @@ func readStream(ctx context.Context, r io.Reader, events chan<- ai.Event, log *j
 }
 
 func (a *Adapter) outcome(ctx, runCtx context.Context, req ai.Request, res *result, waitErr error, stderr string, dur time.Duration) error {
+	// A result that already arrived from a leader that exited 0 wins over a late cancel/timeout.
+	if waitErr == nil && res != nil && res.Status == "SUCCESS" {
+		return nil
+	}
 	if err := ctx.Err(); err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			return fmt.Errorf("%w: %v", ai.ErrTimeout, err)
@@ -286,9 +311,6 @@ func (a *Adapter) outcome(ctx, runCtx context.Context, req ai.Request, res *resu
 	}
 	if runCtx.Err() != nil {
 		return fmt.Errorf("%w: killed after %s", ai.ErrTimeout, req.Timeout+a.cfg.KillGrace)
-	}
-	if waitErr == nil && res != nil && res.Status == "SUCCESS" {
-		return nil
 	}
 	if req.Timeout > 0 && dur >= req.Timeout {
 		return fmt.Errorf("%w: %s stopped after %s", ai.ErrTimeout, a.Name(), dur.Round(time.Second))

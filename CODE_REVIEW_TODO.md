@@ -43,7 +43,7 @@ There are **no P0 tasks**.
   - [ ] Existing databases are migrated without data loss.
 - **Depends on:** none.
 
-### - [ ] CR-02 — AI child holding stdout discards a valid result or hangs `Run`
+### - [x] CR-02 — AI child holding stdout discards a valid result or hangs `Run`
 - **Problem:** `adapter.go` reads `StdoutPipe` to EOF before `cmd.Wait()`, so `WaitDelay` never bounds the read. A grandchild that keeps stdout open makes a SUCCESS result end as `timeout`/`stalled`. A `setsid`'d grandchild blocks cancel and shutdown until it exits.
 - **Affected files:** `internal/ai/antigravity/adapter.go:176-196,262-264,281-292`; `internal/ai/antigravity/adapter_test.go` (fake CLI scenarios).
 - **Expected outcome:** `Run` returns within `Timeout + KillGrace + WaitDelay` whatever background processes the CLI leaves behind, and a received SUCCESS result is kept when the leader exits 0.
@@ -56,9 +56,9 @@ There are **no P0 tasks**.
   - (b) the same with `setsid sleep 30 &` → returns within the bound;
   - (c) `Timeout=0, Stall=0` with (a) → still returns.
 - **Acceptance criteria:**
-  - [ ] All three scenarios pass under `-race`.
-  - [ ] Cancel during a run with a lingering grandchild completes in ≤ `KillGrace + WaitDelay`.
-  - [ ] Existing adapter tests stay green.
+  - [x] All three scenarios pass under `-race`.
+  - [x] Cancel during a run with a lingering grandchild completes in ≤ `KillGrace + WaitDelay`.
+  - [x] Existing adapter tests stay green.
 - **Depends on:** none. Coordinate with CR-22, which touches the same kill path.
 
 ### - [ ] CR-03 — Implement `commit_journal` replay (crash recovery for lesson, exercises and evaluation commits)
