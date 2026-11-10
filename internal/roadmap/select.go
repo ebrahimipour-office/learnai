@@ -12,13 +12,14 @@ const (
 	RuleDeepest RuleKind = "deepest" // default (A9): leaf headings, i.e. headings with no sub-heading (T7.0.a)
 	RuleLevel   RuleKind = "level"   // headings at Rule.Level
 	RuleItems   RuleKind = "items"   // top-level list items under headings (or the root)
+	RuleTree    RuleKind = "tree"    // every selected heading at any depth; Rule.Chapters lists them, empty = all (§13.1)
 )
 
 // Rule chooses which tree nodes become topics. Stored as JSON in roadmaps.select_rule.
 type Rule struct {
 	Kind     RuleKind  `json:"kind"`
 	Level    int       `json:"level,omitempty"`    // RuleLevel only: 1-6
-	Chapters []Chapter `json:"chapters,omitempty"` // RuleChapters only; checked by ValidateChapters
+	Chapters []Chapter `json:"chapters,omitempty"` // RuleChapters, RuleTree; checked by ValidateChapters
 }
 
 // Group is a heading above a topic. Parent indexes Selection.Groups; -1 means top level.
@@ -30,14 +31,17 @@ type Group struct {
 	Parent    int    `json:"parent"`
 }
 
-// Topic is one selected topic. Group indexes Selection.Groups; -1 means none.
-// Outline holds the topic's sub-entries as a nested Markdown list (topics.outline).
+// Topic is one selected topic. Group indexes Selection.Groups; -1 means none. Parent indexes
+// Selection.Topics (the nearest topic above it, always earlier); -1 means none and is the only
+// value outside RuleTree. Outline holds the topic's sub-entries as a nested Markdown list
+// (topics.outline); for a RuleTree parent it lists the direct sub-topics.
 type Topic struct {
 	StableKey string `json:"stable_key"`
 	Title     string `json:"title"`
 	Line      int    `json:"line"`
 	EndLine   int    `json:"end_line,omitempty"` // source range Line..EndLine (§12.4); 0 = no source text (items rule)
 	Group     int    `json:"group"`
+	Parent    int    `json:"parent"`
 	Outline   string `json:"outline,omitempty"`
 }
 
@@ -51,6 +55,9 @@ type Selection struct {
 // Select applies r to the tree produced by Parse. Everything below a topic goes into its outline;
 // headings above it become groups. An empty Kind means RuleDeepest.
 func Select(root *Node, r Rule) (*Selection, error) {
+	if r.Kind == RuleTree {
+		return selectTree(root, r), nil
+	}
 	isTopic, err := topicTest(r)
 	if err != nil {
 		return nil, err
@@ -96,7 +103,7 @@ func Select(root *Node, r Rule) (*Selection, error) {
 			if isTopic(c, n) {
 				g := group(path)
 				key := stableKey(childPath(pathOf(g), c.Title, usedT))
-				t := Topic{StableKey: key, Title: c.Title, Line: c.Line, Group: g, Outline: outline(c)}
+				t := Topic{StableKey: key, Title: c.Title, Line: c.Line, Group: g, Parent: -1, Outline: outline(c)}
 				if c.Kind == KindHeading {
 					t.EndLine = c.EndLine
 				}
@@ -118,6 +125,99 @@ func Select(root *Node, r Rule) (*Selection, error) {
 		}
 	}
 	return s, nil
+}
+
+// selectTree applies RuleTree: a topic does not stop the walk, so selected headings below it become
+// its sub-topics. Its own range ends before its first sub-topic, so a parent's source is only its
+// introduction and no line belongs to two topics. Unselected headings above a topic become groups.
+func selectTree(root *Node, r Rule) *Selection {
+	s := &Selection{Groups: []Group{}, Topics: []Topic{}}
+	paths := deepestPaths(root)
+	chapter := map[int]Chapter{}
+	for _, c := range r.Chapters {
+		c.Title = strings.TrimSpace(c.Title)
+		chapter[c.Line] = c
+	}
+	h1 := soleH1(root)
+	selected := func(n *Node) bool {
+		_, ok := chapter[n.Line]
+		return n != h1 && (len(r.Chapters) == 0 || ok)
+	}
+	groupIdx := map[*Node]int{}
+	group := func(path []*Node) int {
+		parent := -1
+		for _, h := range path {
+			i, ok := groupIdx[h]
+			if !ok {
+				i = len(s.Groups)
+				groupIdx[h] = i
+				s.Groups = append(s.Groups, Group{StableKey: stableKey(paths[h]), Title: h.Title, Level: h.Level, Line: h.Line, Parent: parent})
+			}
+			parent = i
+		}
+		return parent
+	}
+
+	var walk func(n *Node, path []*Node, parent int)
+	walk = func(n *Node, path []*Node, parent int) {
+		for _, c := range n.Children {
+			if c.Kind != KindHeading {
+				continue
+			}
+			if !selected(c) {
+				walk(c, append(path[:len(path):len(path)], c), parent)
+				continue
+			}
+			i := len(s.Topics)
+			t := Topic{StableKey: stableKey(paths[c]), Title: c.Title, Line: c.Line, EndLine: c.EndLine, Group: group(path), Parent: parent}
+			if ch, ok := chapter[c.Line]; ok && ch.Title != "" {
+				t.Title = ch.Title
+			}
+			s.Topics = append(s.Topics, t)
+			walk(c, path, i)
+			if len(s.Topics) == i+1 { // no sub-topics: a leaf, exactly like deepest
+				s.Topics[i].Outline = outline(c)
+				continue
+			}
+			s.Topics[i].EndLine = s.Topics[i+1].Line - 1 // descendants follow their parent directly
+			var kids []string
+			for _, k := range s.Topics[i+1:] {
+				if k.Parent == i {
+					kids = append(kids, "- "+k.Title)
+				}
+			}
+			s.Topics[i].Outline = strings.Join(kids, "\n")
+		}
+	}
+	walk(root, nil, -1)
+	if i, ok := groupIdx[h1]; ok && h1 != nil {
+		s.dropGroup(i)
+	}
+	return s
+}
+
+// deepestPaths gives every heading the key path RuleDeepest gives it: a heading with sub-headings
+// is a group, a leaf is a topic, and each keeps its own duplicate-title counter. So a leaf has the
+// same stable key under RuleTree as under RuleDeepest.
+func deepestPaths(root *Node) map[*Node]string {
+	paths := map[*Node]string{}
+	usedG, usedT := map[string]bool{}, map[string]bool{}
+	var walk func(n *Node, parent string)
+	walk = func(n *Node, parent string) {
+		for _, c := range n.Children {
+			if c.Kind != KindHeading {
+				continue
+			}
+			used := usedT
+			if hasHeadingChild(c) {
+				used = usedG
+			}
+			paths[c] = childPath(parent, c.Title, used)
+			walk(c, paths[c])
+		}
+	}
+	walk(root, "")
+	return paths
 }
 
 // Title returns the text of the first H1 (always a root child), or "" when there is none.

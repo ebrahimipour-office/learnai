@@ -29,9 +29,11 @@ func (e *ChapterError) Error() string { return e.Msg }
 // each starts on a heading, line <= end_line <= lines, ascending without overlap, no chapter heading
 // under another chapter heading, and a non-blank title of at most MaxChapterTitle runes.
 // Gaps between chapters are allowed. It is used for both AI output and edits in the preview.
-func ValidateChapters(tree *Node, lines int, chs []Chapter) error {
+// With nested (RuleTree, §13.1) end_line is ignored, chapters may nest, lines must be strictly
+// ascending, and an empty list is valid (it means every heading).
+func ValidateChapters(tree *Node, lines int, chs []Chapter, nested bool) error {
 	fail := func(format string, a ...any) error { return &ChapterError{fmt.Sprintf(format, a...)} }
-	if len(chs) == 0 {
+	if len(chs) == 0 && !nested {
 		return fail("حداقل یک فصل لازم است.")
 	}
 	ancestors := map[int][]int{} // heading line → lines of the headings above it
@@ -57,14 +59,22 @@ func ValidateChapters(tree *Node, lines int, chs []Chapter) error {
 		switch {
 		case !ok:
 			return fail("فصل %d: خط %d سرفصل نیست.", n, c.Line)
+		case nested && i > 0 && c.Line <= chs[i-1].Line:
+			return fail("فصل %d تکراری است یا ترتیب فصل‌ها به‌هم خورده است.", n)
+		case nested:
 		case c.EndLine < c.Line || c.EndLine > lines:
 			return fail("فصل %d: خط پایان %d باید بین %d و %d باشد.", n, c.EndLine, c.Line, lines)
 		case i > 0 && c.Line <= chs[i-1].EndLine:
 			return fail("فصل %d با فصل قبلی هم‌پوشانی دارد یا ترتیب فصل‌ها به‌هم خورده است.", n)
+		}
+		switch {
 		case title == "":
 			return fail("فصل %d: عنوان خالی است.", n)
 		case utf8.RuneCountInString(title) > MaxChapterTitle:
 			return fail("فصل %d: عنوان بیش از %d نویسه است.", n, MaxChapterTitle)
+		}
+		if nested {
+			continue
 		}
 		for _, a := range above {
 			if isChapter[a] {

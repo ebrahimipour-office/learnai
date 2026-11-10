@@ -231,7 +231,7 @@ func ValidateChapterSuggestion(tree *roadmap.Node, lines int, raw json.RawMessag
 	for _, c := range out.Chapters {
 		s.Rule.Chapters = append(s.Rule.Chapters, roadmap.Chapter{Line: c.StartLine, EndLine: c.EndLine, Title: strings.TrimSpace(c.Title)})
 	}
-	if err := roadmap.ValidateChapters(tree, lines, s.Rule.Chapters); err != nil {
+	if err := roadmap.ValidateChapters(tree, lines, s.Rule.Chapters, false); err != nil {
 		return s, fmt.Errorf("%w: %v", ai.ErrInvalidOutput, err)
 	}
 	if s.Title == "" || s.Reason == "" {

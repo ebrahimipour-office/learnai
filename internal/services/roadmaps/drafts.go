@@ -66,7 +66,7 @@ func (d *Draft) DefaultTitle() string {
 func (d *Draft) Preview(c Choice) (*roadmap.Selection, error) {
 	tree := roadmap.Parse(d.Content)
 	if c.Rule.Kind == roadmap.RuleChapters {
-		if err := roadmap.ValidateChapters(tree, roadmap.LineCount(d.Content), c.Rule.Chapters); err != nil {
+		if err := roadmap.ValidateChapters(tree, roadmap.LineCount(d.Content), c.Rule.Chapters, false); err != nil {
 			return nil, err
 		}
 	}
@@ -131,7 +131,7 @@ func (s *Service) createDraft(ctx context.Context, roadmapID int64, name string,
 		}
 		roadmapRef = sql.NullInt64{Int64: roadmapID, Valid: true}
 		// Saved chapters point at lines of the old revision: keep them only if they still fit the new file.
-		if rule.Kind == roadmap.RuleChapters && roadmap.ValidateChapters(roadmap.Parse(content), roadmap.LineCount(content), rule.Chapters) != nil {
+		if rule.Kind == roadmap.RuleChapters && roadmap.ValidateChapters(roadmap.Parse(content), roadmap.LineCount(content), rule.Chapters, false) != nil {
 			rule = roadmap.Rule{Kind: roadmap.RuleDeepest}
 		}
 	}

@@ -27,11 +27,11 @@ func TestValidateChapters(t *testing.T) {
 		t.Fatalf("LineCount = %d, want 12", lines)
 	}
 	ok := []Chapter{{3, 6, "یک"}, {7, 10, "دو"}, {11, 12, "سه"}}
-	if err := ValidateChapters(tree, lines, ok); err != nil {
+	if err := ValidateChapters(tree, lines, ok, false); err != nil {
 		t.Fatalf("valid chapters rejected: %v", err)
 	}
 	// gap (preface, skipped chapter) and a merged range are fine
-	if err := ValidateChapters(tree, lines, []Chapter{{3, 10, "یک و دو"}}); err != nil {
+	if err := ValidateChapters(tree, lines, []Chapter{{3, 10, "یک و دو"}}, false); err != nil {
 		t.Fatalf("merged chapter rejected: %v", err)
 	}
 	for name, chs := range map[string][]Chapter{
@@ -47,7 +47,7 @@ func TestValidateChapters(t *testing.T) {
 		"long title":      {{3, 6, strings.Repeat("ب", MaxChapterTitle+1)}},
 	} {
 		var ce *ChapterError
-		if err := ValidateChapters(tree, lines, chs); !errors.As(err, &ce) {
+		if err := ValidateChapters(tree, lines, chs, false); !errors.As(err, &ce) {
 			t.Errorf("%s: want ChapterError, got %v", name, err)
 		}
 	}
