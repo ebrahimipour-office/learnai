@@ -9,8 +9,8 @@
 | مشخصه | وضعیت |
 |---|---|
 | **فاز فعال کنونی** | **فاز ۷.۵ — پرداخت بدهی بازبینی (R1 تا R12) 🚀**، سپس فاز ۸ (فازهای ۱ تا ۷ کامل ✅؛ معوق‌های T5.8 واقعی، چک‌لیست ویندوز و `make vuln` در R6 تا R8 قرار گرفتند) |
-| **کار بعدی برای اجرا** | **R4** (رفع CR-03) و سپس R5 و R6 (پیش‌نیازهای فاز ۸ از `PROJECT_REVIEW.md`)؛ بعد از آن **T8.0** و **T8.2**. I10 بسته شد (§۱۳.۲) |
-| **آخرین کامیت Git** | `fix(sync): a file name fsx rejects is reported as skipped instead of aborting the scan (CR-04)` |
+| **کار بعدی برای اجرا** | **R5** (رفع CR-19) و سپس R6 (پیش‌نیازهای فاز ۸ از `PROJECT_REVIEW.md`)؛ بعد از آن **T8.0** و **T8.2**. I10 بسته شد (§۱۳.۲) |
+| **آخرین کامیت Git** | `fix(jobs): replay commit journals on start so a crash before the transaction leaves no orphan files (CR-03)` |
 | **✅ بسته‌شده از T3.1** | **۲۰۲۶-۱۱-۰۱:** اجرای واقعی دستی با `agy` 1.4.12 (`gemini-3.8-flash-high`، `--json-schema`، `--sandbox`) موفق بود. تأیید شد: خروجی ساختاریافته در `result.structured_output` است؛ `response` متن آزاد + JSON است (fallback فقط برای JSON خالص)؛ رویدادهای میانی `init` و `step_update` درست‌اند. خط واقعی در `TestRealSuccessEnvelope` ثبت شد. |
 | **وضعیت آزمون‌های خودکار** | **۱۰۰٪ سبز و موفق** (`go test ./...` روی همه پکیج‌ها) |
 | **مسیر دایرکتوری پایه** | `C:\Users\Asus\Desktop\Leaning-appication\prj` |
@@ -225,8 +225,9 @@
 - [x] **R3**: رفع CR-04 — اسکن همگام‌سازی با نام فایل مردود `fsx` قطع نشود؛ آن فایل به‌عنوان «نادیده‌گرفته‌شده» گزارش شود
   - **معیار پذیرش:** تست: یک فایل با نام نامعتبر کنار فایل‌های معتبر ⇐ گزارش کامل + یک مورد نادیده‌گرفته‌شده
   - ✅ انجام شد (۲۰۲۶-۱۱-۱۰): `syncsvc.unregistered` مسیرهای مردود `fsx.ValidateRelPath` را به `Report.Skipped` می‌برد (خوانده و hash نمی‌شوند)؛ بخش «نادیده‌گرفته‌شده» در `sync.html` — `TestInvalidNameIsSkippedNotFatal` (نام با `:` کنار یک فایل جدید و یک جابه‌جایی؛ روی ویندوز skip). ⚠️ فایل ثبت‌نشده‌ای که خواندنش به دلیل دیگری (مثلاً مجوز) شکست بخورد هنوز اسکن را قطع می‌کند
-- [ ] **R4**: رفع CR-03 — بازپخش `commit_journal` هنگام شروع Runner برای commit درس/تمرین/ارزیابی
+- [x] **R4**: رفع CR-03 — بازپخش `commit_journal` هنگام شروع Runner برای commit درس/تمرین/ارزیابی
   - **معیار پذیرش:** تست crash شبیه‌سازی‌شده بین نوشتن فایل و تراکنش ⇐ پس از restart، DB و دیسک هم‌خوان
+  - ✅ انجام شد (۲۰۲۶-۱۱-۱۰): `jobs.Runner.Recover` پس از علامت‌گذاری `interrupted`، journal هر Job غیرموفق را بازپخش می‌کند (`internal/jobs/journal.go`): فایل بدون ردیف `files` با SHA برابر حذف می‌شود؛ `lesson.md` بازنویسی‌شده از نسخه history (`restore_from`) بازگردانده می‌شود؛ فایل با SHA متفاوت دست نمی‌خورد و در `error_message` همان Job گزارش می‌شود؛ سپس `commit_journal = NULL`. Job موفق هم journal را پاک می‌کند. یک journal خراب فقط log می‌شود و شروع برنامه را متوقف نمی‌کند. قلاب تستی `beforeCommitTx` (panic پیش از تراکنش) در هر سه commit — `TestCrashBeforeTx*` در `lessons` (درس اول، بازتولید با بازگردانی بایت‌به‌بایت، فایل تغییرکرده)، `exercises` و `evaluation`؛ بدون بازپخش هر ۵ تست شکست می‌خورند. ⚠️ پوشه‌های خالی (`exercises/vN`، `attempt-K`) باقی می‌مانند؛ بازپخش فقط هنگام شروع اجرا می‌شود
 - [ ] **R5**: رفع CR-19 — ذخیره قاعده انتخاب (`select_rule`) به‌شکلی که `hub rebuild` همان موضوعات را بازتولید کند؛ پیش‌نیاز T8.3 (در فاز ۸ `parent_id` هم بازسازی شود)
   - **معیار پذیرش:** تست rebuild روی نقشه با قاعده `level`/`chapters` ⇐ همان رکوردها
 - [ ] **R6**: CI حداقلی — `.gitlab-ci.yml` (یا GitHub Actions) با `gofmt -l` (خروجی خالی)، `go vet`، `go test -race ./...`، `make vuln`؛ همراه آن: `gofmt -w internal/fsx` (CR-55)، ارتقای `golang.org/x/net` و اجرای یک‌باره `make vuln` (CR-21)

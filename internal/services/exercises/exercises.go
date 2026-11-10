@@ -258,6 +258,7 @@ func (s *Service) commit(ctx context.Context, j jobs.Job, t topic, curID int64, 
 		done = append(done, f.rel)
 	}
 
+	beforeCommitTx()
 	err := s.DB.WithTx(ctx, func(tx *sql.Tx) error {
 		ids := make([]int64, len(files))
 		for i, f := range files {
@@ -347,3 +348,6 @@ func (s *Service) commit(ctx context.Context, j jobs.Job, t topic, curID int64, 
 	}
 	return err
 }
+
+// beforeCommitTx runs between the file writes and the DB transaction; tests replace it to simulate a crash (CR-03).
+var beforeCommitTx = func() {}

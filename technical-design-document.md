@@ -1151,7 +1151,7 @@ Enqueue ──▶ جدول jobs (queued) ──▶ Dispatcher goroutine ──�
                d. پاک‌سازی work/ و staging/
 ```
 
-**بازیابی از قطع ناگهانی (crash) بین b و c:** هنگام شروع، برای Jobهایی که `commit_journal` دارند ولی `succeeded` نیستند: فایل‌های فهرست‌شده‌ای که روی دیسک هستند، **hash برابر با journal** دارند و در `files` ثبت نشده‌اند، حذف می‌شوند (این فایل‌ها قطعاً ساخته همین Job‌اند). سپس Job=`failed/interrupted`.
+**بازیابی از قطع ناگهانی (crash) بین b و c:** هنگام شروع، برای Jobهایی که `commit_journal` دارند ولی `succeeded` نیستند: فایل‌های فهرست‌شده‌ای که روی دیسک هستند، **hash برابر با journal** دارند و در `files` ثبت نشده‌اند، حذف می‌شوند (این فایل‌ها قطعاً ساخته همین Job‌اند). سپس Job=`failed/interrupted`. برای بازتولید درس، اگر `lesson.md` روی دیسک hash جدید را دارد ولی ردیف `files` هنوز hash قبلی را، محتوای قبلی از فایل history (`restore_from` در journal) بازگردانده می‌شود. فایلی که hash آن با journal فرق دارد هرگز حذف نمی‌شود و در `error_message` همان Job گزارش می‌شود؛ در پایان `commit_journal = NULL` (Job موفق هم journal را پاک می‌کند). **پیاده‌سازی‌شده** در `internal/jobs/journal.go` (CR-03).
 
 **قواعد ویژه هر نوع Job:**
 

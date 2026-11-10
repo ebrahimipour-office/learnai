@@ -61,7 +61,7 @@ There are **no P0 tasks**.
   - [x] Existing adapter tests stay green.
 - **Depends on:** none. Coordinate with CR-22, which touches the same kill path.
 
-### - [ ] CR-03 — Implement `commit_journal` replay (crash recovery for lesson, exercises and evaluation commits)
+### - [x] CR-03 — Implement `commit_journal` replay (crash recovery for lesson, exercises and evaluation commits)
 - **Problem:** journals are written but never read. A crash between the file writes and the DB transaction leaves orphan files, and every later job of that kind for that topic or set fails with `ErrFileExists`.
 - **Affected files:**
   - `internal/jobs/runner.go:204-211` (`Recover`)
@@ -83,9 +83,9 @@ There are **no P0 tasks**.
   - Negative case: a modified file is kept and reported.
   - Lesson regeneration case: the previous `lesson.md` is restored byte-for-byte.
 - **Acceptance criteria:**
-  - [ ] A crash-injection test (a hook before `WithTx`) for each of the 3 commits recovers automatically.
-  - [ ] No user-modified file is ever deleted by the recovery.
-  - [ ] TDD §6.6 and `PROGRESS.md` mark journal recovery as implemented.
+  - [x] A crash-injection test (a hook before `WithTx`) for each of the 3 commits recovers automatically.
+  - [x] No user-modified file is ever deleted by the recovery.
+  - [x] TDD §6.6 and `PROGRESS.md` mark journal recovery as implemented.
 - **Depends on:** none. CR-07 makes recovery more reliable, so do it next. CR-33 relies on this task.
 
 ### - [ ] CR-04 — Sync scan aborts on any file name that `fsx` rejects

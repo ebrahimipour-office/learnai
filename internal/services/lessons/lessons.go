@@ -286,9 +286,9 @@ func (s *Service) commit(ctx context.Context, j jobs.Job, skill ai.SkillRef, t t
 		hist = historyRel(t.Dir, cur.Version)
 	}
 
-	journal := []map[string]string{{"rel_path": rel, "sha256": fsx.HashBytes(md)}}
+	journal := []jobs.JournalEntry{{RelPath: rel, SHA256: fsx.HashBytes(md), RestoreFrom: hist}}
 	if hist != "" {
-		journal = append(journal, map[string]string{"rel_path": hist, "sha256": fsx.HashBytes(prev)})
+		journal = append(journal, jobs.JournalEntry{RelPath: hist, SHA256: fsx.HashBytes(prev)})
 	}
 	jb, _ := json.Marshal(journal)
 	if _, err := s.DB.Writer().ExecContext(ctx, `UPDATE jobs SET commit_journal = ? WHERE id = ?`, string(jb), j.ID); err != nil {
@@ -327,6 +327,7 @@ func (s *Service) commit(ctx context.Context, j jobs.Job, skill ai.SkillRef, t t
 		}
 	}
 
+	beforeCommitTx()
 	if err := s.record(ctx, j, skill, t, cur, hist, prev, md, out); err != nil {
 		undo()
 		return err
@@ -396,3 +397,6 @@ func (s *Service) record(ctx context.Context, j jobs.Job, skill ai.SkillRef, t t
 		return err
 	})
 }
+
+// beforeCommitTx runs between the file writes and the DB transaction; tests replace it to simulate a crash (CR-03).
+var beforeCommitTx = func() {}

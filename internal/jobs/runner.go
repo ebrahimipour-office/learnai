@@ -201,13 +201,18 @@ func (r *Runner) Cancel(ctx context.Context, id int64) (late bool, err error) {
 }
 
 // Recover marks jobs left running by a previous process as failed/interrupted; queued jobs stay queued.
+// Then, when Files is set, it replays the commit journal of every job that did not succeed (CR-03).
 func (r *Runner) Recover(ctx context.Context) (int64, error) {
 	res, err := r.db.Writer().ExecContext(ctx, `UPDATE jobs SET status = 'failed', error_code = 'interrupted',
 		error_message = ?, finished_at = `+nowSQL+` WHERE status = 'running'`, InterruptedMessage)
 	if err != nil {
 		return 0, err
 	}
-	return res.RowsAffected()
+	n, err := res.RowsAffected()
+	if err != nil || r.Files == nil {
+		return n, err
+	}
+	return n, r.replayJournals(ctx)
 }
 
 // Run recovers interrupted jobs, then dispatches queued jobs in FIFO order until ctx is done.
@@ -318,8 +323,11 @@ func (r *Runner) execute(ctx context.Context, j Job) {
 		}
 	}
 	// The final write must land even when ctx is already cancelled by shutdown.
-	_, werr := r.db.Writer().ExecContext(context.WithoutCancel(ctx), `UPDATE jobs SET status = ?, error_code = ?,
-		error_message = ?, finished_at = `+nowSQL+` WHERE id = ?`, status, nullStr(code), nullStr(msg), j.ID)
+	// A succeeded job's commit landed; its journal is no longer needed (CR-03).
+	_, werr := r.db.Writer().ExecContext(context.WithoutCancel(ctx), `UPDATE jobs SET status = ?1, error_code = ?2,
+		error_message = ?3, finished_at = `+nowSQL+`,
+		commit_journal = CASE WHEN ?1 = 'succeeded' THEN NULL ELSE commit_journal END WHERE id = ?4`,
+		status, nullStr(code), nullStr(msg), j.ID)
 	if werr != nil {
 		slog.Error("Recording job result failed", "job", j.ID, "error", werr)
 	}

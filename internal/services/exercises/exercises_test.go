@@ -459,3 +459,32 @@ func TestChapterSourceErrors(t *testing.T) {
 		})
 	}
 }
+
+// CR-03: a crash between the file writes and the transaction leaves orphan files; the next start
+// removes them and the next job writes the same v1.
+func TestCrashBeforeTxRecovers(t *testing.T) {
+	e := setup(t)
+	exercises.SetBeforeCommitTx(t, func() { panic("crash") })
+	if st, _ := e.run(2, good(), `{}`); st != "failed" {
+		t.Fatalf("crashed job: %s", st)
+	}
+	exercises.SetBeforeCommitTx(t, func() {})
+	set := "topics/02-http/exercises/v1/manifest.json"
+	if !e.root.Exists(set) {
+		t.Fatal("crash left no files (test setup)")
+	}
+	if _, err := e.runner.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, rel := range []string{set, "topics/02-http/.internal/rubric-v1.json", "topics/02-http/answers/v1/q01-hello-handler.go"} {
+		if e.root.Exists(rel) {
+			t.Errorf("orphan %s not removed", rel)
+		}
+	}
+	if st, code := e.run(2, good(), `{}`); st != "succeeded" {
+		t.Fatalf("next job: %s (%s)", st, code)
+	}
+	if n := e.count(`SELECT COUNT(*) FROM exercise_sets WHERE topic_id = 2 AND version = 1 AND is_current = 1`); n != 1 {
+		t.Error("next job did not record v1")
+	}
+}

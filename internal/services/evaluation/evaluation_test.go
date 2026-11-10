@@ -575,3 +575,31 @@ func TestEvaluateChapterSourceErrors(t *testing.T) {
 		})
 	}
 }
+
+// CR-03: a crash between the file writes and the transaction; after restart attempt-1 is free again.
+func TestCrashBeforeTxRecovers(t *testing.T) {
+	e := setup(t, 1)
+	evaluation.SetBeforeCommitTx(t, func() { panic("crash") })
+	if st, _ := e.wait(e.enqueue("full")); st != "failed" {
+		t.Fatalf("crashed job: %s", st)
+	}
+	evaluation.SetBeforeCommitTx(t, func() {})
+	result := evaluation.AttemptRel("02-http", 1, 1) + "/result.json"
+	if !e.root.Exists(result) {
+		t.Fatal("crash left no files (test setup)")
+	}
+	if _, err := e.runner.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if e.root.Exists(result) {
+		t.Error("orphan result.json not removed")
+	}
+	if st, code := e.wait(e.enqueue("full")); st != "succeeded" {
+		t.Fatalf("next job: %s (%s)", st, code)
+	}
+	var n int
+	e.db.Writer().QueryRow(`SELECT COUNT(*) FROM attempts WHERE set_id = 1 AND attempt_no = 1`).Scan(&n)
+	if n != 1 {
+		t.Error("next job did not record attempt 1")
+	}
+}

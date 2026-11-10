@@ -358,3 +358,81 @@ func TestChapterSourceErrors(t *testing.T) {
 		})
 	}
 }
+
+// crash makes the next commit die after its file writes and before the DB transaction (CR-03):
+// the panic skips the in-process undo, as a killed process would.
+func (e *env) crash(out json.RawMessage, params string) {
+	e.t.Helper()
+	lessons.SetBeforeCommitTx(e.t, func() { panic("crash") })
+	if st, _ := e.run(out, params); st != "failed" {
+		e.t.Fatalf("crashed job: status %s", st)
+	}
+	lessons.SetBeforeCommitTx(e.t, func() {})
+}
+
+// restart replays commit journals as a new process would on start.
+func (e *env) restart() {
+	e.t.Helper()
+	if _, err := e.runner.Recover(context.Background()); err != nil {
+		e.t.Fatal(err)
+	}
+	if n := e.count(`SELECT COUNT(*) FROM jobs WHERE commit_journal IS NOT NULL`); n != 0 {
+		e.t.Errorf("%d journals left after recovery", n)
+	}
+}
+
+func TestCrashBeforeTxFirstLesson(t *testing.T) {
+	e := setup(t)
+	e.crash(output("# lost lesson", "a"), `{}`)
+	if !e.root.Exists(lessonRel) {
+		t.Fatal("crash did not leave lesson.md (test setup)")
+	}
+	e.restart()
+	if e.root.Exists(lessonRel) {
+		t.Error("orphan lesson.md not removed")
+	}
+	if st, code := e.run(output("# HTTP lesson", "a"), `{}`); st != "succeeded" {
+		t.Fatalf("next job: %s (%s)", st, code)
+	}
+	if n := e.count(`SELECT COUNT(*) FROM lesson_versions WHERE topic_id = 2 AND version = 1 AND is_current = 1`); n != 1 {
+		t.Error("next job did not record v1")
+	}
+}
+
+func TestCrashBeforeTxRegenerateRestoresLesson(t *testing.T) {
+	e := setup(t)
+	e.run(output("# v1 lesson", "a"), `{}`)
+	v1 := e.read(lessonRel)
+	e.crash(output("# lost v2 lesson", "b"), `{"confirm_regenerate":true}`)
+	if e.read(lessonRel) == v1 || !e.root.Exists(histRel) {
+		t.Fatal("crash did not overwrite lesson.md (test setup)")
+	}
+	e.restart()
+	if e.read(lessonRel) != v1 {
+		t.Error("lesson.md not restored byte for byte")
+	}
+	if e.root.Exists(histRel) {
+		t.Error("history copy left behind")
+	}
+	if st, code := e.run(output("# v2 lesson", "b"), `{"confirm_regenerate":true}`); st != "succeeded" {
+		t.Fatalf("next job: %s (%s)", st, code)
+	}
+	if n := e.count(`SELECT COUNT(*) FROM lesson_versions WHERE version = 2 AND is_current = 1`); n != 1 {
+		t.Error("next job did not record v2")
+	}
+}
+
+func TestCrashRecoveryKeepsModifiedFile(t *testing.T) {
+	e := setup(t)
+	e.crash(output("# lost lesson", "a"), `{}`)
+	if err := e.root.WriteAtomic(lessonRel, []byte("my notes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	e.restart()
+	if e.read(lessonRel) != "my notes" {
+		t.Error("modified file was touched")
+	}
+	if n := e.count(`SELECT COUNT(*) FROM jobs WHERE error_message LIKE ?`, "%"+lessonRel+"%"); n != 1 {
+		t.Error("kept file not reported on the job")
+	}
+}
