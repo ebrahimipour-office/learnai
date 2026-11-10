@@ -51,6 +51,7 @@ type Report struct {
 	Moved    []Move   `json:"moved"`
 	New      []string `json:"new"`      // unregistered files under topics/
 	Modified []Item   `json:"modified"` // content differs from what the app wrote; answer files are expected to change and are left out
+	Skipped  []string `json:"skipped"`  // files under topics/ whose path fsx rejects; never read
 }
 
 // Run is one sync_runs row.
@@ -90,7 +91,7 @@ func (s *Service) Scan(ctx context.Context) (*Run, error) {
 		mtime int64
 	}
 	seen := map[int64]obs{}
-	rep := Report{Missing: []Item{}, Moved: []Move{}, New: []string{}, Modified: []Item{}}
+	rep := Report{Missing: []Item{}, Moved: []Move{}, New: []string{}, Modified: []Item{}, Skipped: []string{}}
 	var missing []row
 	for _, r := range rows {
 		sha, mtime, err := s.observe(r.RelPath)
@@ -107,10 +108,11 @@ func (s *Service) Scan(ctx context.Context) (*Run, error) {
 		}
 	}
 
-	unregistered, err := s.unregistered(registered)
+	unregistered, skipped, err := s.unregistered(registered)
 	if err != nil {
 		return nil, err
 	}
+	rep.Skipped = append(rep.Skipped, skipped...)
 	rep.Moved, rep.New, err = s.match(ctx, missing, unregistered)
 	if err != nil {
 		return nil, err
@@ -189,21 +191,26 @@ func (s *Service) observe(rel string) (sha string, mtime int64, err error) {
 }
 
 // unregistered lists regular files under topics/ that no files row points at, in path order.
-func (s *Service) unregistered(registered map[string]bool) ([]string, error) {
-	var out []string
-	err := fs.WalkDir(s.Root.FS(), topicsDir, func(p string, d fs.DirEntry, err error) error {
+// A path fsx would refuse to open (CR-04) goes to skipped instead of failing the scan.
+func (s *Service) unregistered(registered map[string]bool) (out, skipped []string, err error) {
+	err = fs.WalkDir(s.Root.FS(), topicsDir, func(p string, d fs.DirEntry, err error) error {
 		if errors.Is(err, fs.ErrNotExist) && p == topicsDir {
 			return fs.SkipAll // no topic folder yet
 		}
 		if err != nil {
 			return err
 		}
-		if d.Type().IsRegular() && !registered[p] {
+		if !d.Type().IsRegular() || registered[p] {
+			return nil
+		}
+		if fsx.ValidateRelPath(p) != nil {
+			skipped = append(skipped, p)
+		} else {
 			out = append(out, p)
 		}
 		return nil
 	})
-	return out, err
+	return out, skipped, err
 }
 
 // match pairs missing files with unregistered ones: first by content hash (the app's or the last

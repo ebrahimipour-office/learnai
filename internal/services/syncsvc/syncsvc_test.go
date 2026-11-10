@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"learninghub/internal/domain"
@@ -268,6 +269,29 @@ func TestAmbiguousHashStaysMissingAndNew(t *testing.T) {
 	}
 	if len(run.Report.Moved) != 0 || len(run.Report.Missing) != 1 || len(run.Report.New) != 2 {
 		t.Errorf("report = %+v", run.Report)
+	}
+}
+
+// CR-04: a file name fsx rejects is reported as skipped; the rest of the scan is complete.
+func TestInvalidNameIsSkippedNotFatal(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the file system itself refuses these names")
+	}
+	e := setup(t)
+	const bad = "topics/01-http/notes:draft.md"
+	e.write(bad, "x")
+	e.write("topics/01-http/extra.md", "new")
+	e.move(rubricRel, "topics/01-http/rubric-moved.json")
+	run, err := e.svc.Scan(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := run.Report
+	if len(r.Skipped) != 1 || r.Skipped[0] != bad {
+		t.Errorf("skipped = %v, want [%s]", r.Skipped, bad)
+	}
+	if len(r.Moved) != 1 || len(r.New) != 1 || r.New[0] != "topics/01-http/extra.md" || len(r.Missing) != 0 {
+		t.Errorf("report = %+v", r)
 	}
 }
 

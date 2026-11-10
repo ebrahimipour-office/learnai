@@ -7,7 +7,7 @@
   <button type="submit" class="primary">اسکن اکنون</button>
 </form>
 {{with .Sync}}
-<p class="count">آخرین اسکن: <bdi>{{localTime .StartedAt}}</bdi> — {{len .Report.Missing}} گم‌شده، {{len .Report.Moved}} جابه‌جاشده، {{len .Report.New}} جدید، {{len .Report.Modified}} تغییرکرده</p>
+<p class="count">آخرین اسکن: <bdi>{{localTime .StartedAt}}</bdi> — {{len .Report.Missing}} گم‌شده، {{len .Report.Moved}} جابه‌جاشده، {{len .Report.New}} جدید، {{len .Report.Modified}} تغییرکرده{{if .Report.Skipped}}، {{len .Report.Skipped}} نادیده‌گرفته‌شده{{end}}</p>
 
 {{if .Report.Moved}}<section aria-label="جابه‌جاشده">
 <h2>جابه‌جاشده</h2>
@@ -41,6 +41,12 @@
 {{if .Report.New}}<section aria-label="جدید">
 <h2>جدید (ثبت‌نشده)</h2>
 <ul>{{range .Report.New}}<li><bdi>{{.}}</bdi></li>{{end}}</ul>
+</section>{{end}}
+
+{{if .Report.Skipped}}<section aria-label="نادیده‌گرفته‌شده">
+<h2>نادیده‌گرفته‌شده</h2>
+<p class="note">نام یا مسیر این فایل‌ها مجاز نیست (مثلاً نویسه <bdi>:</bdi> یا مسیر خیلی طولانی)؛ خوانده نشدند. با تغییر نام، در اسکن بعدی بررسی می‌شوند.</p>
+<ul>{{range .Report.Skipped}}<li><bdi>{{.}}</bdi></li>{{end}}</ul>
 </section>{{end}}
 {{else}}<p class="note empty">هنوز اسکنی انجام نشده است.</p>{{end}}
 {{end}}
