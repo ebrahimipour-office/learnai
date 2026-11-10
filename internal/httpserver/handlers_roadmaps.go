@@ -2,7 +2,6 @@ package httpserver
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -24,6 +23,7 @@ import (
 	"learninghub/internal/services/syncsvc"
 	"learninghub/internal/services/topics"
 	"learninghub/internal/ui"
+	"learninghub/skills"
 )
 
 type app struct {
@@ -90,8 +90,9 @@ type pageData struct {
 
 	Doctor              *Doctor
 	Adapter, Model      string
-	Adapters            []string // selectable AI tools on the settings page
-	Privacy, PrivacyAck string   // notice text; RFC3339 time of acknowledgement or ""
+	Adapters            []string        // selectable AI tools on the settings page
+	Privacy, PrivacyAck string          // notice text; RFC3339 time of acknowledgement or ""
+	SkillUpdates        []skills.Update // settings: installed skills older than the embedded ones (§13.2)
 }
 
 type ruleOption struct {
@@ -253,6 +254,11 @@ func (a *app) updateSelection(w http.ResponseWriter, r *http.Request) {
 		}
 	case string(roadmap.RuleChapters):
 		rule, ok = formChapters(r)
+	case string(roadmap.RuleTree): // keep the applied heading list; otherwise every heading (no AI)
+		rule, ok = roadmap.Rule{Kind: roadmap.RuleTree}, true
+		if d.Choice.Rule.Kind == roadmap.RuleTree {
+			rule = d.Choice.Rule
+		}
 	default:
 		rule, ok = parseRule(value)
 	}
@@ -410,7 +416,7 @@ func (a *app) draftAI(r *http.Request, d *roadmaps.Draft, data *pageData) error 
 				data.AILabel = o.Label
 			}
 		}
-		if d.AI.Rule.Kind == roadmap.RuleChapters {
+		if k := d.AI.Rule.Kind; k == roadmap.RuleChapters || k == roadmap.RuleTree {
 			data.AILabel = fmt.Sprintf("%d فصل", len(d.AI.Rule.Chapters))
 		}
 	}
@@ -456,8 +462,13 @@ func (a *app) enqueueDraftJob(w http.ResponseWriter, r *http.Request, kind domai
 	if d == nil {
 		return
 	}
-	params, _ := json.Marshal(roadmaps.AnalyzeParams{DraftID: d.ID})
-	_, err := a.runner.Enqueue(r.Context(), jobs.Job{Kind: kind, Scope: roadmaps.DraftScope(d.ID), Params: params})
+	params, err := roadmaps.DetectParams(d)
+	if err != nil {
+		slog.Error("encoding draft job params", "error", err)
+		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
+		return
+	}
+	_, err = a.runner.Enqueue(r.Context(), jobs.Job{Kind: kind, Scope: roadmaps.DraftScope(d.ID), Params: params})
 	status, notice := http.StatusAccepted, ""
 	switch {
 	case errors.Is(err, domain.ErrScopeBusy):
@@ -568,7 +579,8 @@ func ruleOptions(selected string) []ruleOption {
 	for n := 1; n <= 6; n++ {
 		opts = append(opts, ruleOption{Value: fmt.Sprintf("level-%d", n), Label: fmt.Sprintf("سرفصل‌های سطح %d", n)})
 	}
-	opts = append(opts, ruleOption{Value: "items", Label: "آیتم‌های لیست"})
+	opts = append(opts, ruleOption{Value: "items", Label: "آیتم‌های لیست"},
+		ruleOption{Value: string(roadmap.RuleTree), Label: "هر سرفصل یک رکورد"})
 	if selected == string(roadmap.RuleChapters) { // only reachable through an applied chapter suggestion
 		opts = append(opts, ruleOption{Value: selected, Label: "فصل‌ها"})
 	}

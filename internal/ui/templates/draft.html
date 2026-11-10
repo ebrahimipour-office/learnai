@@ -55,7 +55,7 @@
   {{if .AIRule}}
   <p>قاعده پیشنهادی: <strong>{{.AILabel}}</strong></p>
   {{with .Draft.AI.Title}}<p>عنوان پیشنهادی: <bdi>{{.}}</bdi></p>{{end}}
-  {{with .Draft.AI.Rule.Chapters}}<ol class="chapters">{{range .}}<li><bdi>{{.Title}}</bdi> <span class="note">(خط {{.Line}} تا {{.EndLine}})</span></li>{{end}}</ol>{{end}}
+  {{with .Draft.AI.Rule.Chapters}}<ol class="chapters">{{range .}}<li><bdi>{{.Title}}</bdi> <span class="note">(خط {{.Line}}{{if .EndLine}} تا {{.EndLine}}{{end}})</span></li>{{end}}</ol>{{end}}
   <p dir="auto">{{.Draft.AI.Reason}}</p>
   {{if not .AIApplied}}<form method="post" action="/roadmaps/drafts/{{.Draft.ID}}/selection">
     <input type="hidden" name="csrf_token" value="{{.CSRF}}">

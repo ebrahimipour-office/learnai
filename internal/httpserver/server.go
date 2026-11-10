@@ -53,6 +53,7 @@ func NewServer(addr string, sm *SecurityManager, drafts *roadmaps.Service, topic
 	mux.HandleFunc("POST /settings/doctor", a.rerunDoctor)
 	mux.HandleFunc("POST /settings/privacy", a.ackPrivacy)
 	mux.HandleFunc("POST /settings/adapter", a.selectAdapter)
+	mux.HandleFunc("POST /settings/skills/{name}/upgrade", a.upgradeSkill)
 	mux.HandleFunc("GET /sync", a.showSync)
 	mux.HandleFunc("POST /sync/scan", a.scanSync)
 	mux.HandleFunc("POST /sync/{id}/apply", a.applySync)

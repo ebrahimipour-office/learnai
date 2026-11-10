@@ -121,7 +121,7 @@ func TestDraftAIAssistBusyAndFailure(t *testing.T) {
 	}
 }
 
-// T7.4: detect chapters, apply (rule + title), rename, merge, reject an invalid edit, confirm.
+// T7.4/T8.4: detect chapters (auto-applied as a tree rule), tick, then a chapters rule: rename, merge, reject an invalid edit, confirm.
 func TestDraftChapterFlow(t *testing.T) {
 	e := newEnv(t)
 	e.ad.Output = json.RawMessage(`{"title":"کتاب Go","reason":"هر H2 یک فصل","chapters":[
@@ -141,26 +141,31 @@ func TestDraftChapterFlow(t *testing.T) {
 			t.Fatal("chapter detection did not finish")
 		}
 	}
+	// T8.4: the untouched selection took the suggestion (tree rule + title) on its own; no apply button.
 	page := e.do(httptest.NewRequest(http.MethodGet, draftURL, nil)).Body.String()
-	for _, want := range []string{"<strong>3 فصل</strong>", "عنوان پیشنهادی: <bdi>کتاب Go</bdi>", "همروندی", "(خط 7 تا 8)", "اعمال پیشنهاد"} {
+	for _, want := range []string{"<strong>3 فصل</strong>", "عنوان پیشنهادی: <bdi>کتاب Go</bdi>", "همروندی", "(خط 7)",
+		`value="کتاب Go"`, "<strong>3</strong> موضوع انتخاب‌شده از 3", `value="tree" selected`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("suggestion page missing %q", want)
 		}
 	}
+	if strings.Contains(page, "اعمال پیشنهاد") {
+		t.Error("an applied suggestion offers no apply button")
+	}
+	// ticks under the tree rule keep its heading list
+	keys := regexp.MustCompile(`name="include" value="([^"]+)"`).FindAllStringSubmatch(page, -1)
+	if len(keys) != 3 {
+		t.Fatalf("include keys = %v", keys)
+	}
+	tick := url.Values{"rule": {"tree"}, "shown_rule": {"tree"}, "include": {keys[0][1], keys[2][1]}}
+	if rec := e.selection(draftURL, tick, false); rec.Code != http.StatusSeeOther {
+		t.Fatalf("tick: %d", rec.Code)
+	}
+	if page := e.do(httptest.NewRequest(http.MethodGet, draftURL, nil)).Body.String(); !strings.Contains(page, "<strong>2</strong> موضوع انتخاب‌شده از 3") {
+		t.Errorf("after unticking one tree record\n%s", page)
+	}
 
-	if rec := e.selection(draftURL, url.Values{"rule": {"ai"}}, false); rec.Code != http.StatusSeeOther {
-		t.Fatalf("apply: %d", rec.Code)
-	}
-	page = e.do(httptest.NewRequest(http.MethodGet, draftURL, nil)).Body.String()
-	for _, want := range []string{`value="کتاب Go"`, `name="ch_title" value="توابع"`, "<strong>3</strong> موضوع انتخاب‌شده از 3", `name="merge" value="2"`} {
-		if !strings.Contains(page, want) {
-			t.Errorf("applied page missing %q", want)
-		}
-	}
-	if strings.Contains(page, "اعمال پیشنهاد") || strings.Contains(page, `name="merge" value="3"`) {
-		t.Error("applied: no apply button, and the last chapter has no merge")
-	}
-
+	// the chapters rule (T7.4) is still editable: rename, merge, reject an invalid edit
 	edit := func(merge string, ends ...string) url.Values {
 		v := url.Values{"rule": {"chapters"}, "shown_rule": {"chapters"}, "ch_line": {"3", "5", "7"}, "ch_end": ends,
 			"ch_title": {"مقدمات", " توابع Go ", "همروندی"}}
@@ -174,10 +179,6 @@ func TestDraftChapterFlow(t *testing.T) {
 		t.Fatalf("overlap: want 422 with message, got %d\n%s", rec.Code, rec.Body.String())
 	}
 	// rename chapter 2 and merge 2+3; chapter 1 unticked
-	keys := regexp.MustCompile(`name="include" value="([^"]+)"`).FindAllStringSubmatch(page, -1)
-	if len(keys) != 3 {
-		t.Fatalf("include keys = %v", keys)
-	}
 	v := edit("2", "4", "6", "8")
 	v["include"] = []string{keys[1][1], keys[2][1]}
 	if rec := e.selection(draftURL, v, false); rec.Code != http.StatusSeeOther {

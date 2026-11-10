@@ -28,6 +28,16 @@ func runAnalyze(t *testing.T, ad *fake.Adapter) (*roadmaps.Service, *roadmaps.Dr
 
 func runDraftJob(t *testing.T, ad *fake.Adapter, kind domain.JobKind, content string) (*roadmaps.Service, *roadmaps.Draft, *jobs.Info) {
 	t.Helper()
+	return runDraftJobWith(t, ad, kind, content, func(d *roadmaps.Draft) json.RawMessage {
+		p, _ := json.Marshal(roadmaps.AnalyzeParams{DraftID: d.ID})
+		return p
+	}, nil)
+}
+
+// runDraftJobWith queues the job with params(draft), then calls between (if any) before the runner starts.
+func runDraftJobWith(t *testing.T, ad *fake.Adapter, kind domain.JobKind, content string,
+	params func(*roadmaps.Draft) json.RawMessage, between func(*roadmaps.Service, *roadmaps.Draft)) (*roadmaps.Service, *roadmaps.Draft, *jobs.Info) {
+	t.Helper()
 	s, db, root := newServiceIn(t, t.TempDir())
 	if _, err := skills.Install(root); err != nil {
 		t.Fatal(err)
@@ -42,16 +52,21 @@ func runDraftJob(t *testing.T, ad *fake.Adapter, kind domain.JobKind, content st
 	an := &roadmaps.Analyzer{Drafts: s, Adapter: ad, Timeout: time.Minute, Stall: time.Minute}
 	r.Register(domain.JobKindRoadmapAnalyze, an.Handle)
 	r.Register(domain.JobKindChapterDetect, an.DetectChapters)
+	d0, err := s.Draft(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jid, err := r.Enqueue(ctx, jobs.Job{Kind: kind, Scope: roadmaps.DraftScope(id), Params: params(d0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if between != nil {
+		between(s, d0)
+	}
 	runCtx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 	go func() { defer close(done); r.Run(runCtx) }()
 	t.Cleanup(func() { cancel(); <-done })
-
-	params, _ := json.Marshal(roadmaps.AnalyzeParams{DraftID: id})
-	jid, err := r.Enqueue(ctx, jobs.Job{Kind: kind, Scope: roadmaps.DraftScope(id), Params: params})
-	if err != nil {
-		t.Fatal(err)
-	}
 	var j *jobs.Info
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
 		if j, err = r.Get(ctx, jid); err != nil {
@@ -130,6 +145,7 @@ func TestTitlesDropsBody(t *testing.T) {
 // book: H1 title, preface, two H2 chapters (one with a sub-heading), a code block with '#'.
 const book = "# کتاب Go\npreface\n## مقدمات\nبدنه یک\n### نوع‌ها\nint\n## توابع\n```\n# نه سرفصل\n```\nfunc\n"
 
+// Skill 1.0.0 output (flat chapters with end_line) still validates and becomes a tree rule (§13.2).
 func TestDetectChaptersStoresSuggestionOnly(t *testing.T) {
 	ad := &fake.Adapter{Scenario: fake.OK, Output: json.RawMessage(`{"title":" کتاب Go ","reason":"هر H2 یک فصل",
 		"chapters":[{"title":"مقدمات","start_line":3,"end_line":6},{"title":" توابع ","start_line":7,"end_line":11}]}`)}
@@ -137,7 +153,7 @@ func TestDetectChaptersStoresSuggestionOnly(t *testing.T) {
 	if j.Status != "succeeded" {
 		t.Fatalf("job %s: %s %s", j.Status, j.ErrorCode, j.ErrorMessage)
 	}
-	want := roadmap.Rule{Kind: roadmap.RuleChapters, Chapters: []roadmap.Chapter{{Line: 3, EndLine: 6, Title: "مقدمات"}, {Line: 7, EndLine: 11, Title: "توابع"}}}
+	want := roadmap.Rule{Kind: roadmap.RuleTree, Chapters: []roadmap.Chapter{{Line: 3, Title: "مقدمات"}, {Line: 7, Title: "توابع"}}}
 	if d.AI == nil || !reflect.DeepEqual(d.AI.Rule, want) || d.AI.Title != "کتاب Go" || d.AI.JobID != j.ID {
 		t.Fatalf("suggestion = %+v", d.AI)
 	}
@@ -156,8 +172,9 @@ func TestDetectChaptersStoresSuggestionOnly(t *testing.T) {
 
 func TestDetectChaptersRejectsInvalidRanges(t *testing.T) {
 	for name, chapters := range map[string]string{
-		"overlap":       `[{"title":"a","start_line":3,"end_line":7},{"title":"b","start_line":7,"end_line":11}]`,
-		"out of range":  `[{"title":"a","start_line":3,"end_line":12}]`,
+		"descending":    `[{"title":"a","start_line":7},{"title":"b","start_line":3}]`,
+		"duplicate":     `[{"title":"a","start_line":3},{"title":"b","start_line":3}]`,
+		"blank title":   `[{"title":" ","start_line":3}]`,
 		"not a heading": `[{"title":"a","start_line":9,"end_line":10}]`,
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -191,5 +208,50 @@ func TestOutlineShowsHeadingsAndShortPreview(t *testing.T) {
 	long := []byte("# t\n" + strings.Repeat("ب", 400) + "\n")
 	if p := roadmaps.Outline(roadmap.Parse(long), long)[0].Preview; len([]rune(p)) != 300 {
 		t.Errorf("preview has %d runes, want 300", len([]rune(p)))
+	}
+}
+
+// nested is skill 2.0.0 output: every heading, H3 under its H2, no end_line.
+const nested = `{"title":"کتاب Go","reason":"همه سرفصل‌ها","chapters":[
+	{"title":"مقدمات","start_line":3},{"title":"نوع‌ها","start_line":5},{"title":"توابع","start_line":7}]}`
+
+func detectParams(d *roadmaps.Draft) json.RawMessage {
+	p, err := roadmaps.DetectParams(d)
+	if err != nil {
+		panic(err)
+	}
+	return p
+}
+
+// T8.4: an untouched selection takes the suggestion (and the title, first import) at commit; still no record or file.
+func TestDetectChaptersAutoApplies(t *testing.T) {
+	ad := &fake.Adapter{Scenario: fake.OK, Output: json.RawMessage(nested)}
+	_, d, j := runDraftJobWith(t, ad, domain.JobKindChapterDetect, book, detectParams, nil)
+	if j.Status != "succeeded" {
+		t.Fatalf("job %s: %s %s", j.Status, j.ErrorCode, j.ErrorMessage)
+	}
+	if d.AI == nil || !reflect.DeepEqual(d.Choice, roadmaps.Choice{Rule: d.AI.Rule}) || d.Title != "کتاب Go" {
+		t.Fatalf("not applied: choice %+v, title %q, suggestion %+v", d.Choice, d.Title, d.AI)
+	}
+	sel, err := d.Preview(d.Choice)
+	if err != nil || len(sel.Topics) != 3 || sel.Topics[1].Parent != 0 || sel.Topics[2].Parent != -1 {
+		t.Errorf("preview = %+v, %v", sel.Topics, err)
+	}
+}
+
+// T8.4: a selection changed while the job ran is kept; the suggestion waits for «اعمال پیشنهاد».
+func TestDetectChaptersKeepsUserSelection(t *testing.T) {
+	ad := &fake.Adapter{Scenario: fake.OK, Output: json.RawMessage(nested)}
+	user := roadmaps.Choice{Rule: roadmap.Rule{Kind: roadmap.RuleLevel, Level: 2}}
+	_, d, j := runDraftJobWith(t, ad, domain.JobKindChapterDetect, book, detectParams, func(s *roadmaps.Service, d *roadmaps.Draft) {
+		if err := s.SetChoice(context.Background(), d, user); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if j.Status != "succeeded" || d.AI == nil {
+		t.Fatalf("job %s, suggestion %+v", j.Status, d.AI)
+	}
+	if !reflect.DeepEqual(d.Choice, user) || d.Title != "" {
+		t.Errorf("user's selection overwritten: %+v %q", d.Choice, d.Title)
 	}
 }

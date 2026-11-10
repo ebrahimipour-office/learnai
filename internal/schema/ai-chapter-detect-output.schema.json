@@ -14,7 +14,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["title", "start_line", "end_line"],
+        "required": ["title", "start_line"],
         "properties": {
           "title": { "type": "string", "minLength": 1, "maxLength": 200 },
           "start_line": { "type": "integer", "minimum": 1 },

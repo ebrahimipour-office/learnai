@@ -13,6 +13,7 @@ import (
 	"learninghub/internal/ai"
 	"learninghub/internal/ai/fake"
 	"learninghub/internal/httpserver"
+	"learninghub/skills"
 )
 
 func (e *env) settingsPage(rerun bool) string {
@@ -173,5 +174,34 @@ func TestSettingsSelectAdapter(t *testing.T) {
 	}
 	if b := e.settingsPage(false); !strings.Contains(b, `<option value="antigravity" selected>`) {
 		t.Fatalf("new tool not shown:\n%s", b)
+	}
+}
+
+// T8.4: an installed skill older than the embedded one is offered for upgrade, never replaced silently.
+func TestSettingsSkillUpgrade(t *testing.T) {
+	e := newEnv(t)
+	rel := skills.SkillRel("chapter-detector")
+	old := []byte("---\nname: chapter-detector\nversion: 1.0.0\n---\nmine\n")
+	if err := e.root.WriteAtomic(rel, old, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	page := e.settingsPage(false)
+	if !strings.Contains(page, "نسخه جدید مهارت") || !strings.Contains(page, `action="/settings/skills/chapter-detector/upgrade"`) {
+		t.Fatalf("no upgrade offer\n%s", page)
+	}
+	if b, _ := e.root.ReadFile(rel); string(b) != string(old) {
+		t.Fatal("viewing settings changed the skill")
+	}
+	if rec := e.post("/settings/skills/lesson-generator/upgrade", nil, false); rec.Code != http.StatusNotFound {
+		t.Errorf("up-to-date skill: want 404, got %d", rec.Code)
+	}
+	if rec := e.post("/settings/skills/chapter-detector/upgrade", nil, false); rec.Code != http.StatusSeeOther {
+		t.Fatalf("upgrade: %d %s", rec.Code, rec.Body.String())
+	}
+	if b, _ := e.root.ReadFile(".agent/chapter-detector/SKILL.1.0.0.bak.md"); string(b) != string(old) {
+		t.Errorf("backup = %q", b)
+	}
+	if strings.Contains(e.settingsPage(false), "نسخه جدید مهارت") {
+		t.Error("offer still shown after upgrade")
 	}
 }

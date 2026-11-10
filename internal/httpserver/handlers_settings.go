@@ -12,6 +12,7 @@ import (
 
 	"learninghub/internal/ai"
 	"learninghub/internal/store"
+	"learninghub/skills"
 )
 
 // Settings is what the settings page shows and checks (TDD §7.2 /settings, R7.3, R9).
@@ -92,10 +93,16 @@ func (a *app) renderSettings(w http.ResponseWriter, r *http.Request, status int,
 		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
 		return
 	}
+	ups, err := skills.Outdated(a.root)
+	if err != nil {
+		slog.Error("checking skill versions", "error", err)
+		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
+		return
+	}
 	d := a.doctor(r.Context(), false)
 	a.render(w, status, "settings", "layout", &pageData{Title: "تنظیمات", Error: msg, Doctor: &d,
 		Model: ai.ModelFor(a.settings.Adapter, a.settings.Model), Adapter: a.settings.Adapter.Name(),
-		Adapters: a.adapterNames(), PrivacyAck: ack, Privacy: PrivacyNotice})
+		Adapters: a.adapterNames(), PrivacyAck: ack, Privacy: PrivacyNotice, SkillUpdates: ups})
 }
 
 func (a *app) adapterNames() []string {
@@ -148,6 +155,19 @@ func (a *app) selectAdapter(w http.ResponseWriter, r *http.Request) {
 	a.probeMu.Unlock()
 	slog.Info("AI tool selected", "adapter", name)
 	http.Redirect(w, r, "/settings", http.StatusSeeOther)
+}
+
+// upgradeSkill replaces an outdated installed skill with the embedded one after a backup copy (§13.2).
+func (a *app) upgradeSkill(w http.ResponseWriter, r *http.Request) {
+	switch err := skills.Upgrade(a.root, r.PathValue("name")); {
+	case errors.Is(err, skills.ErrNotOutdated):
+		a.renderSettings(w, r, http.StatusNotFound, "نسخه جدیدتری برای این مهارت وجود ندارد.")
+	case err != nil:
+		slog.Error("upgrading skill", "skill", r.PathValue("name"), "error", err)
+		a.renderSettings(w, r, http.StatusInternalServerError, "به‌روزرسانی مهارت ناموفق بود: "+err.Error())
+	default:
+		http.Redirect(w, r, "/settings", http.StatusSeeOther)
+	}
 }
 
 func (a *app) rerunDoctor(w http.ResponseWriter, r *http.Request) {

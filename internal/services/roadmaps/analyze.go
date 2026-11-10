@@ -2,6 +2,7 @@ package roadmaps
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,6 +36,18 @@ type Suggestion struct {
 // AnalyzeParams is jobs.params for a roadmap_analyze or chapter_detect job.
 type AnalyzeParams struct {
 	DraftID string `json:"draft_id"`
+	// Selection is import_drafts.selection when the job was queued. A chapter_detect commit applies its
+	// suggestion only while the selection still equals it (compare-and-swap, §13.2); "" = never apply.
+	Selection string `json:"selection,omitempty"`
+}
+
+// DetectParams is the params of a chapter_detect job on d, with d's current selection for the auto-apply.
+func DetectParams(d *Draft) (json.RawMessage, error) {
+	sel, err := json.Marshal(d.Choice) // same encoding CreateDraft and SetChoice store
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(AnalyzeParams{DraftID: d.ID, Selection: string(sel)})
 }
 
 // DraftScope is the job scope of a draft: one analysis at a time per draft.
@@ -67,6 +80,7 @@ type draftTask struct {
 	schema   string
 	files    map[string][]byte // inputs/<name>
 	validate func(json.RawMessage) (Suggestion, error)
+	apply    bool // chapter_detect: also apply the suggestion if the selection is unchanged (§13.2)
 }
 
 func (a *Analyzer) Handle(ctx context.Context, j jobs.Job) error {
@@ -105,6 +119,7 @@ func (a *Analyzer) DetectChapters(ctx context.Context, j jobs.Job) error {
 			task: ai.TaskChapterDetect, skill: chapterSkill, schema: "ai-chapter-detect-output.schema.json",
 			files:    map[string][]byte{"task.json": task, "outline.json": outline},
 			validate: func(raw json.RawMessage) (Suggestion, error) { return ValidateChapterSuggestion(tree, lines, raw) },
+			apply:    true,
 		}, err
 	})
 }
@@ -178,6 +193,18 @@ func (a *Analyzer) run(ctx context.Context, j jobs.Job, build func(*Draft, *road
 		if n, _ := res.RowsAffected(); n == 0 {
 			return ErrDraftNotFound
 		}
+		if t.apply && p.Selection != "" {
+			choice, err := json.Marshal(Choice{Rule: sug.Rule})
+			if err != nil {
+				return err
+			}
+			title := sql.NullString{String: sug.Title, Valid: d.RoadmapID == 0 && sug.Title != ""} // first import only
+			// No row = the user changed the selection meanwhile: the suggestion waits for «اعمال پیشنهاد».
+			if _, err := db.ExecContext(ctx, `UPDATE import_drafts SET selection = ?, title = COALESCE(title, ?) WHERE id = ? AND selection = ?`,
+				string(choice), title, d.ID, p.Selection); err != nil {
+				return err
+			}
+		}
 		ref, _ := json.Marshal(map[string]string{"draft_id": d.ID})
 		_, err = db.ExecContext(ctx, `UPDATE jobs SET result_ref = ? WHERE id = ?`, string(ref), j.ID)
 		return err
@@ -209,8 +236,9 @@ func ValidateSuggestion(tree *roadmap.Node, raw json.RawMessage) (Suggestion, er
 	return s, nil
 }
 
-// ValidateChapterSuggestion checks chapter_detect output: schema, then roadmap.ValidateChapters on the
-// draft (lines = its line count). start_line maps to the chapters rule's line; titles are trimmed.
+// ValidateChapterSuggestion checks chapter_detect output: schema, then roadmap.ValidateChapters (nested) on
+// the draft (lines = its line count). It yields a tree rule (§13.2): start_line maps to line, titles are
+// trimmed and end_line is dropped (the software computes ranges), so skill 1.0.0's flat output still fits.
 func ValidateChapterSuggestion(tree *roadmap.Node, lines int, raw json.RawMessage) (Suggestion, error) {
 	var out struct {
 		Title    string `json:"title"`
@@ -218,7 +246,6 @@ func ValidateChapterSuggestion(tree *roadmap.Node, lines int, raw json.RawMessag
 		Chapters []struct {
 			Title     string `json:"title"`
 			StartLine int    `json:"start_line"`
-			EndLine   int    `json:"end_line"`
 		} `json:"chapters"`
 	}
 	if err := schema.ValidateAIChapterDetectOutput(raw); err != nil {
@@ -227,11 +254,11 @@ func ValidateChapterSuggestion(tree *roadmap.Node, lines int, raw json.RawMessag
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return Suggestion{}, fmt.Errorf("%w: %v", ai.ErrInvalidOutput, err)
 	}
-	s := Suggestion{Rule: roadmap.Rule{Kind: roadmap.RuleChapters}, Title: strings.TrimSpace(out.Title), Reason: strings.TrimSpace(out.Reason)}
+	s := Suggestion{Rule: roadmap.Rule{Kind: roadmap.RuleTree}, Title: strings.TrimSpace(out.Title), Reason: strings.TrimSpace(out.Reason)}
 	for _, c := range out.Chapters {
-		s.Rule.Chapters = append(s.Rule.Chapters, roadmap.Chapter{Line: c.StartLine, EndLine: c.EndLine, Title: strings.TrimSpace(c.Title)})
+		s.Rule.Chapters = append(s.Rule.Chapters, roadmap.Chapter{Line: c.StartLine, Title: strings.TrimSpace(c.Title)})
 	}
-	if err := roadmap.ValidateChapters(tree, lines, s.Rule.Chapters, false); err != nil {
+	if err := roadmap.ValidateChapters(tree, lines, s.Rule.Chapters, true); err != nil {
 		return s, fmt.Errorf("%w: %v", ai.ErrInvalidOutput, err)
 	}
 	if s.Title == "" || s.Reason == "" {

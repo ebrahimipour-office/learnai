@@ -16,6 +16,18 @@
 {{end}}
 </section>
 
+{{if .SkillUpdates}}<section>
+<h2>نسخه جدید مهارت</h2>
+<p class="note">نسخه نصب‌شده این مهارت‌ها قدیمی‌تر از نسخه همراه برنامه است. به‌روزرسانی، فایل فعلی را کنار آن پشتیبان می‌گیرد و سپس جایگزین می‌کند.</p>
+<ul>{{range .SkillUpdates}}
+  <li><bdi>{{.Name}}</bdi>: <bdi>{{.Installed}}</bdi> ← <bdi>{{.Embedded}}</bdi>
+    <form method="post" action="/settings/skills/{{.Name}}/upgrade" class="inline">
+      <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+      <button type="submit">به‌روزرسانی</button>
+    </form></li>{{end}}
+</ul>
+</section>{{end}}
+
 <section>
 <h2>ابزار هوش مصنوعی (doctor)</h2>
 {{if .Adapters}}
