@@ -18,6 +18,13 @@ import (
 
 var ErrNothingSelected = errors.New("no topics selected")
 
+// ErrTooManyTopics: a tree selection keeps more than MaxTreeTopics records; the user must untick some (R12).
+var ErrTooManyTopics = errors.New("too many topics for the tree rule")
+
+// MaxTreeTopics caps the records one tree import creates, so a heading-dense file cannot flood topics/ (R12).
+// shortcut: a constant like MaxSourceBytes; move to [limits] if a user ever needs a different cap.
+const MaxTreeTopics = 200
+
 // maxDirSlugRunes keeps topics/<NN-slug>/... well under fsx's 220-byte path limit for Persian titles.
 const maxDirSlugRunes = 40
 
@@ -40,6 +47,9 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 	kept := KeptTopics(sel, d.Choice.Excluded)
 	if len(kept) == 0 {
 		return 0, 0, ErrNothingSelected
+	}
+	if d.Choice.Rule.Kind == roadmap.RuleTree && len(kept) > MaxTreeTopics {
+		return 0, 0, ErrTooManyTopics
 	}
 	usedGroup := make([]bool, len(sel.Groups))
 	var groupKeys []string

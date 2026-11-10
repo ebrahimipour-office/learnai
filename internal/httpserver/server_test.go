@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"maps"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -121,7 +122,29 @@ func (e *env) uploadTo(roadmapID, name string, content []byte) *httptest.Respons
 	req := httptest.NewRequest(http.MethodPost, "/roadmaps/drafts", &body)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	req.Header.Set("Origin", "http://127.0.0.1:8787")
-	return e.do(req)
+	rec := e.do(req)
+	if loc := rec.Header().Get("Location"); rec.Code == http.StatusSeeOther {
+		e.waitDraftJob(loc)
+	}
+	return rec
+}
+
+// waitDraftJob waits for the chapter_detect queued on upload (§13.2), so confirm never races it.
+func (e *env) waitDraftJob(draftURL string) {
+	e.t.Helper()
+	scope := "draft:" + strings.TrimPrefix(draftURL, "/roadmaps/drafts/")
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		var active int
+		if err := e.db.Writer().QueryRow(`SELECT COUNT(*) FROM jobs WHERE scope_key = ? AND status IN ('queued','running')`, scope).Scan(&active); err != nil {
+			e.t.Fatal(err)
+		}
+		if active == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			e.t.Fatalf("draft job on %s did not finish", scope)
+		}
+	}
 }
 
 func (e *env) selection(draftURL string, form url.Values, htmx bool) *httptest.ResponseRecorder {
@@ -270,7 +293,12 @@ func extractValues(s, prefix string) []string {
 	}
 }
 
+// confirm posts the confirm form; without an explicit no_ai field it chooses «ادامه بدون AI» (§13.3).
 func (e *env) confirm(draftURL string, form url.Values) *httptest.ResponseRecorder {
+	if _, ok := form["no_ai"]; !ok {
+		form = maps.Clone(form)
+		form.Set("no_ai", "1")
+	}
 	req := httptest.NewRequest(http.MethodPost, draftURL+"/confirm", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Origin", "http://127.0.0.1:8787")

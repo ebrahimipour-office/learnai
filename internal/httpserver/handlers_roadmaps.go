@@ -58,6 +58,7 @@ type pageData struct {
 	AIRule, AILabel string       // T6.2 suggested rule as form value and label; "" = no suggestion
 	AIApplied       bool         // the draft's rule is exactly the suggested one
 	Chapters        []chapterRow // chapters rule only: editable list instead of Items
+	TreeCap         int          // >0: the ticked tree records exceed this cap and confirm will fail (R12)
 
 	Query, Status       string
 	Statuses            []ruleOption
@@ -214,7 +215,28 @@ func (a *app) createDraft(w http.ResponseWriter, r *http.Request) {
 		slog.Error("creating draft", "error", err)
 		fail(http.StatusInternalServerError, "ساخت پیش‌نویس ناموفق بود.")
 	default:
+		a.autoDetect(r, id)
 		http.Redirect(w, r, "/roadmaps/drafts/"+id, http.StatusSeeOther)
+	}
+}
+
+// autoDetect queues chapter_detect right after upload or re-import (§13.2). Without the privacy
+// acknowledgement nothing is sent; the preview then offers the no-AI path (§13.3).
+func (a *app) autoDetect(r *http.Request, id string) {
+	ctx := r.Context()
+	ack, err := a.privacyAck(ctx)
+	if err != nil || ack == "" {
+		if err != nil {
+			slog.Error("reading privacy_ack", "error", err)
+		}
+		return
+	}
+	d, err := a.drafts.Draft(ctx, id)
+	if err == nil {
+		err = a.queueDraftJob(r, d, domain.JobKindChapterDetect)
+	}
+	if err != nil {
+		slog.Error("queueing chapter detection", "draft", id, "error", err)
 	}
 }
 
@@ -318,6 +340,29 @@ func (a *app) confirmDraft(w http.ResponseWriter, r *http.Request) {
 		a.renderDraft(w, r, http.StatusConflict, d, "برای ثبت، تأیید لازم است.")
 		return
 	}
+	// §13.3: confirm only after the AI suggestion, or when the user explicitly chose «ادامه بدون AI».
+	j, err := a.runner.Latest(r.Context(), roadmaps.DraftScope(d.ID), "")
+	if err != nil {
+		slog.Error("loading draft job", "error", err)
+		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
+		return
+	}
+	if j != nil && j.Active() {
+		a.renderDraft(w, r, http.StatusConflict, d, "تشخیص سرفصل‌ها با AI هنوز در جریان است؛ پس از پایان آن تأیید کنید.")
+		return
+	}
+	if d.AI == nil && r.FormValue("no_ai") != "1" {
+		a.renderDraft(w, r, http.StatusConflict, d, "پیشنهاد AI هنوز آماده نیست؛ صبر کنید یا «ادامه بدون AI» را انتخاب کنید.")
+		return
+	}
+	// The «ادامه بدون AI» button imports with every heading as a record (I10); ticks under tree are kept.
+	if r.FormValue("rule") == string(roadmap.RuleTree) && d.Choice.Rule.Kind != roadmap.RuleTree {
+		if err := a.drafts.SetChoice(r.Context(), d, roadmaps.Choice{Rule: roadmap.Rule{Kind: roadmap.RuleTree}}); err != nil {
+			slog.Error("saving no-AI selection", "error", err)
+			a.renderDraft(w, r, http.StatusUnprocessableEntity, d, "ذخیره انتخاب ناموفق بود.")
+			return
+		}
+	}
 	// T7.2: the title edited in the preview; on re-import it is used only when "replace" is ticked.
 	if _, ok := r.Form["title"]; ok {
 		title := r.FormValue("title")
@@ -333,10 +378,12 @@ func (a *app) confirmDraft(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	_, _, err := a.drafts.Confirm(r.Context(), d.ID)
+	_, _, err = a.drafts.Confirm(r.Context(), d.ID)
 	switch {
 	case errors.Is(err, roadmaps.ErrNothingSelected):
 		a.renderDraft(w, r, http.StatusUnprocessableEntity, d, "هیچ موضوعی انتخاب نشده است.")
+	case errors.Is(err, roadmaps.ErrTooManyTopics):
+		a.renderDraft(w, r, http.StatusUnprocessableEntity, d, fmt.Sprintf("حداکثر %d رکورد در یک ورود؛ تیک برخی سرفصل‌ها را بردارید.", roadmaps.MaxTreeTopics))
 	case errors.Is(err, roadmaps.ErrDraftNotFound):
 		a.renderNew(w, r, http.StatusNotFound, "پیش‌نویس پیدا نشد، منقضی شده یا قبلاً ثبت شده است.")
 	case err != nil:
@@ -392,6 +439,9 @@ func (a *app) renderDraft(w http.ResponseWriter, r *http.Request, status int, d 
 		Total:        len(sel.Topics),
 		SuggestItems: len(sel.Topics) == 0 && d.Choice.Rule.Kind != roadmap.RuleItems,
 		Diff:         diff,
+	}
+	if d.Choice.Rule.Kind == roadmap.RuleTree && included > roadmaps.MaxTreeTopics {
+		data.TreeCap = roadmaps.MaxTreeTopics
 	}
 	if err := a.draftAI(r, d, data); err != nil {
 		slog.Error("loading draft analysis", "error", err)
@@ -462,13 +512,7 @@ func (a *app) enqueueDraftJob(w http.ResponseWriter, r *http.Request, kind domai
 	if d == nil {
 		return
 	}
-	params, err := roadmaps.DetectParams(d)
-	if err != nil {
-		slog.Error("encoding draft job params", "error", err)
-		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
-		return
-	}
-	_, err = a.runner.Enqueue(r.Context(), jobs.Job{Kind: kind, Scope: roadmaps.DraftScope(d.ID), Params: params})
+	err := a.queueDraftJob(r, d, kind)
 	status, notice := http.StatusAccepted, ""
 	switch {
 	case errors.Is(err, domain.ErrScopeBusy):
@@ -487,6 +531,15 @@ func (a *app) enqueueDraftJob(w http.ResponseWriter, r *http.Request, kind domai
 		return
 	}
 	a.renderDraftAI(w, r, status, d, notice)
+}
+
+func (a *app) queueDraftJob(r *http.Request, d *roadmaps.Draft, kind domain.JobKind) error {
+	params, err := roadmaps.DetectParams(d)
+	if err != nil {
+		return fmt.Errorf("encoding draft job params: %w", err)
+	}
+	_, err = a.runner.Enqueue(r.Context(), jobs.Job{Kind: kind, Scope: roadmaps.DraftScope(d.ID), Params: params})
+	return err
 }
 
 // buildTree nests topics under their groups. Topics arrive in document order and a group is

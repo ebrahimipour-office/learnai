@@ -12,7 +12,8 @@
   {{if .Draft.RoadmapID}}<label><input type="checkbox" name="replace_title" value="1"{{if .Draft.Title}} checked{{end}}> عنوان فعلی را با این عنوان جایگزین کن</label>
   <p class="note">بدون این تیک، عنوان فعلی نقشه راه می‌ماند.</p>{{else}}
   <p class="note">پیش‌فرض: اولین سرفصل H1 فایل، یا نام فایل اگر H1 ندارد.</p>{{end}}
-  <button type="submit" class="primary">تأیید و ثبت موضوعات انتخاب‌شده</button>
+  <button type="submit" class="primary"{{if or (not .Draft.AI) (and .Job .Job.Active)}} disabled{{end}}>تأیید و ثبت موضوعات انتخاب‌شده</button>
+  {{if not .Draft.AI}}<p class="note">تأیید پس از پیشنهاد AI فعال می‌شود.</p>{{end}}
 </form>
 {{end}}
 
@@ -29,6 +30,7 @@
   <noscript><button type="submit">اعمال</button></noscript>
   {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
   <p class="count" aria-live="polite"><strong>{{.Included}}</strong> موضوع انتخاب‌شده از {{.Total}}</p>
+  {{with .TreeCap}}<p class="error" role="alert">بیش از {{.}} رکورد انتخاب شده است؛ پیش از تأیید تیک برخی سرفصل‌ها را بردارید.</p>{{end}}
   {{if .SuggestItems}}<p class="hint">با این قاعده هیچ موضوعی پیدا نشد. قاعده «آیتم‌های لیست» را امتحان کنید.</p>{{end}}
   {{with .Diff}}{{template "diff" .}}{{end}}
   {{if .Chapters}}
@@ -51,7 +53,7 @@
 <section id="draft-ai" class="ai-suggestion" aria-label="پیشنهاد AI"{{if and .Job .Job.Active}}
          hx-get="/roadmaps/drafts/{{.Draft.ID}}/ai?poll=1" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
   <h2>پیشنهاد AI</h2>
-  <p class="note">برای ساختارهای مبهم؛ جدا از قاعده قطعی بالا و تا وقتی اعمالش نکنید هیچ اثری ندارد.</p>
+  <p class="note">هنگام بارگذاری خودکار اجرا می‌شود؛ اگر در این فاصله انتخاب را تغییر نداده باشید، پیشنهاد خودکار اعمال می‌شود.</p>
   {{if .AIRule}}
   <p>قاعده پیشنهادی: <strong>{{.AILabel}}</strong></p>
   {{with .Draft.AI.Title}}<p>عنوان پیشنهادی: <bdi>{{.}}</bdi></p>{{end}}
@@ -64,7 +66,20 @@
   </form>{{end}}
   {{end}}
   {{with .Job}}{{if .Active}}<p aria-live="polite">در حال تحلیل… ({{jobStatus .Status}})</p>
-  {{else if eq .Status "failed"}}<p class="error" role="alert">تحلیل ناموفق بود: {{or (aiMessage .ErrorCode) .ErrorMessage}}</p>{{end}}{{end}}
+  {{else if eq .Status "failed"}}<p class="error" role="alert">تحلیل ناموفق بود: {{or (aiMessage .ErrorCode) .ErrorMessage}}
+    {{if or (eq .ErrorCode "auth_required") (eq .ErrorCode "adapter_missing")}}<a href="/settings">تنظیمات</a>{{end}}</p>
+  <details><summary>جزئیات فنی</summary>
+    <p dir="ltr"><code>{{.ErrorCode}}</code> {{.ErrorMessage}}</p>
+    <p>لاگ کار: <code dir="ltr">.app/logs/jobs/{{.ID}}/</code></p>
+  </details>{{end}}{{else}}{{if not .AIRule}}<p class="error" role="alert">AI اجرا نشد؛ متن حریم خصوصی هنوز تأیید نشده است. <a href="/settings">تنظیمات</a></p>{{end}}{{end}}
+  {{if and (not .AIRule) (not (and .Job .Job.Active))}}
+  <p><strong>هوش مصنوعی در دسترس نیست. با روش قطعی «هر سرفصل یک رکورد (بدون AI)» وارد شود؟</strong></p>
+  <form method="post" action="/roadmaps/drafts/{{.Draft.ID}}/confirm">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <input type="hidden" name="confirm" value="1"><input type="hidden" name="no_ai" value="1">
+    <input type="hidden" name="rule" value="tree">
+    <button type="submit" class="primary">ادامه بدون AI</button>
+  </form>{{end}}
   {{if not (and .Job .Job.Active)}}<form method="post" action="/roadmaps/drafts/{{.Draft.ID}}/ai-assist"
         hx-post="/roadmaps/drafts/{{.Draft.ID}}/ai-assist" hx-target="#draft-ai" hx-swap="outerHTML">
     <input type="hidden" name="csrf_token" value="{{.CSRF}}">
@@ -73,7 +88,7 @@
   <form method="post" action="/roadmaps/drafts/{{.Draft.ID}}/chapters"
         hx-post="/roadmaps/drafts/{{.Draft.ID}}/chapters" hx-target="#draft-ai" hx-swap="outerHTML">
     <input type="hidden" name="csrf_token" value="{{.CSRF}}">
-    <button type="submit">تشخیص فصل‌ها با AI</button>
+    <button type="submit">{{if .AIRule}}تشخیص دوباره{{else}}تلاش دوباره{{end}}</button>
   </form>
   <p class="note">بدون AI: قاعده «سرفصل‌های سطح ۲» هم هر سرفصل H2 را یک فصل می‌کند.</p>{{end}}
   {{with .Notice}}<p class="error" role="alert">{{.}}</p>{{end}}

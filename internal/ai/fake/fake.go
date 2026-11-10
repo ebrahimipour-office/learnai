@@ -23,6 +23,7 @@ const (
 
 	InvalidJSON      = "invalid_json"       // every run returns output that fails the schema
 	InvalidThenValid = "invalid_then_valid" // first run invalid, later runs return Output
+	Missing          = "missing"            // the tool binary is not installed (adapter_missing)
 )
 
 // invalid is valid JSON that no output schema accepts.
@@ -74,6 +75,8 @@ func (a *Adapter) Run(ctx context.Context, req ai.Request, events chan<- ai.Even
 		return &ai.Response{Structured: a.Output}, nil
 	case OK:
 		return &ai.Response{Structured: a.Output}, nil
+	case Missing:
+		return nil, fmt.Errorf("%w: fake-agent not on PATH", ai.ErrBinaryNotFound)
 	case Slow, Hang:
 		return a.wait(ctx, req, events)
 	case Injection:

@@ -128,7 +128,7 @@ func TestAcceptanceR11_2(t *testing.T) {
 			t.Errorf("R11.2-8: %v: want 403, got %d", h, rec.Code)
 		}
 	}
-	if n := count(`SELECT COUNT(*) FROM jobs`); n != 0 {
+	if n := count(`SELECT COUNT(*) FROM jobs WHERE topic_id IS NOT NULL`); n != 0 {
 		t.Fatalf("R11.2-8: refused requests must not enqueue, got %d jobs", n)
 	}
 
