@@ -46,9 +46,11 @@ type candidate struct {
 	roadmapID, revID int64
 	sel              *roadmap.Selection
 	t                roadmap.Topic
+	parentKey        string // stable key of the kept topic above t (tree rule); "" = top level
 	ord              int
 	active           bool // in the latest revision
 	used             bool
+	id               int64 // topics.id once inserted
 }
 
 type run struct {
@@ -163,17 +165,12 @@ func (r *run) roadmaps() (map[string][]*candidate, error) {
 				r.warn("%s: no topics with rule %s: %v", rel, choice.Rule.Kind, err)
 				continue
 			}
-			excluded := map[string]bool{}
-			for _, k := range choice.Excluded {
-				excluded[k] = true
-			}
-			ord := 0
-			for _, t := range sel.Topics {
-				if excluded[t.StableKey] {
-					continue
+			kept := roadmaps.KeptTopics(sel, choice.Excluded)
+			for i, t := range kept {
+				c := &candidate{roadmapID: rid, revID: revID, sel: sel, t: t, ord: i + 1, active: latest}
+				if t.Parent >= 0 {
+					c.parentKey = kept[t.Parent].StableKey
 				}
-				ord++
-				c := &candidate{roadmapID: rid, revID: revID, sel: sel, t: t, ord: ord, active: latest}
 				// A later revision replaces the same key's entry from an earlier one of this roadmap.
 				list := cands[t.StableKey]
 				if k := len(list) - 1; k >= 0 && list[k].roadmapID == rid {
@@ -333,6 +330,18 @@ func (r *run) topics(cands map[string][]*candidate) error {
 			return err
 		}
 	}
+	// Parents last: folders are matched in folder order, so a child may be inserted before its parent.
+	for _, list := range cands {
+		for _, c := range list {
+			if c.id == 0 || c.parentKey == "" {
+				continue
+			}
+			if _, err := r.tx.ExecContext(r.ctx, `UPDATE topics SET parent_id =
+				(SELECT id FROM topics WHERE roadmap_id = ? AND stable_key = ?) WHERE id = ?`, c.roadmapID, c.parentKey, c.id); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
@@ -371,6 +380,7 @@ func (r *run) insertTopic(c *candidate, slug, dir string) (int64, error) {
 		return 0, fmt.Errorf("topic %q (%s): %w", c.t.Title, dir, err)
 	}
 	r.rep.Topics++
+	c.id = id
 	return id, nil
 }
 

@@ -37,7 +37,7 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 	if err != nil {
 		return 0, 0, fmt.Errorf("%w: %v", ErrInvalidSource, err)
 	}
-	kept := keptTopics(sel, d.Choice.Excluded)
+	kept := KeptTopics(sel, d.Choice.Excluded)
 	if len(kept) == 0 {
 		return 0, 0, ErrNothingSelected
 	}
@@ -150,6 +150,7 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 			oldByKey[o.Key] = o
 		}
 		var writes []sourceWrite
+		ids := make([]int64, len(kept)) // kept index -> topics.id; a parent precedes its children
 		// Topics are never deleted (only archived), so the count is a gap-free global sequence
 		// that keeps dir_name unique across roadmaps.
 		var seq int
@@ -162,12 +163,16 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 				group = groupID[t.Group]
 			}
 			outline := sql.NullString{String: t.Outline, Valid: t.Outline != ""}
+			var parent sql.NullInt64
+			if t.Parent >= 0 {
+				parent = sql.NullInt64{Int64: ids[t.Parent], Valid: true}
+			}
 			o, ok := oldByKey[t.StableKey]
 			if ok {
 				_, err := tx.ExecContext(ctx,
-					`UPDATE topics SET group_id = ?, title = ?, title_norm = ?, outline = ?, ord = ?, state = 'active',
+					`UPDATE topics SET group_id = ?, parent_id = ?, title = ?, title_norm = ?, outline = ?, ord = ?, state = 'active',
 					   source_rev_id = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`,
-					group, t.Title, roadmap.Normalize(t.Title), outline, float64(i+1), revID, o.ID)
+					group, parent, t.Title, roadmap.Normalize(t.Title), outline, float64(i+1), revID, o.ID)
 				if err != nil {
 					return fmt.Errorf("updating topic %q: %w", t.Title, err)
 				}
@@ -175,9 +180,9 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 				seq++
 				slug, dir := TopicDir(seq, t.Title)
 				res, err := tx.ExecContext(ctx,
-					`INSERT INTO topics (roadmap_id, group_id, stable_key, title, title_norm, outline, ord, slug, dir_name, source_rev_id)
-					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-					roadmapID, group, t.StableKey, t.Title, roadmap.Normalize(t.Title), outline,
+					`INSERT INTO topics (roadmap_id, group_id, parent_id, stable_key, title, title_norm, outline, ord, slug, dir_name, source_rev_id)
+					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+					roadmapID, group, parent, t.StableKey, t.Title, roadmap.Normalize(t.Title), outline,
 					float64(i+1), slug, dir, revID)
 				if err != nil {
 					return fmt.Errorf("inserting topic %q: %w", t.Title, err)
@@ -187,6 +192,7 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 				}
 				o.Dir = dir
 			}
+			ids[i] = o.ID
 			if t.EndLine > 0 {
 				w, err := s.recordSource(ctx, tx, o, t, d.Content)
 				if err != nil {

@@ -120,3 +120,25 @@ func TestMigrate0004RewritesSuggestionKeys(t *testing.T) {
 		}
 	}
 }
+
+// T8.3: 0005 adds topics.parent_id (NULL for existing rows) with an index; existing rows are kept.
+func TestMigrate0005AddsTopicParent(t *testing.T) {
+	d := openAt(t, 4)
+	w := d.writer
+	mustExec(t, w, `INSERT INTO roadmaps (id, slug, title, select_rule) VALUES (1, 'r', 'R', '{"kind":"deepest"}')`)
+	mustExec(t, w, `INSERT INTO topics (id, roadmap_id, stable_key, title, title_norm, ord, slug, dir_name, source_start_line, source_end_line)
+		VALUES (1, 1, 'a3f9c2d41b7e8f06', 'A', 'a', 1, 'a', '01-a', 3, 9), (2, 1, 'b3f9c2d41b7e8f06', 'B', 'b', 2, 'b', '02-b', NULL, NULL)`)
+	if err := d.migrateTo(5); err != nil {
+		t.Fatalf("migrate to 5: %v", err)
+	}
+	var n, nullParents, idx int
+	w.QueryRow(`SELECT COUNT(*), SUM(parent_id IS NULL) FROM topics WHERE source_end_line = 9 OR source_end_line IS NULL`).Scan(&n, &nullParents)
+	w.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_topics_parent'`).Scan(&idx)
+	if n != 2 || nullParents != 2 || idx != 1 {
+		t.Fatalf("rows %d, null parents %d, index %d", n, nullParents, idx)
+	}
+	mustExec(t, w, `UPDATE topics SET parent_id = 1 WHERE id = 2`)
+	if _, err := w.Exec(`UPDATE topics SET parent_id = 99 WHERE id = 2`); err == nil {
+		t.Error("parent_id must reference topics(id)")
+	}
+}

@@ -66,7 +66,7 @@ func (s *Service) Diff(ctx context.Context, d *Draft) (*Diff, error) {
 	if err != nil {
 		return nil, err
 	}
-	return diffTopics(keptTopics(sel, d.Choice.Excluded), old), nil
+	return diffTopics(KeptTopics(sel, d.Choice.Excluded), old), nil
 }
 
 // diffTopics matches by stable key. Already-archived topics that stay absent are not reported.
@@ -146,17 +146,30 @@ func similarity(a, b string) float64 {
 	return 1 - float64(prev[len(rb)])/float64(n)
 }
 
-// keptTopics drops the topics the user unticked.
-func keptTopics(sel *roadmap.Selection, excludedKeys []string) []roadmap.Topic {
+// KeptTopics drops the topics the user unticked. Parent is re-pointed into the returned slice: an
+// unticked parent is skipped like an unselected heading, so its child hangs from the next kept one up.
+func KeptTopics(sel *roadmap.Selection, excludedKeys []string) []roadmap.Topic {
 	excluded := map[string]bool{}
 	for _, k := range excludedKeys {
 		excluded[k] = true
 	}
 	var kept []roadmap.Topic
-	for _, t := range sel.Topics {
-		if !excluded[t.StableKey] {
-			kept = append(kept, t)
+	at := make([]int, len(sel.Topics)) // sel index -> kept index, -1 when unticked
+	for i, t := range sel.Topics {
+		at[i] = -1
+		if excluded[t.StableKey] {
+			continue
 		}
+		p := t.Parent
+		for p >= 0 && at[p] < 0 { // parents precede children, so at[p] is already set
+			p = sel.Topics[p].Parent
+		}
+		if p >= 0 {
+			p = at[p]
+		}
+		t.Parent = p
+		at[i] = len(kept)
+		kept = append(kept, t)
 	}
 	return kept
 }

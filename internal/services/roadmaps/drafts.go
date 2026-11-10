@@ -62,11 +62,11 @@ func (d *Draft) DefaultTitle() string {
 }
 
 // Preview applies c to the draft content. Parsing is deterministic, so the content is the source of truth.
-// A chapters rule must pass roadmap.ValidateChapters (its *roadmap.ChapterError is returned as is).
+// A chapters or tree rule must pass roadmap.ValidateChapters (its *roadmap.ChapterError is returned as is).
 func (d *Draft) Preview(c Choice) (*roadmap.Selection, error) {
 	tree := roadmap.Parse(d.Content)
-	if c.Rule.Kind == roadmap.RuleChapters {
-		if err := roadmap.ValidateChapters(tree, roadmap.LineCount(d.Content), c.Rule.Chapters, false); err != nil {
+	if k := c.Rule.Kind; k == roadmap.RuleChapters || k == roadmap.RuleTree {
+		if err := roadmap.ValidateChapters(tree, roadmap.LineCount(d.Content), c.Rule.Chapters, k == roadmap.RuleTree); err != nil {
 			return nil, err
 		}
 	}
@@ -131,8 +131,13 @@ func (s *Service) createDraft(ctx context.Context, roadmapID int64, name string,
 		}
 		roadmapRef = sql.NullInt64{Int64: roadmapID, Valid: true}
 		// Saved chapters point at lines of the old revision: keep them only if they still fit the new file.
-		if rule.Kind == roadmap.RuleChapters && roadmap.ValidateChapters(roadmap.Parse(content), roadmap.LineCount(content), rule.Chapters, false) != nil {
-			rule = roadmap.Rule{Kind: roadmap.RuleDeepest}
+		if k := rule.Kind; k == roadmap.RuleChapters || k == roadmap.RuleTree {
+			if roadmap.ValidateChapters(roadmap.Parse(content), roadmap.LineCount(content), rule.Chapters, k == roadmap.RuleTree) != nil {
+				rule = roadmap.Rule{Kind: roadmap.RuleDeepest}
+				if k == roadmap.RuleTree {
+					rule = roadmap.Rule{Kind: roadmap.RuleTree} // every heading: still one record per heading
+				}
+			}
 		}
 	}
 	choice, err := json.Marshal(Choice{Rule: rule})

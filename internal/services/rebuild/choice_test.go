@@ -17,25 +17,26 @@ import (
 
 const chaptersMD = "# Go\n\n## Basics\n\n### Types\n\n### Loops\n\n## Concurrency\n\n### Goroutines\n"
 
-// topicRows is every topic as roadmap, key, title, state, ord, group key, source range and folder.
+// topicRows is every topic as roadmap, key, title, state, ord, group key, source range, folder, origin and parent key.
 func topicRows(t *testing.T, db *store.DB) (string, string) {
 	t.Helper()
 	rows, err := db.Writer().Query(`SELECT r.slug, t.stable_key, t.title, t.state, t.ord, COALESCE(g.stable_key, ''),
-		COALESCE(t.source_start_line, 0), COALESCE(t.source_end_line, 0), t.dir_name, t.origin
-		FROM topics t JOIN roadmaps r ON r.id = t.roadmap_id LEFT JOIN groups g ON g.id = t.group_id ORDER BY t.dir_name`)
+		COALESCE(t.source_start_line, 0), COALESCE(t.source_end_line, 0), t.dir_name, t.origin, COALESCE(p.stable_key, '')
+		FROM topics t JOIN roadmaps r ON r.id = t.roadmap_id LEFT JOIN groups g ON g.id = t.group_id
+		LEFT JOIN topics p ON p.id = t.parent_id ORDER BY t.dir_name`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer rows.Close()
 	var out []string
 	for rows.Next() {
-		var slug, key, title, state, group, dir, origin string
+		var slug, key, title, state, group, dir, origin, parent string
 		var ord float64
 		var start, end int
-		if err := rows.Scan(&slug, &key, &title, &state, &ord, &group, &start, &end, &dir, &origin); err != nil {
+		if err := rows.Scan(&slug, &key, &title, &state, &ord, &group, &start, &end, &dir, &origin, &parent); err != nil {
 			t.Fatal(err)
 		}
-		out = append(out, fmt.Sprintf("%s %s %q %s %v %s %d-%d %s %s", slug, key, title, state, ord, group, start, end, dir, origin))
+		out = append(out, fmt.Sprintf("%s %s %q %s %v %s %d-%d %s %s ^%s", slug, key, title, state, ord, group, start, end, dir, origin, parent))
 	}
 	var rule string
 	db.Writer().QueryRow(`SELECT select_rule FROM roadmaps`).Scan(&rule)
@@ -115,6 +116,55 @@ func TestRebuildKeepsSelectionRule(t *testing.T) {
 	}
 	gotTopics, gotRule := topicRows(t, db)
 	if gotTopics != wantTopics || gotRule != wantRule {
+		t.Errorf("after rebuild:\n%s\n%s\nwant:\n%s\n%s", gotTopics, gotRule, wantTopics, wantRule)
+	}
+}
+
+// T8.3: a tree import (one parent unticked) rebuilds with the same parent_id links.
+func TestRebuildKeepsTreeParents(t *testing.T) {
+	base := t.TempDir()
+	dbPath := filepath.Join(base, "app.db")
+	db, err := store.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := fsx.OpenRoot(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	ctx := context.Background()
+	s := roadmaps.NewService(db, root)
+	tree := roadmap.Rule{Kind: roadmap.RuleTree}
+	sel, err := roadmap.Select(roadmap.Parse([]byte(chaptersMD)), tree)
+	if err != nil || len(sel.Topics) != 5 || sel.Topics[3].Title != "Concurrency" {
+		t.Fatalf("tree: %+v %v", sel, err)
+	}
+	id, _ := s.CreateDraft(ctx, "go.md", []byte(chaptersMD))
+	d, _ := s.Draft(ctx, id)
+	if err := s.SetChoice(ctx, d, roadmaps.Choice{Rule: tree, Excluded: []string{sel.Topics[3].StableKey}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Confirm(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	wantTopics, wantRule := topicRows(t, db)
+	if strings.Count(wantTopics, "^"+sel.Topics[0].StableKey) != 2 {
+		t.Fatalf("setup: Types and Loops must hang from Basics:\n%s", wantTopics)
+	}
+	db.Close()
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		os.Remove(dbPath + suffix)
+	}
+	db, err = store.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := rebuild.Run(ctx, db, root); err != nil {
+		t.Fatal(err)
+	}
+	if gotTopics, gotRule := topicRows(t, db); gotTopics != wantTopics || gotRule != wantRule {
 		t.Errorf("after rebuild:\n%s\n%s\nwant:\n%s\n%s", gotTopics, gotRule, wantTopics, wantRule)
 	}
 }
