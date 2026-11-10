@@ -288,6 +288,9 @@
   - ✅ انجام شد (۲۰۲۶-۱۱-۱۰): `config.Adapter.SkipPermissions` (پیش‌فرض `true`؛ بدون `sandbox` ⇐ `ErrSkipWithoutSandbox`) ⇐ `antigravity.Config` ⇐ `argSpec`؛ `buildArgs` پرچم را بعد از `--sandbox` می‌گذارد و بدون sandbox خطا می‌دهد؛ در `extra_args` همچنان `ErrForbiddenArg`/`ErrForbiddenDangerousFlag`. صفحه تنظیمات ردیف وضعیت پرچم را برای `antigravity` نشان می‌دهد. سند طراحی: D5، §۶، ردیف «مجوزها»، جدول تهدید و ماتریس §۸، T1.5. تست‌ها: `TestBuildArgsSkipPermissions`، `TestSkipPermissions`. **اجرای واقعی (`agy` 1.5.4، Job ۱۲ تمرین، موضوع ۱):** argv شامل `--sandbox --dangerously-skip-permissions`؛ `succeeded`، `structured_output` پر، بدون `denied_actions`، stderr خالی؛ ۶ `read_file` همه داخل `.app/work/12/`؛ `git status` پس از اجرا فقط تغییرات همین تسک را نشان داد
   - **جایگزین کم‌خطرتر (اگر معیار آخر رد شد):** `--settings '{"permissions":{"allow":["read_file(*)"]}}'` به‌جای پرچم — فقط خواندن آزاد می‌شود؛ یا انتقال WorkDir به بیرون از مخزن
 
+- [x] **T8.10**: پرچم `--dangerously-skip-permissions` اولین آرگومان `agy` (درخواست کاربر ۲۰۲۶-۱۱-۱۰) و به‌روزرسانی `INSTALL.md`
+  - ✅ انجام شد (۲۰۲۶-۱۱-۱۰): `buildArgs` پرچم را پیش از `-p` می‌گذارد (تست `TestBuildArgsSkipPermissions`: `got[0]`). `INSTALL.md`: پیش‌نیاز جدا برای `agy`/`claude`/`codex` (نصب، ورود، بررسی `doctor`، argv واقعی، پرچم‌های ممنوع)، ریسک `skip_permissions` و نمونه کامل `[adapter]`، مسیر پیش‌فرض config، ارتقای مهارت، ورود Roadmap با AI خودکار/«ادامه بدون AI». ⚠️ `go test ./...` روی پوشه `topics/` (داده اجرای محلی، gitignore) با «malformed import path» شکست می‌خورد — کد نیست؛ `go test ./internal/... ./cmd/...` سبز
+
 ## 🔒 قوانین معماری تغییرناپذیر (Architectural Commandments)
 
 1. **فایل‌های کاربر هرگز بازنویسی نمی‌شوند:** هر فایل پاسخ یا گزارش جدید باید با `fsx.WriteNew` ایجاد شود.

@@ -58,7 +58,7 @@
 - قالب‌های خروجی: `text` (پیش‌فرض)، `json` (یک پاکت JSON پس از پایان) و `stream-json` (رویدادهای NDJSON با نوع‌های `init` و `step_update` و `result`).
 - با `--json-schema` (رشته، مسیر فایل، یا نوع ساده) خروجی ساختاریافته در فیلد `structured_output` پاکت یا رویداد `result` می‌آید.
 - فیلدهای مفید پاکت: `status` (‏`SUCCESS`، `ERROR`، `CANCELED`، `INTERRUPTED`، `INVALID`، `WAITING`، `RUNNING`)، `error`، `duration_seconds`، `usage`، `conversation_id`.
-- پرچم‌ها: `--model`، `--effort`، `--print-timeout` (پیش‌فرض ۵ دقیقه)، `--sandbox`، `--continue`/`--conversation`، و `--dangerously-skip-permissions` که **فقط Adapter** با `adapter.skip_permissions` (پیش‌فرض `true`، فقط همراه `--sandbox`) اضافه می‌کند و در `extra_args` ممنوع است (T8.9، D5 و بخش ۸).
+- پرچم‌ها: `--model`، `--effort`، `--print-timeout` (پیش‌فرض ۵ دقیقه)، `--sandbox`، `--continue`/`--conversation`، و `--dangerously-skip-permissions` که **فقط Adapter** با `adapter.skip_permissions` (پیش‌فرض `true`، فقط همراه `--sandbox`) اضافه می‌کند و در `extra_args` ممنوع است؛ این پرچم **اولین** آرگومان است (`agy --dangerously-skip-permissions -p …`) (T8.9، D5 و بخش ۸).
 - اعتبارنامه‌ها از نشست قبلی ذخیره می‌شوند؛ اگر احراز هویت نشده باشد، اجرا با خطای `authentication required` خارج می‌شود (و گیر نمی‌کند).
 - در حالت headless، خواندن و نوشتن فایل داخل workspace فعال خودکار است ولی اجرای دستور شل به‌صورت پیش‌فرض «رد نرم» می‌شود (اجرا با کد خروج ۰ ادامه می‌یابد و هشدار روی `stderr` می‌آید).
 - نام مدل‌ها با `agy models` فهرست می‌شود؛ مدل ناشناخته با کد خروج غیرصفر رد می‌شود.

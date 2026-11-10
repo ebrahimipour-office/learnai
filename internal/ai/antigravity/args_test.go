@@ -39,7 +39,7 @@ func TestBuildArgsSkipPermissions(t *testing.T) {
 		t.Fatalf("without SkipPermissions: %q, %v", got, err)
 	}
 	s.SkipPermissions = true
-	if got, err = buildArgs(s); err != nil || !slices.Contains(got, flag) || !slices.Contains(got, "--sandbox") {
+	if got, err = buildArgs(s); err != nil || got[0] != flag || !slices.Contains(got, "--sandbox") {
 		t.Fatalf("with SkipPermissions: %q, %v", got, err)
 	}
 	s.Extra = []string{flag}

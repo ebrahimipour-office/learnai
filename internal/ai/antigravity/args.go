@@ -66,7 +66,11 @@ func buildArgs(s argSpec) ([]string, error) {
 	if s.Effort != "" && !efforts[s.Effort] {
 		return nil, fmt.Errorf("antigravity: invalid effort %q", s.Effort)
 	}
-	args := []string{"-p", s.Prompt, "--output-format", "stream-json"}
+	var args []string
+	if s.SkipPermissions {
+		args = append(args, "--dangerously-skip-permissions") // first, so it reads `agy --dangerously-skip-permissions -p …`
+	}
+	args = append(args, "-p", s.Prompt, "--output-format", "stream-json")
 	if s.HasSchema {
 		args = append(args, "--json-schema", filepath.Join(s.WorkDir, schemaFile))
 	}
@@ -79,9 +83,6 @@ func buildArgs(s argSpec) ([]string, error) {
 	}
 	if s.Sandbox {
 		args = append(args, "--sandbox")
-	}
-	if s.SkipPermissions {
-		args = append(args, "--dangerously-skip-permissions")
 	}
 	return append(args, s.Extra...), nil
 }
