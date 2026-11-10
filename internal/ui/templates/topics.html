@@ -43,4 +43,5 @@
   {{if eq .State "archived"}}<span class="badge">بایگانی‌شده</span>{{end}}
   {{if .Busy}}<span class="badge busy">در حال اجرا</span>{{end}}
   {{if .Missing}}<a class="badge warn" href="/sync">{{.Missing}} فایل گم‌شده</a>{{end}}
+  {{with .Items}}<ul>{{range .}}{{template "tnode" .}}{{end}}</ul>{{end}}
 </li>{{end}}{{end}}

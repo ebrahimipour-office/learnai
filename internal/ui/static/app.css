@@ -132,6 +132,12 @@ summary.group-title { padding: .35rem 0; }
 ol.chapters { padding-inline-start: 1.5rem; }
 ol.chapters .topic { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .75rem; padding: .4rem 0; border-bottom: 1px solid var(--line); }
 ol.chapters .topic label { margin: 0; }
+.tree .topic > ul { flex-basis: 100%; padding-inline-start: 1rem; }
+ol.tree-rows { list-style: none; padding: 0; }
+ol.tree-rows .topic input[type=text] { flex: 1 1 10rem; min-width: 0; }
+ol.tree-rows .depth-1 { padding-inline-start: 1rem; } ol.tree-rows .depth-2 { padding-inline-start: 2rem; }
+ol.tree-rows .depth-3 { padding-inline-start: 3rem; } ol.tree-rows .depth-4 { padding-inline-start: 4rem; }
+ol.tree-rows .depth-5 { padding-inline-start: 5rem; }
 
 /* job card */
 #job-area { margin: 1rem 0; }

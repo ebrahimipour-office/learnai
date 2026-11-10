@@ -16,7 +16,7 @@ type Filter struct {
 	Status string // topics.status
 }
 
-// Node is a roadmap, a group or a topic. Only roadmaps and groups have Items.
+// Node is a roadmap, a group or a topic. A topic's Items are its tree-rule children (§13.6).
 type Node struct {
 	Kind  string // "roadmap" | "group" | "topic"
 	ID    int64
@@ -72,7 +72,7 @@ func (s *Service) List(ctx context.Context, f Filter) (tree []*Node, matched, to
 		  SELECT s.topic_id, a.topic_score, a.is_partial,
 		         ROW_NUMBER() OVER (PARTITION BY s.topic_id ORDER BY a.attempt_no DESC) AS rn
 		  FROM attempts a JOIN exercise_sets s ON s.id = a.set_id AND s.is_current = 1)
-		SELECT r.id, r.title, t.id, t.group_id, t.title, t.status, t.state, t.origin, l.topic_score, COALESCE(l.is_partial, 0),
+		SELECT r.id, r.title, t.id, t.group_id, t.parent_id, t.title, t.status, t.state, t.origin, l.topic_score, COALESCE(l.is_partial, 0),
 		       EXISTS (SELECT 1 FROM jobs j WHERE j.topic_id = t.id AND j.status IN ('queued','running')),
 		       (SELECT COUNT(*) FROM files f WHERE f.topic_id = t.id AND f.presence = 'missing')
 		FROM topics t
@@ -101,12 +101,13 @@ func (s *Service) List(ctx context.Context, f Filter) (tree []*Node, matched, to
 		}
 		return &g.node.Items
 	}
+	shown := map[int64]*Node{} // parents precede children in ord; a filtered-out parent leaves the child under its group
 	for rows.Next() {
 		var rid int64
 		var rtitle string
-		var gid sql.NullInt64
+		var gid, pid sql.NullInt64
 		t := &Node{Kind: "topic"}
-		if err := rows.Scan(&rid, &rtitle, &t.ID, &gid, &t.Title, &t.Status, &t.State, &t.Origin, &t.Score, &t.Partial, &t.Busy, &t.Missing); err != nil {
+		if err := rows.Scan(&rid, &rtitle, &t.ID, &gid, &pid, &t.Title, &t.Status, &t.State, &t.Origin, &t.Score, &t.Partial, &t.Busy, &t.Missing); err != nil {
 			return nil, 0, 0, err
 		}
 		rm := roadmaps[rid]
@@ -116,7 +117,11 @@ func (s *Service) List(ctx context.Context, f Filter) (tree []*Node, matched, to
 			tree = append(tree, rm)
 		}
 		items := itemsOf(rm, gid)
+		if p := shown[pid.Int64]; pid.Valid && p != nil {
+			items = &p.Items
+		}
 		*items = append(*items, t)
+		shown[t.ID] = t
 		matched++
 	}
 	return tree, matched, total, rows.Err()

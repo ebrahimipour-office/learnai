@@ -104,6 +104,7 @@ type ruleOption struct {
 // chapterRow is one chapter in the preview; its form fields rebuild the chapters rule (§12.4).
 type chapterRow struct {
 	N, Line, EndLine int // N is 1-based and is the merge value
+	Depth            int // tree rule: number of ticked-or-not ancestor records, for indentation (§13.6)
 	Title, Key       string
 	Included, Last   bool
 }
@@ -280,6 +281,9 @@ func (a *app) updateSelection(w http.ResponseWriter, r *http.Request) {
 		rule, ok = roadmap.Rule{Kind: roadmap.RuleTree}, true
 		if d.Choice.Rule.Kind == roadmap.RuleTree {
 			rule = d.Choice.Rule
+			if value == r.FormValue("shown_rule") && len(r.Form["ch_line"]) > 0 { // the rows carry the edited titles
+				rule, ok = formTree(r)
+			}
 		}
 	default:
 		rule, ok = parseRule(value)
@@ -414,6 +418,16 @@ func (a *app) renderDraft(w http.ResponseWriter, r *http.Request, status int, d 
 		return
 	}
 	var chapters []chapterRow
+	if d.Choice.Rule.Kind == roadmap.RuleTree {
+		depth := make([]int, len(sel.Topics))
+		for i, t := range sel.Topics {
+			if t.Parent >= 0 {
+				depth[i] = depth[t.Parent] + 1
+			}
+			chapters = append(chapters, chapterRow{N: i + 1, Line: t.Line, EndLine: t.EndLine, Title: t.Title, Key: t.StableKey,
+				Depth: min(depth[i], 5), Included: !excluded[t.StableKey]})
+		}
+	}
 	if d.Choice.Rule.Kind == roadmap.RuleChapters {
 		key := map[int]string{}
 		for _, t := range sel.Topics {
@@ -616,6 +630,24 @@ func formChapters(r *http.Request) (roadmap.Rule, bool) {
 		chs = append(chs[:m], chs[m+1:]...)
 	}
 	return roadmap.Rule{Kind: roadmap.RuleChapters, Chapters: chs}, true
+}
+
+// formTree rebuilds a tree rule from the preview rows: every listed heading stays a record and
+// keeps its (possibly renamed) title. Validity is checked later by Draft.Preview.
+func formTree(r *http.Request) (roadmap.Rule, bool) {
+	lines, titles := r.Form["ch_line"], r.Form["ch_title"]
+	if len(lines) != len(titles) {
+		return roadmap.Rule{}, false
+	}
+	chs := make([]roadmap.Chapter, len(lines))
+	for i := range lines {
+		l, err := strconv.Atoi(lines[i])
+		if err != nil {
+			return roadmap.Rule{}, false
+		}
+		chs[i] = roadmap.Chapter{Line: l, Title: strings.TrimSpace(titles[i])}
+	}
+	return roadmap.Rule{Kind: roadmap.RuleTree, Chapters: chs}, true
 }
 
 // selectionError shows a ValidateChapters message as is, otherwise fallback.

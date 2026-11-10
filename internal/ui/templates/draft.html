@@ -33,7 +33,18 @@
   {{with .TreeCap}}<p class="error" role="alert">بیش از {{.}} رکورد انتخاب شده است؛ پیش از تأیید تیک برخی سرفصل‌ها را بردارید.</p>{{end}}
   {{if .SuggestItems}}<p class="hint">با این قاعده هیچ موضوعی پیدا نشد. قاعده «آیتم‌های لیست» را امتحان کنید.</p>{{end}}
   {{with .Diff}}{{template "diff" .}}{{end}}
-  {{if .Chapters}}
+  {{if and .Chapters (eq .RuleValue "tree")}}
+  <p class="note">هر سرفصل یک رکورد جداست و فقط متن خودش (تا اولین زیرسرفصل) را دارد. عنوان‌ها را می‌توانید تغییر دهید.</p>
+  <button type="submit">ذخیره عنوان‌ها</button>
+  <ol class="chapters tree-rows">{{range .Chapters}}
+    <li class="topic depth-{{.Depth}}">
+      <input type="hidden" name="ch_line" value="{{.Line}}">
+      <input type="checkbox" name="include" value="{{.Key}}"{{if .Included}} checked{{end}} aria-label="انتخاب رکورد {{.N}}">
+      <input type="text" name="ch_title" value="{{.Title}}" maxlength="200" dir="auto" aria-label="عنوان رکورد {{.N}}">
+      <span class="note">خط {{.Line}}{{if .EndLine}} تا {{.EndLine}}{{end}}</span>
+    </li>{{end}}
+  </ol>
+  {{else if .Chapters}}
   <p class="note">عنوان فصل‌ها را می‌توانید تغییر دهید یا هر فصل را با فصل بعدی ادغام کنید. بخش‌های بیرون از فصل‌ها (مثل پیش‌گفتار) جزو هیچ فصلی نمی‌شوند.</p>
   <button type="submit">ذخیره تغییرات فصل‌ها</button>
   <ol class="chapters">{{range .Chapters}}
