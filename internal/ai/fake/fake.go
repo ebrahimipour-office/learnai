@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -38,7 +39,15 @@ type Adapter struct {
 	ProbeErr error            // returned by Probe when set
 
 	mu      sync.Mutex
-	prompts []string // every req.Prompt passed to Run, in order
+	prompts []string            // every req.Prompt passed to Run, in order
+	inputs  []map[string]string // the inputs/ files of every Run, in order; the runner deletes WorkDir on success
+}
+
+// Inputs returns, per Run so far, the files the AI found in inputs/ (name -> content).
+func (a *Adapter) Inputs() []map[string]string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return append([]map[string]string(nil), a.inputs...)
 }
 
 // Calls returns a copy of the prompts seen so far.
@@ -63,6 +72,7 @@ func (a *Adapter) Run(ctx context.Context, req ai.Request, events chan<- ai.Even
 	}
 	a.mu.Lock()
 	a.prompts = append(a.prompts, req.Prompt)
+	a.inputs = append(a.inputs, readInputs(req.WorkDir))
 	n := len(a.prompts)
 	a.mu.Unlock()
 	switch a.Scenario {
@@ -87,6 +97,18 @@ func (a *Adapter) Run(ctx context.Context, req ai.Request, events chan<- ai.Even
 			`{"path":"../../x","markdown":"<script>alert(1)</script><img src=x onerror=alert(1)>"}`)}, nil
 	}
 	return nil, fmt.Errorf("%w: unknown scenario %q", ai.ErrToolFailed, a.Scenario)
+}
+
+func readInputs(workDir string) map[string]string {
+	m := map[string]string{}
+	dir := filepath.Join(workDir, "inputs")
+	ents, _ := os.ReadDir(dir)
+	for _, e := range ents {
+		if b, err := os.ReadFile(filepath.Join(dir, e.Name())); err == nil {
+			m[e.Name()] = string(b)
+		}
+	}
+	return m
 }
 
 // trash overwrites every file in workDir and drops a new one, the worst an agent confined to its cwd can do.

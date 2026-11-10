@@ -356,8 +356,9 @@ func TestAcceptanceR11_2(t *testing.T) {
 	}
 }
 
-// TestAcceptanceChapters is T7.10: the chapter journey on the T7.0 sample book over HTTP with the fake adapter —
-// upload ← AI chapter detection ← apply ← confirm ← lesson, exercises and evaluation on every chapter (TDD §12).
+// TestAcceptanceChapters is T7.10 + T8.8: the tree journey on the T7.0 sample book over HTTP with the fake adapter —
+// upload ← chapter_detect queued and auto-applied (§13.2/§13.3) ← confirm without no_ai ← lesson, exercises and
+// evaluation on every record, a parent and its child each getting only their own inputs (§13.5).
 func TestAcceptanceChapters(t *testing.T) {
 	e := newEnv(t)
 	w := e.db.Writer()
@@ -365,37 +366,32 @@ func TestAcceptanceChapters(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// the H2 chapters of sample-book.md; chapter 3 has no subsection (B1) and chapter 1 holds a code block and an H3
+	// every H2 plus chapter 1's H3 (a child); chapter 2's H3 is not picked, so it stays inside chapter 2.
+	// chapter 3 has no subsection (B1) and chapter 1 holds a code block (B3).
 	chapters := []struct {
 		title      string
 		start, end int
-	}{{"متغیرها و انواع داده", 5, 19}, {"توابع", 20, 36}, {"برش‌ها", 37, 40}}
+		parent     int // index into chapters, -1 for none
+	}{{"متغیرها و انواع داده", 5, 15, -1}, {"ثابت‌ها", 16, 19, 0}, {"توابع", 20, 36, -1}, {"برش‌ها", 37, 40, -1}}
 	var out strings.Builder
 	for i, c := range chapters {
 		out.WriteString(map[bool]string{true: "", false: ","}[i == 0])
-		fmt.Fprintf(&out, `{"title":%q,"start_line":%d,"end_line":%d}`, c.title, c.start, c.end)
+		fmt.Fprintf(&out, `{"title":%q,"start_line":%d}`, c.title, c.start)
 	}
-	e.ad.Output = json.RawMessage(`{"title":"آموزش مقدماتی Go","reason":"هر H2 یک فصل","chapters":[` + out.String() + `]}`)
+	e.ad.Output = json.RawMessage(`{"title":"آموزش مقدماتی Go","reason":"هر سرفصل یک رکورد","chapters":[` + out.String() + `]}`)
 
+	// upload waits for the chapter_detect it queues; the untouched selection takes the suggestion.
 	draft := e.upload("sample-book.md", src).Header().Get("Location")
-	if rec := e.post(draft+"/chapters", nil, true); rec.Code != http.StatusAccepted {
-		t.Fatalf("chapter detection: %d %s", rec.Code, rec.Body.String())
-	}
-	for deadline := time.Now().Add(5 * time.Second); e.get(draft+"/ai?poll=1").Header().Get("HX-Refresh") != "true"; time.Sleep(20 * time.Millisecond) {
-		if time.Now().After(deadline) {
-			t.Fatal("chapter detection did not finish")
-		}
-	}
 	if _, st := e.lastJob(); st != "succeeded" {
 		t.Fatalf("chapter detection job %s", st)
 	}
 	if n := count(t, w, `SELECT COUNT(*) FROM topics`) + count(t, w, `SELECT COUNT(*) FROM files`); n != 0 {
 		t.Fatalf("detection must create no record before confirm, got %d", n)
 	}
-	if rec := e.selection(draft, url.Values{"rule": {"ai"}}, false); rec.Code != http.StatusSeeOther {
-		t.Fatalf("apply: %d %s", rec.Code, rec.Body.String())
+	if page := e.get(draft).Body.String(); !strings.Contains(page, `value="tree" selected`) {
+		t.Fatalf("suggestion not auto-applied as a tree rule:\n%s", page)
 	}
-	if rec := e.confirm(draft, url.Values{"csrf_token": {e.sm.CSRFToken()}, "confirm": {"1"}}); rec.Code != http.StatusSeeOther {
+	if rec := e.confirm(draft, url.Values{"csrf_token": {e.sm.CSRFToken()}, "confirm": {"1"}, "no_ai": {"0"}}); rec.Code != http.StatusSeeOther {
 		t.Fatalf("confirm: %d %s", rec.Code, rec.Body.String())
 	}
 	var title string
@@ -404,26 +400,26 @@ func TestAcceptanceChapters(t *testing.T) {
 		t.Errorf("roadmap title = %q, want the book's H1 (B2)", title)
 	}
 
-	rows, err := w.Query(`SELECT id, title, dir_name, source_start_line, source_end_line, source_sha256 FROM topics ORDER BY ord`)
+	rows, err := w.Query(`SELECT id, title, dir_name, source_start_line, source_end_line, source_sha256, COALESCE(parent_id, 0) FROM topics ORDER BY ord`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	type topic struct {
-		id              int64
+		id, parent      int64
 		title, dir, sha string
 		start, end      int
 	}
 	var got []topic
 	for rows.Next() {
 		var tp topic
-		if err := rows.Scan(&tp.id, &tp.title, &tp.dir, &tp.start, &tp.end, &tp.sha); err != nil {
+		if err := rows.Scan(&tp.id, &tp.title, &tp.dir, &tp.start, &tp.end, &tp.sha, &tp.parent); err != nil {
 			t.Fatal(err)
 		}
 		got = append(got, tp)
 	}
 	rows.Close()
 	if len(got) != len(chapters) {
-		t.Fatalf("want one topic per chapter (B1: chapter 3 kept), got %+v", got)
+		t.Fatalf("want one topic per picked heading (B1: chapter 3 kept), got %+v", got)
 	}
 	for i, c := range chapters {
 		tp := got[i]
@@ -431,17 +427,18 @@ func TestAcceptanceChapters(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		var parent int64
+		if c.parent >= 0 {
+			parent = got[c.parent].id
+		}
 		if want := roadmap.Slice(src, c.start, c.end); tp.title != c.title || tp.start != c.start || tp.end != c.end ||
-			!bytes.Equal(body, want) || fsx.HashBytes(body) != tp.sha {
-			t.Errorf("chapter %d: %+v\nsource.md:\n%s\nwant:\n%s", i+1, tp, body, want)
+			tp.parent != parent || !bytes.Equal(body, want) || fsx.HashBytes(body) != tp.sha {
+			t.Errorf("record %d: %+v (want parent %d)\nsource.md:\n%s\nwant:\n%s", i+1, tp, parent, body, want)
 		}
 	}
-	if b, _ := os.ReadFile(filepath.Join(e.base, "topics", got[0].dir, "source.md")); !bytes.Contains(b, []byte("### ثابت‌ها")) || !bytes.Contains(b, []byte("y := \"سلام\"")) {
-		t.Error("chapter 1 source.md must keep its H3 and code block (B3)")
-	}
 
-	// each AI job of each chapter is handed that chapter's source.md (B3); TestChaptersRunIndependently checks isolation.
-	runJob := func(tp topic, kind string, form url.Values) {
+	// each AI job of each record is handed that record's own source.md and excerpt (B3, §13.5).
+	runJob := func(tp topic, kind string, form url.Values) map[string]string {
 		t.Helper()
 		if rec := e.post(fmt.Sprintf("/topics/%d/jobs/%s", tp.id, kind), form, true); rec.Code != http.StatusAccepted {
 			t.Fatalf("%s on %s: %d %s", kind, tp.title, rec.Code, rec.Body.String())
@@ -451,13 +448,31 @@ func TestAcceptanceChapters(t *testing.T) {
 		if _, st := e.lastJob(); st != "succeeded" {
 			t.Fatalf("%s on %s: %s", kind, tp.title, st)
 		}
-		if calls := e.ad.Calls(); !strings.Contains(calls[len(calls)-1], "inputs/source.md") {
-			t.Errorf("%s on %s: prompt does not list inputs/source.md", kind, tp.title)
+		in := e.ad.Inputs()
+		last := in[len(in)-1]
+		if last["source.md"] != string(roadmap.Slice(src, tp.start, tp.end)) {
+			t.Errorf("%s on %s: inputs/source.md = %q, want only its own range", kind, tp.title, last["source.md"])
 		}
+		return last
 	}
+	parent, child := got[0], got[1]
 	for _, tp := range got {
 		e.ad.Output = lessonOutput("## " + tp.title + "\n\nمتن درس.")
-		runJob(tp, "lesson", nil)
+		lesson := runJob(tp, "lesson", nil)
+		switch tp.id {
+		case parent.id:
+			ex := lesson["roadmap_excerpt.md"]
+			if !strings.Contains(ex, "## زیربخش‌ها") || !strings.Contains(ex, "- ثابت‌ها") || strings.Contains(ex, "زیربخشِ:") {
+				t.Errorf("parent excerpt must list its child and name no parent:\n%s", ex)
+			}
+			if s := lesson["source.md"]; strings.Contains(s, "iota") || !strings.Contains(s, "y := \"سلام\"") {
+				t.Errorf("parent source.md must keep its code block (B3) and none of the child's text:\n%s", s)
+			}
+		case child.id:
+			if ex := lesson["roadmap_excerpt.md"]; !strings.Contains(ex, "زیربخشِ: متغیرها و انواع داده") || strings.Contains(ex, "## زیربخش‌ها") {
+				t.Errorf("child excerpt must name its parent:\n%s", ex)
+			}
+		}
 		e.ad.Output = exOutput()
 		runJob(tp, "exercises", url.Values{"count": {"3"}})
 		q01 := filepath.Join(e.base, filepath.FromSlash(path.Join(exercises.AnswersRel(tp.dir, 1), "q01-hello.go")))
