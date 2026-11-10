@@ -58,6 +58,8 @@ type Output struct {
 type topic struct {
 	ID                             int64
 	Title, Outline, Group, Roadmap string
+	Parent                         string   // parent record's title (tree rule); "" = top level
+	Children                       []string // active sub-records, each with its own lesson (§13.5)
 	Prev, Next                     string
 	Dir                            string
 	Source                         string // rel path of the chapter's source.md; "" = no source text
@@ -144,14 +146,29 @@ func (s *Service) loadTopic(ctx context.Context, id int64) (topic, error) {
 	var rm int64
 	var ord float64
 	err := s.DB.Writer().QueryRowContext(ctx, `SELECT t.title, COALESCE(t.outline, ''), COALESCE(g.title, ''), r.title, r.id, t.ord, t.dir_name,
-		COALESCE(f.rel_path, '')
+		COALESCE(f.rel_path, ''), COALESCE(p.title, '')
 		FROM topics t JOIN roadmaps r ON r.id = t.roadmap_id LEFT JOIN groups g ON g.id = t.group_id
-		LEFT JOIN files f ON f.id = t.source_file_id WHERE t.id = ?`, id).
-		Scan(&t.Title, &t.Outline, &t.Group, &t.Roadmap, &rm, &ord, &t.Dir, &t.Source)
+		LEFT JOIN files f ON f.id = t.source_file_id LEFT JOIN topics p ON p.id = t.parent_id WHERE t.id = ?`, id).
+		Scan(&t.Title, &t.Outline, &t.Group, &t.Roadmap, &rm, &ord, &t.Dir, &t.Source, &t.Parent)
 	if errors.Is(err, sql.ErrNoRows) {
 		return t, fmt.Errorf("%w: topic %d", domain.ErrNotFound, id)
 	}
 	if err != nil {
+		return t, err
+	}
+	rows, err := s.DB.Writer().QueryContext(ctx, `SELECT title FROM topics WHERE parent_id = ? AND state = 'active' ORDER BY ord`, id)
+	if err != nil {
+		return t, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var c string
+		if err := rows.Scan(&c); err != nil {
+			return t, err
+		}
+		t.Children = append(t.Children, c)
+	}
+	if err := rows.Err(); err != nil {
 		return t, err
 	}
 	neighbour := func(q string) (string, error) {
@@ -209,17 +226,32 @@ func (s *Service) input(jobID int64, t topic) (prompt.Input, error) {
 	if err != nil {
 		return in, err
 	}
-	excerpt := "# " + t.Title + "\n"
-	if t.Outline != "" {
-		excerpt += "\n" + t.Outline + "\n"
-	}
-	in.Files = map[string][]byte{"task.json": task, "roadmap_excerpt.md": []byte(excerpt)}
+	in.Files = map[string][]byte{"task.json": task, "roadmap_excerpt.md": []byte(excerpt(t))}
 	if t.Source != "" { // the current bytes on disk: the user may have edited source.md
 		if in.Files["source.md"], err = prompt.ReadSource(s.Root, t.Source, s.MaxSource); err != nil {
 			return in, err
 		}
 	}
 	return in, nil
+}
+
+// excerpt places the record in the roadmap: parent title, own title, then either its sub-records
+// (read from the DB, so unticked ones are never listed) or, for a leaf, its stored outline.
+func excerpt(t topic) string {
+	var b strings.Builder
+	if t.Parent != "" {
+		b.WriteString("زیربخشِ: " + t.Parent + "\n\n")
+	}
+	b.WriteString("# " + t.Title + "\n")
+	if len(t.Children) > 0 {
+		b.WriteString("\n## زیربخش‌ها (هر کدام درس جدا دارند)\n\n")
+		for _, c := range t.Children {
+			b.WriteString("- " + c + "\n")
+		}
+	} else if t.Outline != "" {
+		b.WriteString("\n" + t.Outline + "\n")
+	}
+	return b.String()
 }
 
 // Validate checks the AI output against its schema and drops blank keywords/suggestions.

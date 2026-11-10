@@ -3,6 +3,7 @@ package lessons_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -155,7 +156,7 @@ func TestFirstLesson(t *testing.T) {
 	if n := e.count(`SELECT COUNT(*) FROM topics WHERE id = 2 AND status = 'content_ready'`); n != 1 {
 		t.Error("topic status not content_ready")
 	}
-	if n := e.count(`SELECT COUNT(*) FROM jobs WHERE skill = 'lesson-generator' AND skill_version = '1.1.0' AND model = 'm1' AND result_ref IS NOT NULL`); n != 1 {
+	if n := e.count(`SELECT COUNT(*) FROM jobs WHERE skill = 'lesson-generator' AND skill_version = '1.2.0' AND model = 'm1' AND result_ref IS NOT NULL`); n != 1 {
 		t.Error("job metadata not recorded")
 	}
 	if e.root.Exists(".app/work/1") {
@@ -434,5 +435,43 @@ func TestCrashRecoveryKeepsModifiedFile(t *testing.T) {
 	}
 	if n := e.count(`SELECT COUNT(*) FROM jobs WHERE error_message LIKE ?`, "%"+lessonRel+"%"); n != 1 {
 		t.Error("kept file not reported on the job")
+	}
+}
+
+// excerptFor runs a hanging lesson job for the topic and returns its roadmap_excerpt.md.
+func (e *env) excerptFor(topic int64) string {
+	e.t.Helper()
+	e.ad.Scenario = fake.Hang
+	n := len(e.ad.Calls())
+	id, err := e.runner.Enqueue(context.Background(), jobs.Job{Kind: domain.JobKindLesson, Scope: fmt.Sprintf("topic:%d", topic), TopicID: topic, Params: json.RawMessage(`{}`)})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	defer e.runner.Cancel(context.Background(), id)
+	for len(e.ad.Calls()) == n { // Run is called only after the sandbox is complete
+		time.Sleep(5 * time.Millisecond)
+	}
+	return e.read(prompt.WorkRel(id) + "/inputs/roadmap_excerpt.md")
+}
+
+func TestTreeExcerpt(t *testing.T) {
+	e := setup(t)
+	if got := e.excerptFor(2); got != "# HTTP\n" { // no parent_id: unchanged
+		t.Errorf("flat excerpt = %q", got)
+	}
+	for _, q := range []string{
+		`UPDATE topics SET parent_id = 1 WHERE id IN (2, 3)`,
+		`INSERT INTO topics (id, roadmap_id, group_id, stable_key, title, title_norm, ord, slug, dir_name, parent_id, state) VALUES
+			(4, 1, 1, 'd', 'Old', 'old', 4, 'old', '04-old', 1, 'archived')`,
+	} {
+		if _, err := e.db.Writer().Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got, want := e.excerptFor(1), "# Intro\n\n## زیربخش‌ها (هر کدام درس جدا دارند)\n\n- HTTP\n- Routing\n"; got != want {
+		t.Errorf("parent excerpt = %q, want %q", got, want)
+	}
+	if got, want := e.excerptFor(3), "زیربخشِ: Intro\n\n# Routing\n"; got != want {
+		t.Errorf("child excerpt = %q, want %q", got, want)
 	}
 }
