@@ -10,7 +10,7 @@
 |---|---|
 | **فاز فعال کنونی** | **فاز ۷.۵ — پرداخت بدهی بازبینی (R1 تا R12) 🚀**، سپس فاز ۸ (فازهای ۱ تا ۷ کامل ✅؛ معوق‌های T5.8 واقعی، چک‌لیست ویندوز و `make vuln` در R6 تا R8 قرار گرفتند) |
 | **کار بعدی برای اجرا** | **T8.0** منتظر فایل نمونه از کاربر؛ فاز ۸ جز آن بسته شد (T8.8 بسته شد؛ CR-08/CR-09 از R11 هنوز باز؛ R7 تا R12 موازی). I10 بسته شد (§۱۳.۲) |
-| **آخرین کامیت Git** | `feat(ai): run agy with --dangerously-skip-permissions behind adapter.skip_permissions, sandbox required (T8.9)` |
+| **آخرین کامیت Git** | `build: scope make test, vuln and CI to cmd, internal and skills (gitignored topics/ may hold .go answers)` |
 | **✅ بسته‌شده از T3.1** | **۲۰۲۶-۱۱-۰۱:** اجرای واقعی دستی با `agy` 1.4.12 (`gemini-3.8-flash-high`، `--json-schema`، `--sandbox`) موفق بود. تأیید شد: خروجی ساختاریافته در `result.structured_output` است؛ `response` متن آزاد + JSON است (fallback فقط برای JSON خالص)؛ رویدادهای میانی `init` و `step_update` درست‌اند. خط واقعی در `TestRealSuccessEnvelope` ثبت شد. |
 | **وضعیت آزمون‌های خودکار** | **۱۰۰٪ سبز و موفق** (`go test ./...` روی همه پکیج‌ها) |
 | **مسیر دایرکتوری پایه** | `C:\Users\Asus\Desktop\Leaning-appication\prj` |
