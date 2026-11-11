@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	"learninghub/internal/fsx"
 	"learninghub/internal/roadmap"
 	"learninghub/internal/store"
 )
@@ -31,9 +32,12 @@ type Node struct {
 	Missing               int  // registered files last seen missing by sync
 }
 
-type Service struct{ db *store.DB }
+type Service struct {
+	db   *store.DB
+	root *fsx.Root // topics/ folders, for NextTopicSeq on suggestion accept
+}
 
-func NewService(db *store.DB) *Service { return &Service{db: db} }
+func NewService(db *store.DB, root *fsx.Root) *Service { return &Service{db: db, root: root} }
 
 // List returns roadmaps → groups → topics in import order, keeping only branches with a matching
 // topic. total is the number of topics before filtering, so the page can tell "no match" from "empty".

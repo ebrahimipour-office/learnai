@@ -107,7 +107,7 @@ func (s *Service) run(ctx context.Context, j jobs.Job, mode string) error {
 	if err != nil {
 		return err
 	}
-	list, err := topics.NewService(s.DB).Exercises(ctx, set.ID)
+	list, err := topics.NewService(s.DB, s.Root).Exercises(ctx, set.ID)
 	if err != nil {
 		return err
 	}

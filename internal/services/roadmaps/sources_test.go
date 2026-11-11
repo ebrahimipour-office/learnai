@@ -120,3 +120,30 @@ func TestConfirmSourceWriteFailureLeavesNothing(t *testing.T) {
 		}
 	}
 }
+
+// CR-06: topic numbers skip the highest NN in the DB and on disk, not COUNT(*)+1.
+func TestTopicSeqSkipsGaps(t *testing.T) {
+	ctx := context.Background()
+	base := t.TempDir()
+	s, db, _ := newServiceIn(t, base)
+	id, _ := s.CreateDraft(ctx, "book.md", []byte(chapterBook))
+	if _, _, err := s.Confirm(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	// A rebuild-style gap in the DB (07) and a leftover folder on disk (09).
+	if _, err := db.Writer().Exec(`UPDATE topics SET dir_name = '07-three' WHERE dir_name = '03-three'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(base, "topics", "09-left"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	id, _ = s.CreateDraft(ctx, "other.md", []byte("# Other\n## B\nb\n"))
+	if _, _, err := s.Confirm(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	var dir string
+	_ = db.Writer().QueryRow(`SELECT dir_name FROM topics WHERE title = 'B'`).Scan(&dir)
+	if dir != "10-b" {
+		t.Fatalf("dir_name = %q, want 10-b", dir)
+	}
+}

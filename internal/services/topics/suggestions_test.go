@@ -155,3 +155,25 @@ func TestSuggestedTopicSurvivesReimport(t *testing.T) {
 		t.Fatalf("order after re-import = %v, want %v", got, want)
 	}
 }
+
+// CR-06: accepting a suggestion takes the next number after the highest NN, not COUNT(*)+1.
+func TestAcceptSuggestionSkipsGap(t *testing.T) {
+	s, db, _ := setupRS(t, md)
+	w := db.Writer()
+	if _, err := w.Exec(`UPDATE topics SET dir_name = '08-x' WHERE title = 'گوروتین'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Exec(`INSERT INTO suggestions (id, topic_id, kind, title, title_norm, reason)
+		SELECT 1, id, 'supplementary', 'جنریک', 'جنریک', 'r' FROM topics WHERE title = 'نوع‌ها'`); err != nil {
+		t.Fatal(err)
+	}
+	id, err := s.AcceptSuggestion(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var dir string
+	_ = w.QueryRow(`SELECT dir_name FROM topics WHERE id = ?`, id).Scan(&dir)
+	if dir != "09-جنریک" {
+		t.Fatalf("dir_name = %q, want 09-جنریک", dir)
+	}
+}

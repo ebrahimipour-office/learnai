@@ -119,15 +119,15 @@ There are **no P0 tasks**.
   - [ ] Pre-existing files are byte-identical afterwards.
 - **Depends on:** CR-06.
 
-### - [ ] CR-06 — Compute topic folder numbers from the maximum in use, not `COUNT(*)`
+### - [x] CR-06 — Compute topic folder numbers from the maximum in use, not `COUNT(*)`
 - **Problem:** `COUNT(*)+1` collides with on-disk or DB `NN-` numbers after a rebuild, which causes `UNIQUE dir_name` failures.
 - **Affected files:** `internal/services/roadmaps/confirm.go:150-176`; `internal/services/topics/suggestions.go:89-93`; `internal/services/roadmaps` (`TopicDir`).
 - **Expected outcome:** one helper produces a free `NN-slug` that is unique both in the DB and on disk.
 - **Suggested implementation:** `NextTopicSeq(tx, root)` = max(NN parsed from `topics.dir_name`, NN of directories under `topics/`) + 1; skip any candidate whose folder exists. Use it from both callers and remove the stale comment.
 - **Required regression tests:** the rebuild-gap scenario from the report (`03-b`, `04-a`, then import `## B`) → succeeds with `05-b` or later; a suggestion-accept variant.
 - **Acceptance criteria:**
-  - [ ] No caller computes topic numbers from `COUNT(*)` (grep).
-  - [ ] Both tests pass.
+  - [x] No caller computes topic numbers from `COUNT(*)` (grep).
+  - [x] Both tests pass.
 - **Depends on:** none.
 
 ### - [ ] CR-07 — `WriteNew` via temp file + hard link (crash-safe never-overwrite)

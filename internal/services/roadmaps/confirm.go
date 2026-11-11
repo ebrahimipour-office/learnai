@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"learninghub/internal/fsx"
@@ -161,12 +162,11 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 		}
 		var writes []sourceWrite
 		ids := make([]int64, len(kept)) // kept index -> topics.id; a parent precedes its children
-		// Topics are never deleted (only archived), so the count is a gap-free global sequence
-		// that keeps dir_name unique across roadmaps.
-		var seq int
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM topics`).Scan(&seq); err != nil {
+		next, err := NextTopicSeq(ctx, tx, s.root)
+		if err != nil {
 			return err
 		}
+		seq := next - 1
 		for i, t := range kept {
 			var group sql.NullInt64
 			if t.Group >= 0 {
@@ -351,8 +351,32 @@ func (s *Service) freeRoadmapSlug(ctx context.Context, tx *sql.Tx, title string)
 // ChoiceRel is the file holding the Choice confirmed with revision rel: roadmaps/<slug>/rev-NNN.choice.json.
 func ChoiceRel(rel string) string { return strings.TrimSuffix(rel, ".md") + ".choice.json" }
 
-// TopicDir returns the slug and dir_name (NN-slug) of the seq-th topic ever created. seq must be
-// COUNT(*) of topics + 1 inside the inserting transaction: topics are never deleted, so it is unique.
+// NextTopicSeq returns 1 + the highest NN used by any topics.dir_name or any topics/NN-* directory on
+// disk, so a new NN-slug is free in both (a rebuild or a leftover folder leaves gaps COUNT(*) misses).
+// Call it inside the inserting transaction and increment it for each further topic.
+func NextTopicSeq(ctx context.Context, tx *sql.Tx, root *fsx.Root) (int, error) {
+	var seq int
+	// CAST takes the leading integer of "NN-slug".
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(CAST(dir_name AS INTEGER)), 0) FROM topics`).Scan(&seq); err != nil {
+		return 0, err
+	}
+	entries, err := fs.ReadDir(root.FS(), "topics")
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return 0, err
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue // a stray file fails WriteNew and rolls back; only folders reserve a number
+		}
+		num, _, ok := strings.Cut(e.Name(), "-")
+		if n, err := strconv.Atoi(num); ok && err == nil {
+			seq = max(seq, n)
+		}
+	}
+	return seq + 1, nil
+}
+
+// TopicDir returns the slug and dir_name (NN-slug) for sequence number seq (see NextTopicSeq).
 func TopicDir(seq int, title string) (slug, dir string) {
 	slug = slugOr(title, "topic", maxDirSlugRunes)
 	return slug, fmt.Sprintf("%02d-%s", seq, slug)

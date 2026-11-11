@@ -87,11 +87,11 @@ func (s *Service) AcceptSuggestion(ctx context.Context, id int64) (newID int64, 
 		if near.Valid {
 			edge = near.Float64
 		}
-		var seq int
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM topics`).Scan(&seq); err != nil {
+		seq, err := roadmaps.NextTopicSeq(ctx, tx, s.root)
+		if err != nil {
 			return err
 		}
-		slug, dir := roadmaps.TopicDir(seq+1, title)
+		slug, dir := roadmaps.TopicDir(seq, title)
 		res, err := tx.ExecContext(ctx, `INSERT INTO topics (roadmap_id, group_id, stable_key, title, title_norm, ord, slug, dir_name, origin)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'suggested')`,
 			roadmapID, group, fsx.HashString("suggestion:" + strconv.FormatInt(id, 10))[:16], title, titleNorm, (ord+edge)/2, slug, dir)

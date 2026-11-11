@@ -45,7 +45,7 @@ func setupRS(t *testing.T, contents ...string) (*topics.Service, *store.DB, *roa
 			t.Fatal(err)
 		}
 	}
-	return topics.NewService(db), db, rs
+	return topics.NewService(db, root), db, rs
 }
 
 func titles(nodes []*topics.Node) (out []string) {
