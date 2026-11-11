@@ -23,7 +23,7 @@
   <input type="hidden" name="csrf_token" value="{{.CSRF}}">
   <input type="hidden" name="shown_rule" value="{{.RuleValue}}">
   <label>قاعده انتخاب موضوع
-    <select name="rule">
+    <select name="rule" id="rule">
       {{range .Rules}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}
     </select>
   </label>
@@ -39,8 +39,8 @@
   <ol class="chapters tree-rows">{{range .Chapters}}
     <li class="topic depth-{{.Depth}}">
       <input type="hidden" name="ch_line" value="{{.Line}}">
-      <input type="checkbox" name="include" value="{{.Key}}"{{if .Included}} checked{{end}} aria-label="انتخاب رکورد {{.N}}">
-      <input type="text" name="ch_title" value="{{.Title}}" maxlength="200" dir="auto" aria-label="عنوان رکورد {{.N}}">
+      <input type="checkbox" id="inc-{{.Key}}" name="include" value="{{.Key}}"{{if .Included}} checked{{end}} aria-label="انتخاب رکورد {{.N}}">
+      <input type="text" id="ttl-{{.N}}" name="ch_title" value="{{.Title}}" maxlength="200" dir="auto" aria-label="عنوان رکورد {{.N}}">
       <span class="note">خط {{.Line}}{{if .EndLine}} تا {{.EndLine}}{{end}}</span>
     </li>{{end}}
   </ol>
@@ -50,8 +50,8 @@
   <ol class="chapters">{{range .Chapters}}
     <li class="topic">
       <input type="hidden" name="ch_line" value="{{.Line}}"><input type="hidden" name="ch_end" value="{{.EndLine}}">
-      <label><input type="checkbox" name="include" value="{{.Key}}"{{if .Included}} checked{{end}}> فصل {{.N}}</label>
-      <input type="text" name="ch_title" value="{{.Title}}" maxlength="200" dir="auto" aria-label="عنوان فصل {{.N}}">
+      <label><input type="checkbox" id="inc-{{.Key}}" name="include" value="{{.Key}}"{{if .Included}} checked{{end}}> فصل {{.N}}</label>
+      <input type="text" id="ttl-{{.N}}" name="ch_title" value="{{.Title}}" maxlength="200" dir="auto" aria-label="عنوان فصل {{.N}}">
       <span class="note">خط {{.Line}} تا {{.EndLine}}</span>
       {{if not .Last}}<button type="submit" name="merge" value="{{.N}}">ادغام با فصل بعد</button>{{end}}
     </li>{{end}}
@@ -92,12 +92,12 @@
     <button type="submit" class="primary">ادامه بدون AI</button>
   </form>{{end}}
   {{if not (and .Job .Job.Active)}}<form method="post" action="/roadmaps/drafts/{{.Draft.ID}}/ai-assist"
-        hx-post="/roadmaps/drafts/{{.Draft.ID}}/ai-assist" hx-target="#draft-ai" hx-swap="outerHTML">
+        hx-post="/roadmaps/drafts/{{.Draft.ID}}/ai-assist" hx-target="#draft-ai" hx-swap="outerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="csrf_token" value="{{.CSRF}}">
     <button type="submit">{{if .AIRule}}تحلیل دوباره با AI{{else}}تحلیل ساختار با AI{{end}}</button>
   </form>
   <form method="post" action="/roadmaps/drafts/{{.Draft.ID}}/chapters"
-        hx-post="/roadmaps/drafts/{{.Draft.ID}}/chapters" hx-target="#draft-ai" hx-swap="outerHTML">
+        hx-post="/roadmaps/drafts/{{.Draft.ID}}/chapters" hx-target="#draft-ai" hx-swap="outerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="csrf_token" value="{{.CSRF}}">
     <button type="submit">{{if .AIRule}}تشخیص دوباره{{else}}تلاش دوباره{{end}}</button>
   </form>
@@ -127,6 +127,6 @@
   <ul>{{range .Items}}{{template "node" .}}{{end}}</ul>
 </li>{{else}}
 <li class="topic">
-  <label><input type="checkbox" name="include" value="{{.Key}}"{{if .Included}} checked{{end}}> <bdi>{{.Title}}</bdi></label>
+  <label><input type="checkbox" id="inc-{{.Key}}" name="include" value="{{.Key}}"{{if .Included}} checked{{end}}> <bdi>{{.Title}}</bdi></label>
   {{with .Outline}}<details><summary>زیرموارد</summary><pre dir="auto">{{.}}</pre></details>{{end}}
 </li>{{end}}{{end}}

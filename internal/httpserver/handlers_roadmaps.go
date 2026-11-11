@@ -43,7 +43,8 @@ type app struct {
 // pageData is shared by all pages; each template uses the fields it needs.
 type pageData struct {
 	Title, CSRF, Error string
-	CanOpen            bool // editor.command is set: show «باز کردن» (T6.6)
+	Page               string // template set name; marks the current nav link
+	CanOpen            bool   // editor.command is set: show «باز کردن» (T6.6)
 
 	Draft           *roadmaps.Draft
 	Expires         string
@@ -150,7 +151,7 @@ func newApp(sm *SecurityManager, drafts *roadmaps.Service, topicList *topics.Ser
 
 // render executes into a buffer first so a template error never sends a half page.
 func (a *app) render(w http.ResponseWriter, status int, page, name string, d *pageData) {
-	d.CSRF = a.sm.CSRFToken()
+	d.CSRF, d.Page = a.sm.CSRFToken(), page
 	var buf bytes.Buffer
 	if err := a.pages[page].ExecuteTemplate(&buf, name, d); err != nil {
 		slog.Error("rendering template", "page", page, "error", err)

@@ -11,7 +11,7 @@
 </head>
 <body hx-headers='{"X-CSRF-Token":"{{.CSRF}}"}'>
 <header><div class="bar"><a href="/topics" class="brand">Learning Hub</a>
-  <nav aria-label="ناوبری اصلی"><a href="/topics">موضوعات</a> <a href="/sync">همگام‌سازی</a> <a href="/settings">تنظیمات</a></nav></div></header>
+  <nav aria-label="ناوبری اصلی"><a href="/topics"{{if eq .Page "topics"}} aria-current="page"{{end}}>موضوعات</a> <a href="/sync"{{if eq .Page "sync"}} aria-current="page"{{end}}>همگام‌سازی</a> <a href="/settings"{{if eq .Page "settings"}} aria-current="page"{{end}}>تنظیمات</a></nav></div></header>
 <main>{{template "content" .}}</main>
 </body>
 </html>{{end}}

@@ -8,7 +8,7 @@
 {{with .Panel.Children}}<details class="children" open><summary>زیررکوردها ({{len .}})</summary>
   <ul>{{range .}}<li><a href="/topics/{{.ID}}"><bdi>{{.Title}}</bdi></a>{{if .Archived}} <span class="badge">بایگانی‌شده</span>{{end}}</li>{{end}}</ul>
 </details>{{end}}
-<nav class="tabs">
+<nav class="tabs" aria-label="بخش‌های موضوع">
   {{if .Panel.Source}}<a href="/topics/{{.Panel.ID}}/source"{{if eq .Tab "source"}} aria-current="page"{{end}}>متن فصل</a>{{end}}
   <a href="/topics/{{.Panel.ID}}/lesson"{{if eq .Tab ""}} aria-current="page"{{end}}>درس</a>
   <a href="/topics/{{.Panel.ID}}/exercises"{{if eq .Tab "exercises"}} aria-current="page"{{end}}>تمرین‌ها</a>
@@ -142,7 +142,7 @@
   {{if eq .Tab "suggestions"}}
   {{else if eq .Tab "reports"}}
   {{if .Sets}}
-  <form method="post" action="/topics/{{.Panel.ID}}/jobs/evaluate" hx-post="/topics/{{.Panel.ID}}/jobs/evaluate" hx-target="#job-area" hx-swap="outerHTML">
+  <form method="post" action="/topics/{{.Panel.ID}}/jobs/evaluate" hx-post="/topics/{{.Panel.ID}}/jobs/evaluate" hx-target="#job-area" hx-swap="outerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="csrf_token" value="{{.CSRF}}"><input type="hidden" name="tab" value="reports">
     <label>حالت <select name="mode"{{if $busy}} disabled{{end}}>
       <option value="incremental">افزایشی (فقط پاسخ‌های جدید یا تغییرکرده)</option>
@@ -152,7 +152,7 @@
   {{else}}<p class="note">برای ارزیابی ابتدا تمرین‌های این موضوع را بسازید.</p>{{end}}
   {{else if .Tab}}
   {{if .Panel.Lessons}}
-  <form method="post" action="/topics/{{.Panel.ID}}/jobs/exercises" hx-post="/topics/{{.Panel.ID}}/jobs/exercises" hx-target="#job-area" hx-swap="outerHTML">
+  <form method="post" action="/topics/{{.Panel.ID}}/jobs/exercises" hx-post="/topics/{{.Panel.ID}}/jobs/exercises" hx-target="#job-area" hx-swap="outerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="csrf_token" value="{{.CSRF}}"><input type="hidden" name="tab" value="{{.Tab}}">
     <label>تعداد تمرین <input type="number" name="count" min="{{.CountMin}}" max="{{.CountMax}}" placeholder="پیش‌فرض"{{if $busy}} disabled{{end}}></label>
     {{if .Sets}}
@@ -165,7 +165,7 @@
   </form>
   {{else}}<p class="note">برای ساخت تمرین ابتدا درس این موضوع را تولید کنید.</p>{{end}}
   {{else}}
-  <form method="post" action="/topics/{{.Panel.ID}}/jobs/lesson" hx-post="/topics/{{.Panel.ID}}/jobs/lesson" hx-target="#job-area" hx-swap="outerHTML">
+  <form method="post" action="/topics/{{.Panel.ID}}/jobs/lesson" hx-post="/topics/{{.Panel.ID}}/jobs/lesson" hx-target="#job-area" hx-swap="outerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="csrf_token" value="{{.CSRF}}">
     {{if .Panel.Lessons}}
     <label><input type="checkbox" name="confirm_regenerate" value="1" required{{if $busy}} disabled{{end}}>
@@ -180,16 +180,16 @@
   <div class="job-card job-{{.Status}}">
     <strong>{{jobKind .Kind}}</strong> <span class="badge">{{jobStatus .Status}}</span>
     {{if .Active}}{{with .Phase}}<span>مرحله: {{jobPhase .}}</span>{{end}}{{end}}
-    {{if .Total}}<progress value="{{.Done}}" max="{{.Total}}">{{.Done}}/{{.Total}}</progress>{{end}}
+    {{if .Total}}<progress aria-label="پیشرفت" value="{{.Done}}" max="{{.Total}}">{{.Done}}/{{.Total}}</progress>{{end}}
     {{if .Duration}}<span class="note">مدت: {{faDuration .Duration}}</span>{{end}}
     {{if eq .Status "failed"}}{{$msg := aiMessage .ErrorCode}}<p class="error">{{if $msg}}{{$msg}}{{else}}<bdi>{{.ErrorMessage}}</bdi>{{end}}
       {{if or (eq .ErrorCode "auth_required") (eq .ErrorCode "adapter_missing")}}<a href="/settings">تنظیمات</a>{{end}}</p>
     {{if $msg}}<details><summary>جزئیات فنی</summary><pre>{{.ErrorMessage}}</pre> <code>{{.ErrorCode}}</code></details>{{end}}
-    <form method="post" action="/jobs/{{.ID}}/retry" hx-post="/jobs/{{.ID}}/retry" hx-target="#job-area" hx-swap="outerHTML">
+    <form method="post" action="/jobs/{{.ID}}/retry" hx-post="/jobs/{{.ID}}/retry" hx-target="#job-area" hx-swap="outerHTML" hx-disabled-elt="find button">
       <input type="hidden" name="csrf_token" value="{{$.CSRF}}"><input type="hidden" name="tab" value="{{$.Tab}}"><button type="submit">تلاش مجدد</button>
     </form>{{end}}
     {{if .Active}}
-    <form method="post" action="/jobs/{{.ID}}/cancel" hx-post="/jobs/{{.ID}}/cancel" hx-target="#job-area" hx-swap="outerHTML">
+    <form method="post" action="/jobs/{{.ID}}/cancel" hx-post="/jobs/{{.ID}}/cancel" hx-target="#job-area" hx-swap="outerHTML" hx-disabled-elt="find button">
       <input type="hidden" name="csrf_token" value="{{$.CSRF}}"><input type="hidden" name="tab" value="{{$.Tab}}"><button type="submit" class="danger"{{if .CancelRequested}} disabled{{end}}>{{if .CancelRequested}}در حال لغو…{{else}}لغو{{end}}</button>
     </form>{{end}}
   </div>

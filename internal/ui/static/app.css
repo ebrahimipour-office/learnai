@@ -23,6 +23,7 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
+html { scroll-padding-top: 4.5rem; } /* sticky header must not cover focused or #anchored content */
 body { margin: 0; font: 16px/1.8 Vazirmatn, Tahoma, system-ui, sans-serif; color: var(--fg); background: var(--bg); }
 h1, h2, h3 { line-height: 1.4; margin: 1.5rem 0 .75rem; }
 h1 { font-size: 1.6rem; font-weight: 800; }
@@ -38,7 +39,7 @@ header .bar { max-width: 64rem; margin: 0 auto; padding: .6rem 1rem; display: fl
 header .brand { color: var(--fg); font-weight: 800; font-size: 1.1rem; margin-inline-end: auto; }
 header nav { display: flex; gap: .25rem; }
 header nav a { color: var(--muted); padding: .3rem .7rem; border-radius: var(--radius-sm); }
-header nav a:hover { color: var(--fg); background: var(--surface-2); text-decoration: none; }
+header nav a:hover, header nav a[aria-current] { color: var(--fg); background: var(--surface-2); text-decoration: none; }
 main { max-width: 64rem; margin: 0 auto; padding: .5rem 1rem 3rem; }
 
 /* cards */
