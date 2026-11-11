@@ -545,7 +545,7 @@ There are **no P0 tasks**.
   - Open the DB read-only (`mode=ro`) and read `SavedAdapter`, falling back to the config.
   - Use the selected tool's model.
   - Build the message from `Adapter.Name()` and the matching TOML section.
-  - Use `fsx.WriteNew` with a random name, then remove it.
+  - [x] Use `fsx.WriteNew` with a random name, then remove it. (done in R10; adapter-selection parts still open)
 - **Required regression tests:** `meta.adapter_kind='claude'` → doctor probes `claude`; a message test for each adapter; an existing `.doctor_test` is not modified.
 - **Acceptance criteria:**
   - [ ] Tests pass.

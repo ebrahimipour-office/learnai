@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -90,11 +91,17 @@ func runDoctor(args []string) {
 		os.Exit(1)
 	}
 	writeErr := ""
-	testFile := filepath.Join(cfg.BaseDir, ".doctor_test")
-	if err := os.WriteFile(testFile, []byte("ok"), 0o600); err != nil {
+	if root, err := fsx.OpenRoot(cfg.BaseDir); err != nil {
 		writeErr = err.Error()
 	} else {
-		_ = os.Remove(testFile)
+		// Random name + WriteNew: the probe can never overwrite a user file (CR-43).
+		testFile := ".doctor_test-" + rand.Text()
+		if err := root.WriteNew(testFile, []byte("ok"), 0o600); err != nil {
+			writeErr = err.Error()
+		} else {
+			_ = root.Remove(testFile)
+		}
+		root.Close()
 	}
 	adapter := newAdapter(cfg, nil, cfg.Adapter.Kind)
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -175,13 +182,20 @@ func runRebuild(args []string) {
 	if *dbPath == "" {
 		*dbPath = filepath.Join(cfg.BaseDir, "app.db")
 	}
+	root, err := fsx.OpenRoot(cfg.BaseDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error opening base directory: %v\n", err)
+		os.Exit(1)
+	}
 	// The server must not write while we rebuild (D13).
-	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, ".app"), 0o755); err != nil {
+	if err := root.MkdirAll(".app", 0o755); err != nil {
+		root.Close()
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 	lock := flock.New(filepath.Join(cfg.BaseDir, ".app", "hub.lock"))
 	if ok, err := lock.TryLock(); err != nil || !ok {
+		root.Close()
 		fmt.Fprintln(os.Stderr, "Error: LearningHub is running; stop it before rebuilding.")
 		os.Exit(1)
 	}
@@ -189,13 +203,8 @@ func runRebuild(args []string) {
 
 	db, err := store.Open(*dbPath)
 	if err != nil {
+		root.Close()
 		fmt.Fprintf(os.Stderr, "Error opening %s: %v\n", *dbPath, err)
-		os.Exit(1)
-	}
-	root, err := fsx.OpenRoot(cfg.BaseDir)
-	if err != nil {
-		db.Close()
-		fmt.Fprintf(os.Stderr, "Error opening base directory: %v\n", err)
 		os.Exit(1)
 	}
 	rep, err := rebuild.Run(context.Background(), db, root)
@@ -234,8 +243,14 @@ func runServe(args []string) {
 	slog.SetDefault(logger)
 
 	// Ensure .app internal directory exists for lock file and runtime state
+	root, err := fsx.OpenRoot(cfg.BaseDir)
+	if err != nil {
+		slog.Error("Failed to open base directory", "path", cfg.BaseDir, "error", err)
+		os.Exit(1)
+	}
+	defer root.Close()
 	appDir := filepath.Join(cfg.BaseDir, ".app")
-	if err := os.MkdirAll(appDir, 0755); err != nil {
+	if err := root.MkdirAll(".app", 0o755); err != nil {
 		slog.Error("Failed to create .app directory", "error", err)
 		os.Exit(1)
 	}
@@ -282,12 +297,6 @@ func runServe(args []string) {
 		slog.Error("Failed to initialize security manager", "error", err)
 		return
 	}
-	root, err := fsx.OpenRoot(cfg.BaseDir)
-	if err != nil {
-		slog.Error("Failed to open base directory", "path", cfg.BaseDir, "error", err)
-		return
-	}
-	defer root.Close()
 	drafts := roadmaps.NewService(db, root)
 	drafts.DraftTTL, drafts.TreeCap, drafts.MaxBytes = cfg.DraftTTL, cfg.Limits.MaxTreeTopics, int(cfg.Limits.MaxRoadmapBytes)
 	sm.MaxUpload = cfg.Limits.MaxRoadmapBytes

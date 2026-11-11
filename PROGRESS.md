@@ -9,8 +9,8 @@
 | مشخصه | وضعیت |
 |---|---|
 | **فاز فعال کنونی** | **فاز ۷.۵ — پرداخت بدهی بازبینی (R1 تا R12) 🚀**، سپس فاز ۸ (فازهای ۱ تا ۷ کامل ✅؛ معوق‌های T5.8 واقعی، چک‌لیست ویندوز و `make vuln` در R6 تا R8 قرار گرفتند) |
-| **کار بعدی برای اجرا** | **T8.0** منتظر فایل نمونه از کاربر؛ فاز ۸ جز آن بسته شد (T8.8 و R11 بسته شد؛ R7 تا R10 موازی؛ بعدی پیشنهادی: R10). I10 بسته شد (§۱۳.۲) |
-| **آخرین کامیت Git** | `fix(evaluation): verify recorded set and flag answers held for review (R11: CR-08, CR-09)` |
+| **کار بعدی برای اجرا** | **T8.0** منتظر فایل نمونه از کاربر؛ فاز ۸ جز آن بسته شد (T8.8، R11 و R10 بسته شد؛ R7 تا R9 موازی؛ بعدی پیشنهادی: R9). I10 بسته شد (§۱۳.۲) |
+| **آخرین کامیت Git** | `refactor(cli): route hub file writes through fsx (R10, part of CR-43)` |
 | **✅ بسته‌شده از T3.1** | **۲۰۲۶-۱۱-۰۱:** اجرای واقعی دستی با `agy` 1.4.12 (`gemini-3.8-flash-high`، `--json-schema`، `--sandbox`) موفق بود. تأیید شد: خروجی ساختاریافته در `result.structured_output` است؛ `response` متن آزاد + JSON است (fallback فقط برای JSON خالص)؛ رویدادهای میانی `init` و `step_update` درست‌اند. خط واقعی در `TestRealSuccessEnvelope` ثبت شد. |
 | **وضعیت آزمون‌های خودکار** | **۱۰۰٪ سبز و موفق** (`go test ./...` روی همه پکیج‌ها) |
 | **مسیر دایرکتوری پایه** | `C:\Users\Asus\Desktop\Leaning-appication\prj` |
@@ -239,7 +239,9 @@
 - [ ] **R7**: اجرای واقعی T5.8 — ارزیابی یک تمرین با `agy` واقعی؛ یادداشت نتیجه (مدت، تلاش‌ها، کد خطا) در T5.8
 - [ ] **R8**: بررسی دستی مرورگر برای T6.2 و T6.3 (تحلیل AI پیش‌نویس، صفحه همگام‌سازی) + چک‌لیست ویندوز `INSTALL.md`
 - [ ] **R9**: پاک‌سازی مستندات ریشه — `review-report.md`، `review-report-T5.md`، `environment-audit-report.md`، `implementation-strategy-report.md` ⇐ `docs/archive/`؛ `GEMINI.md` حذف (کپی `AGENTS.md`)؛ مسیر پایه در همین فایل از `C:\...` به مسیر واقعی لینوکس (CR-41، CR-57)
-- [ ] **R10**: `cmd/hub/main.go` — سه تماس مستقیم `os.MkdirAll`/`os.WriteFile` به `fsx` منتقل شود (CR-43)
+- [x] **R10**: `cmd/hub/main.go` — سه تماس مستقیم `os.MkdirAll`/`os.WriteFile` به `fsx` منتقل شود (CR-43)
+  - ✅ انجام شد (۲۰۲۶-۱۱-۱۱): `serve` و `rebuild` اکنون `fsx.OpenRoot` را اول باز می‌کنند و `.app` را با `root.MkdirAll` می‌سازند (یک Root در `serve`، دیگر دوبار باز نمی‌شود)؛ `doctor` فایل آزمون را با نام تصادفی (`.doctor_test-<rand.Text>`) و `root.WriteNew` می‌نویسد و حذف می‌کند ⇐ هرگز فایل کاربر را بازنویسی نمی‌کند. آزمون دود: `.doctor_test` موجود دست‌نخورده ماند و فایلی باقی نماند؛ `rebuild` روی پایه خالی موفق. ⏳ باقی CR-43 (doctor از `SavedAdapter` در DB پیروی کند، پیام بر اساس `Adapter.Name()`) باز است
+  - ⚠️ `go test ./...` در ریشه شکست می‌خورد چون پوشه داده زمان اجرا `topics/` (ignored) فایل پاسخ `.go` با نام فارسی دارد؛ تا جابه‌جایی داده از `./cmd/... ./internal/... ./skills/...` استفاده شود
 - [x] **R11**: بستن موارد P2 هم‌فایل با فاز ۸ در همان تسک: CR-05، CR-06، CR-16، CR-17 با T8.3/T8.5 (`roadmaps`)؛ CR-08، CR-09 با T8.6 (`evaluation`)
   - ✅ CR-08 و CR-09 بسته شد (۲۰۲۶-۱۱-۱۱): **CR-08** — `evaluation.run` در مرحله prepare، پیش از هر فراخوانی AI، hash فایل‌های `manifest.json` و `rubric-vN.json` را با `files.sha256` مقایسه می‌کند؛ ناهمخوانی ⇐ `ErrInvalidState` («edited after the exercise set was created; restore it or generate a new set») و هیچ فایل/ردیفی نوشته نمی‌شود؛ commit همان بایت‌های تأییدشده را به کار می‌برد (بدون خواندن دوباره). **CR-09** — پاسخ‌های `sel.Review` (بزرگ‌تر از `max_answer_bytes` یا باینری) پرچم `needs_review` در `attempt_items.flags` می‌گیرند؛ **سیاست نمره: ۰** (`status=unanswered` در `result.json` می‌ماند چون اسکیما فقط سه وضعیت دارد؛ پاسخ بدون تغییری که فقط سقف کم شده نمره منتقل‌شده‌اش را نگه می‌دارد). برچسب «⚠ نیازمند بازبینی دستی (ارسال نشد؛ نمره ۰)» در `summary.md` و «نیازمند بازبینی دستی (ارسال نشد)» در جدول تلاش UI به‌جای «بدون پاسخ». تست‌ها: `TestEvaluateRefusesEditedSet` (حذف تمرین، تغییر وزن، `criteria: []`)، `TestEvaluateNeedsReviewFlag`؛ fixture تست hash واقعی manifest/rubric را ثبت می‌کند. ⚠️ پرچم در `result.json` نیست (فقط DB و summary)؛ `hub rebuild` آن را بازسازی نمی‌کند؛ برچسب UI تست HTTP جدا ندارد
 - [x] **R12**: سقف تعداد رکورد برای قاعده `tree` + هشدار در پیش‌نمایش پیش از اعمال خودکار (به T8.5 اضافه شود؛ مقدار پیشنهادی در `limits`)
