@@ -30,7 +30,7 @@ func TestDraftAIAssistFlow(t *testing.T) {
 	draftURL := rec.Header().Get("Location")
 
 	page := e.do(httptest.NewRequest(http.MethodGet, draftURL, nil)).Body.String()
-	if !strings.Contains(page, "تحلیل ساختار با AI") || strings.Contains(page, "اعمال پیشنهاد") {
+	if !strings.Contains(page, "پیشنهاد قاعده با AI") || strings.Contains(page, "اعمال پیشنهاد") {
 		t.Fatalf("fresh draft: want analyze button, no suggestion\n%s", page)
 	}
 
@@ -112,7 +112,7 @@ func TestDraftAIAssistBusyAndFailure(t *testing.T) {
 		}
 	}
 	page := e.do(httptest.NewRequest(http.MethodGet, draftURL, nil)).Body.String()
-	if !strings.Contains(page, "تحلیل ناموفق بود: خروجی AI معتبر نبود.") || !strings.Contains(page, "تحلیل ساختار با AI") || strings.Contains(page, "قاعده پیشنهادی") {
+	if !strings.Contains(page, "تحلیل ناموفق بود: خروجی AI معتبر نبود.") || !strings.Contains(page, "پیشنهاد قاعده با AI") || strings.Contains(page, "قاعده پیشنهادی") {
 		t.Errorf("failed analysis page wrong\n%s", page)
 	}
 

@@ -18,7 +18,7 @@
   <table>
     <thead><tr><th>ثبت</th><th>نوع</th><th>مسیر قبلی</th><th>مسیر جدید</th><th>تشخیص</th></tr></thead>
     <tbody>{{range .Report.Moved}}<tr>
-      <td><input type="checkbox" name="move" value="{{.FileID}}" aria-label="ثبت جابه‌جایی {{.RelPath}}"{{if $.Sync.Applied}} disabled{{end}}></td>
+      <td><input type="checkbox" name="move" value="{{.FileID}}" aria-label="ثبت جابه‌جایی {{.RelPath}}"{{if $.Sync.Applied}}{{$id := .FileID}}{{range $.Sync.Applied}}{{if eq .FileID $id}} checked{{end}}{{end}} disabled{{end}}></td>
       <td>{{fileKind .Kind}}</td><td><bdi>{{.RelPath}}</bdi></td><td><bdi>{{.To}}</bdi></td>
       <td>{{if eq .By "header"}}سربرگ @hub{{else}}hash یکسان{{end}}</td>
     </tr>{{end}}</tbody>

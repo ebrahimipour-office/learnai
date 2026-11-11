@@ -58,6 +58,7 @@ type pageData struct {
 	RoadmapID       int64        // re-import target preselected in the upload form
 	AIRule, AILabel string       // T6.2 suggested rule as form value and label; "" = no suggestion
 	AIApplied       bool         // the draft's rule is exactly the suggested one
+	HasH2           bool         // the file has a level-2 heading, so the "level 2" hint applies
 	Chapters        []chapterRow // chapters rule only: editable list instead of Items
 	TreeCap         int          // >0: the ticked tree records exceed this cap and confirm will fail (R12)
 
@@ -487,6 +488,12 @@ func (a *app) draftAI(r *http.Request, d *roadmaps.Draft, data *pageData) error 
 			data.AILabel = fmt.Sprintf("%d فصل", len(d.AI.Rule.Chapters))
 		}
 	}
+	data.HasH2 = hasLevel(roadmap.Parse(d.Content), 2)
+	ack, err := a.privacyAck(r.Context())
+	if err != nil {
+		return err
+	}
+	data.PrivacyAck = ack
 	// Both draft jobs share the scope, so the latest of either kind is the one to show.
 	j, err := a.runner.Latest(r.Context(), roadmaps.DraftScope(d.ID), "")
 	data.Job = j
@@ -676,4 +683,17 @@ func ruleOptions(selected string) []ruleOption {
 		opts[i].Selected = opts[i].Value == selected
 	}
 	return opts
+}
+
+// hasLevel reports whether the tree has a heading of the given level.
+func hasLevel(n *roadmap.Node, level int) bool {
+	if n.Kind == roadmap.KindHeading && n.Level == level {
+		return true
+	}
+	for _, c := range n.Children {
+		if hasLevel(c, level) {
+			return true
+		}
+	}
+	return false
 }

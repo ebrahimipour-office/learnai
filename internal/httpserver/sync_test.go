@@ -2,6 +2,7 @@ package httpserver_test
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -53,6 +54,9 @@ func TestSyncPageScanAndApply(t *testing.T) {
 	e.db.Writer().QueryRow(`SELECT rel_path FROM files WHERE id = 1`).Scan(&rel)
 	if rel != "topics/01-http/moved/rubric.json" {
 		t.Errorf("rel_path = %s", rel)
+	}
+	if page := e.do(httptest.NewRequest(http.MethodGet, "/sync", nil)).Body.String(); !strings.Contains(page, `value="1" aria-label="ثبت جابه‌جایی topics/01-http/rubric.json" checked disabled`) {
+		t.Error("applied move must show ticked and disabled")
 	}
 	if rec := e.post("/sync/"+runID+"/apply", url.Values{"confirm": {"1"}, "move": {"1"}}, false); rec.Code != http.StatusConflict {
 		t.Errorf("second apply: want 409, got %d", rec.Code)

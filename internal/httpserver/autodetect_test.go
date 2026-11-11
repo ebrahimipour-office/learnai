@@ -46,10 +46,13 @@ func TestAutoDetectAndConditionalConfirm(t *testing.T) {
 	// The failure page: message, technical details, settings link and both choices.
 	page := e.do(httptest.NewRequest(http.MethodGet, draft, nil)).Body.String()
 	for _, want := range []string{"فایل اجرایی ابزار انتخاب‌شده پیدا نشد", "جزئیات فنی", fmt.Sprintf(".app/logs/jobs/%d/", jobID),
-		`href="/settings"`, "هوش مصنوعی در دسترس نیست", `name="no_ai" value="1"`, "ادامه بدون AI", "تلاش دوباره"} {
+		`href="/settings"`, "هوش مصنوعی در دسترس نیست", `name="no_ai" value="1"`, "ادامه بدون AI", "تشخیص فصل‌ها با AI"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("failure page lacks %q", want)
 		}
+	}
+	if strings.Contains(page, "حریم خصوصی هنوز تأیید نشده") {
+		t.Error("privacy warning shown although the notice is acknowledged")
 	}
 
 	// While a detection runs: refused even with no_ai.

@@ -82,7 +82,7 @@
   <details><summary>جزئیات فنی</summary>
     <p dir="ltr"><code>{{.ErrorCode}}</code> {{.ErrorMessage}}</p>
     <p>لاگ کار: <code dir="ltr">.app/logs/jobs/{{.ID}}/</code></p>
-  </details>{{end}}{{else}}{{if not .AIRule}}<p class="error" role="alert">AI اجرا نشد؛ متن حریم خصوصی هنوز تأیید نشده است. <a href="/settings">تنظیمات</a></p>{{end}}{{end}}
+  </details>{{end}}{{else}}{{if and (not .AIRule) (not .PrivacyAck)}}<p class="error" role="alert">AI اجرا نشد؛ متن حریم خصوصی هنوز تأیید نشده است. <a href="/settings">تنظیمات</a></p>{{end}}{{end}}
   {{if and (not .AIRule) (not (and .Job .Job.Active))}}
   <p><strong>هوش مصنوعی در دسترس نیست. با روش قطعی «هر سرفصل یک رکورد (بدون AI)» وارد شود؟</strong></p>
   <form method="post" action="/roadmaps/drafts/{{.Draft.ID}}/confirm">
@@ -94,14 +94,16 @@
   {{if not (and .Job .Job.Active)}}<form method="post" action="/roadmaps/drafts/{{.Draft.ID}}/ai-assist"
         hx-post="/roadmaps/drafts/{{.Draft.ID}}/ai-assist" hx-target="#draft-ai" hx-swap="outerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="csrf_token" value="{{.CSRF}}">
-    <button type="submit">{{if .AIRule}}تحلیل دوباره با AI{{else}}تحلیل ساختار با AI{{end}}</button>
+    <button type="submit">{{if .AIRule}}پیشنهاد دوباره قاعده با AI{{else}}پیشنهاد قاعده با AI{{end}}</button>
+    <span class="note">AI یکی از قاعده‌های فهرست (سطح، آیتم‌ها، …) را پیشنهاد می‌کند.</span>
   </form>
   <form method="post" action="/roadmaps/drafts/{{.Draft.ID}}/chapters"
         hx-post="/roadmaps/drafts/{{.Draft.ID}}/chapters" hx-target="#draft-ai" hx-swap="outerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="csrf_token" value="{{.CSRF}}">
-    <button type="submit">{{if .AIRule}}تشخیص دوباره{{else}}تلاش دوباره{{end}}</button>
+    <button type="submit">{{if .AIRule}}تشخیص دوباره فصل‌ها با AI{{else}}تشخیص فصل‌ها با AI{{end}}</button>
+    <span class="note">AI فصل‌ها را با بازه خط مشخص می‌کند (همان کاری که پس از بارگذاری خودکار اجرا می‌شود).</span>
   </form>
-  <p class="note">بدون AI: قاعده «سرفصل‌های سطح ۲» هم هر سرفصل H2 را یک فصل می‌کند.</p>{{end}}
+  {{if .HasH2}}<p class="note">بدون AI: قاعده «سرفصل‌های سطح ۲» هم هر سرفصل H2 را یک فصل می‌کند.</p>{{end}}{{end}}
   {{with .Notice}}<p class="error" role="alert">{{.}}</p>{{end}}
 </section>
 {{end}}
