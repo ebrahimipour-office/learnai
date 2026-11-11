@@ -9,11 +9,11 @@
 | مشخصه | وضعیت |
 |---|---|
 | **فاز فعال کنونی** | **فاز ۷.۵ — پرداخت بدهی بازبینی (R1 تا R12) 🚀**، سپس فاز ۸ (فازهای ۱ تا ۷ کامل ✅؛ معوق‌های T5.8 واقعی، چک‌لیست ویندوز و `make vuln` در R6 تا R8 قرار گرفتند) |
-| **کار بعدی برای اجرا** | **T8.0** منتظر فایل نمونه از کاربر؛ فاز ۸ جز آن بسته شد (T8.8، R11 و R10 بسته شد؛ R7 تا R9 موازی؛ بعدی پیشنهادی: R9). I10 بسته شد (§۱۳.۲) |
-| **آخرین کامیت Git** | `refactor(cli): route hub file writes through fsx (R10, part of CR-43)` |
+| **کار بعدی برای اجرا** | **T8.0** منتظر فایل نمونه از کاربر؛ فاز ۸ جز آن بسته شد (T8.8، R11 و R10 بسته شد؛ R9 بسته شد؛ R7 و R8 موازی و دستی‌اند؛ بعدی پیشنهادی: R8). I10 بسته شد (§۱۳.۲) |
+| **آخرین کامیت Git** | `docs: archive old root reports, drop GEMINI.md, fix base path (R9)` |
 | **✅ بسته‌شده از T3.1** | **۲۰۲۶-۱۱-۰۱:** اجرای واقعی دستی با `agy` 1.4.12 (`gemini-3.8-flash-high`، `--json-schema`، `--sandbox`) موفق بود. تأیید شد: خروجی ساختاریافته در `result.structured_output` است؛ `response` متن آزاد + JSON است (fallback فقط برای JSON خالص)؛ رویدادهای میانی `init` و `step_update` درست‌اند. خط واقعی در `TestRealSuccessEnvelope` ثبت شد. |
 | **وضعیت آزمون‌های خودکار** | **۱۰۰٪ سبز و موفق** (`go test ./...` روی همه پکیج‌ها) |
-| **مسیر دایرکتوری پایه** | `C:\Users\Asus\Desktop\Leaning-appication\prj` |
+| **مسیر دایرکتوری پایه** | `/home/ebrahimipour/11111111/learnai` (ریشه همین مخزن؛ `.app/` و `topics/` در `.gitignore`) |
 
 ---
 
@@ -238,7 +238,8 @@
 **موازی با فاز ۸:**
 - [ ] **R7**: اجرای واقعی T5.8 — ارزیابی یک تمرین با `agy` واقعی؛ یادداشت نتیجه (مدت، تلاش‌ها، کد خطا) در T5.8
 - [ ] **R8**: بررسی دستی مرورگر برای T6.2 و T6.3 (تحلیل AI پیش‌نویس، صفحه همگام‌سازی) + چک‌لیست ویندوز `INSTALL.md`
-- [ ] **R9**: پاک‌سازی مستندات ریشه — `review-report.md`، `review-report-T5.md`، `environment-audit-report.md`، `implementation-strategy-report.md` ⇐ `docs/archive/`؛ `GEMINI.md` حذف (کپی `AGENTS.md`)؛ مسیر پایه در همین فایل از `C:\...` به مسیر واقعی لینوکس (CR-41، CR-57)
+- [x] **R9**: پاک‌سازی مستندات ریشه — `review-report.md`، `review-report-T5.md`، `environment-audit-report.md`، `implementation-strategy-report.md` ⇐ `docs/archive/`؛ `GEMINI.md` حذف (کپی `AGENTS.md`)؛ مسیر پایه در همین فایل از `C:\...` به مسیر واقعی لینوکس (CR-41، CR-57)
+  - ✅ انجام شد (۲۰۲۶-۱۱-۱۱): چهار گزارش با `git mv` به `docs/archive/`؛ `GEMINI.md` (بایت‌به‌بایت برابر `AGENTS.md`) حذف؛ مسیر پایه ⇐ ریشه مخزن. ⏳ CR-41 (مکان پیش‌فرض config) و بقیه CR-57 (پروتکل پیوستگی + `CODE_REVIEW_TODO.md`، SKILL ارزیاب، TDD، runbook) باز است. ⚠️ `go test ./...` در ریشه با پوشه `topics/` کاربر (پاسخ‌های `.go` با نام فارسی) شکست می‌خورد؛ `make test` (`./cmd/... ./internal/... ./skills/...`) سبز است
 - [x] **R10**: `cmd/hub/main.go` — سه تماس مستقیم `os.MkdirAll`/`os.WriteFile` به `fsx` منتقل شود (CR-43)
   - ✅ انجام شد (۲۰۲۶-۱۱-۱۱): `serve` و `rebuild` اکنون `fsx.OpenRoot` را اول باز می‌کنند و `.app` را با `root.MkdirAll` می‌سازند (یک Root در `serve`، دیگر دوبار باز نمی‌شود)؛ `doctor` فایل آزمون را با نام تصادفی (`.doctor_test-<rand.Text>`) و `root.WriteNew` می‌نویسد و حذف می‌کند ⇐ هرگز فایل کاربر را بازنویسی نمی‌کند. آزمون دود: `.doctor_test` موجود دست‌نخورده ماند و فایلی باقی نماند؛ `rebuild` روی پایه خالی موفق. ⏳ باقی CR-43 (doctor از `SavedAdapter` در DB پیروی کند، پیام بر اساس `Adapter.Name()`) باز است
   - ⚠️ `go test ./...` در ریشه شکست می‌خورد چون پوشه داده زمان اجرا `topics/` (ignored) فایل پاسخ `.go` با نام فارسی دارد؛ تا جابه‌جایی داده از `./cmd/... ./internal/... ./skills/...` استفاده شود
