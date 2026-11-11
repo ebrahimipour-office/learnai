@@ -15,6 +15,7 @@ import (
 type SecurityManager struct {
 	port      string
 	csrfToken string
+	MaxUpload int64 // roadmap file size limit: config limits.max_roadmap_bytes
 }
 
 // NewSecurityManager generates a cryptographically secure 256-bit CSRF token for the session.
@@ -32,6 +33,7 @@ func NewSecurityManager(listenAddr string) (*SecurityManager, error) {
 	return &SecurityManager{
 		port:      port,
 		csrfToken: hex.EncodeToString(tokenBytes[:]),
+		MaxUpload: 1 << 20,
 	}, nil
 }
 
@@ -61,11 +63,11 @@ func (sm *SecurityManager) SecurityMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
 		w.Header().Set("Cache-Control", "no-store")
 
-		// 3. Enforce request body limits (1MB for roadmap drafts, 64KB default).
+		// 3. Enforce request body limits (MaxUpload for roadmap drafts, 64KB default).
 		// Must run before the CSRF check: r.FormValue reads the body.
 		maxBytes := int64(64 * 1024)
 		if strings.HasPrefix(r.URL.Path, "/roadmaps/drafts") {
-			maxBytes = 1<<20 + 64<<10 // 1MB file plus multipart overhead; the service enforces the exact 1MB
+			maxBytes = sm.MaxUpload + 64<<10 // file plus multipart overhead; the service enforces the exact limit
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 

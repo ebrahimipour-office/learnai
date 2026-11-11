@@ -130,6 +130,7 @@ func newApp(sm *SecurityManager, drafts *roadmaps.Service, topicList *topics.Ser
 		"jobPhase":    func(s string) string { return jobPhaseLabels[s] },
 		"jobKind":     func(s string) string { return jobKindLabels[s] },
 		"aiMessage":   ai.Message,
+		"uploadLimit": func() string { return faSize(a.drafts.MaxBytes) },
 		"base":        path.Base,
 		"answerLabel": func(s string) string { return answerStatusLabels[s] },
 		"exType":      func(s string) string { return exerciseTypeLabels[s] },
@@ -183,14 +184,14 @@ func (a *app) createDraft(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var tooBig *http.MaxBytesError
 		if errors.As(err, &tooBig) {
-			fail(http.StatusRequestEntityTooLarge, "حجم فایل بیش از ۱ مگابایت است.")
+			fail(http.StatusRequestEntityTooLarge, "حجم فایل بیش از "+faSize(a.drafts.MaxBytes)+" است.")
 			return
 		}
 		fail(http.StatusBadRequest, "فایلی انتخاب نشده است.")
 		return
 	}
 	defer file.Close()
-	content, err := io.ReadAll(io.LimitReader(file, roadmaps.MaxSourceBytes+1))
+	content, err := io.ReadAll(io.LimitReader(file, int64(a.drafts.MaxBytes)+1))
 	if err != nil {
 		fail(http.StatusBadRequest, "خواندن فایل ناموفق بود.")
 		return
@@ -209,7 +210,7 @@ func (a *app) createDraft(w http.ResponseWriter, r *http.Request) {
 	}
 	switch {
 	case errors.Is(err, roadmaps.ErrTooLarge):
-		fail(http.StatusRequestEntityTooLarge, "حجم فایل بیش از ۱ مگابایت است.")
+		fail(http.StatusRequestEntityTooLarge, "حجم فایل بیش از "+faSize(a.drafts.MaxBytes)+" است.")
 	case errors.Is(err, roadmaps.ErrNoRoadmap):
 		fail(http.StatusUnprocessableEntity, "نقشه راه انتخاب‌شده پیدا نشد.")
 	case errors.Is(err, roadmaps.ErrInvalidSource):
@@ -389,7 +390,7 @@ func (a *app) confirmDraft(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, roadmaps.ErrNothingSelected):
 		a.renderDraft(w, r, http.StatusUnprocessableEntity, d, "هیچ موضوعی انتخاب نشده است.")
 	case errors.Is(err, roadmaps.ErrTooManyTopics):
-		a.renderDraft(w, r, http.StatusUnprocessableEntity, d, fmt.Sprintf("حداکثر %d رکورد در یک ورود؛ تیک برخی سرفصل‌ها را بردارید.", roadmaps.MaxTreeTopics))
+		a.renderDraft(w, r, http.StatusUnprocessableEntity, d, fmt.Sprintf("حداکثر %d رکورد در یک ورود؛ تیک برخی سرفصل‌ها را بردارید.", a.drafts.TreeCap))
 	case errors.Is(err, roadmaps.ErrDraftNotFound):
 		a.renderNew(w, r, http.StatusNotFound, "پیش‌نویس پیدا نشد، منقضی شده یا قبلاً ثبت شده است.")
 	case err != nil:
@@ -456,8 +457,8 @@ func (a *app) renderDraft(w http.ResponseWriter, r *http.Request, status int, d 
 		SuggestItems: len(sel.Topics) == 0 && d.Choice.Rule.Kind != roadmap.RuleItems,
 		Diff:         diff,
 	}
-	if d.Choice.Rule.Kind == roadmap.RuleTree && included > roadmaps.MaxTreeTopics {
-		data.TreeCap = roadmaps.MaxTreeTopics
+	if d.Choice.Rule.Kind == roadmap.RuleTree && included > a.drafts.TreeCap {
+		data.TreeCap = a.drafts.TreeCap
 	}
 	if err := a.draftAI(r, d, data); err != nil {
 		slog.Error("loading draft analysis", "error", err)

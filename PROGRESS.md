@@ -10,7 +10,7 @@
 |---|---|
 | **فاز فعال کنونی** | **فاز ۷.۵ — پرداخت بدهی بازبینی (R1 تا R12) 🚀**، سپس فاز ۸ (فازهای ۱ تا ۷ کامل ✅؛ معوق‌های T5.8 واقعی، چک‌لیست ویندوز و `make vuln` در R6 تا R8 قرار گرفتند) |
 | **کار بعدی برای اجرا** | **T8.0** منتظر فایل نمونه از کاربر؛ فاز ۸ جز آن بسته شد (T8.8 بسته شد؛ CR-08/CR-09 از R11 هنوز باز؛ R7 تا R12 موازی). I10 بسته شد (§۱۳.۲) |
-| **آخرین کامیت Git** | `build: scope make test, vuln and CI to cmd, internal and skills (gitignored topics/ may hold .go answers)` |
+| **آخرین کامیت Git** | `feat(config): move hard-coded settings to config.toml (T8.11)` |
 | **✅ بسته‌شده از T3.1** | **۲۰۲۶-۱۱-۰۱:** اجرای واقعی دستی با `agy` 1.4.12 (`gemini-3.8-flash-high`، `--json-schema`، `--sandbox`) موفق بود. تأیید شد: خروجی ساختاریافته در `result.structured_output` است؛ `response` متن آزاد + JSON است (fallback فقط برای JSON خالص)؛ رویدادهای میانی `init` و `step_update` درست‌اند. خط واقعی در `TestRealSuccessEnvelope` ثبت شد. |
 | **وضعیت آزمون‌های خودکار** | **۱۰۰٪ سبز و موفق** (`go test ./...` روی همه پکیج‌ها) |
 | **مسیر دایرکتوری پایه** | `C:\Users\Asus\Desktop\Leaning-appication\prj` |
@@ -290,6 +290,9 @@
 
 - [x] **T8.10**: پرچم `--dangerously-skip-permissions` اولین آرگومان `agy` (درخواست کاربر ۲۰۲۶-۱۱-۱۰) و به‌روزرسانی `INSTALL.md`
   - ✅ انجام شد (۲۰۲۶-۱۱-۱۰): `buildArgs` پرچم را پیش از `-p` می‌گذارد (تست `TestBuildArgsSkipPermissions`: `got[0]`). `INSTALL.md`: پیش‌نیاز جدا برای `agy`/`claude`/`codex` (نصب، ورود، بررسی `doctor`، argv واقعی، پرچم‌های ممنوع)، ریسک `skip_permissions` و نمونه کامل `[adapter]`، مسیر پیش‌فرض config، ارتقای مهارت، ورود Roadmap با AI خودکار/«ادامه بدون AI». ⚠️ `go test ./...` روی پوشه `topics/` (داده اجرای محلی، gitignore) با «malformed import path» شکست می‌خورد — کد نیست؛ `go test ./internal/... ./cmd/...` سبز
+
+- [x] **T8.11**: انتقال تنظیمات hard-code‌شده به `config.toml` (درخواست کاربر ۲۰۲۶-۱۱-۱۱)
+  - ✅ انجام شد (۲۰۲۶-۱۱-۱۱): چهار کلید جدید با همان پیش‌فرض قبلی (صفر/منفی ⇐ پیش‌فرض در `Validate`): `backup_keep = 7` (`maintenance.KeepBackups`)، `draft_ttl = "24h"` (`roadmaps.Service.DraftTTL`)، `jobs.timeout_evaluate = "30m"` (`evaluation.Service.JobTimeout`)، `limits.max_tree_topics = 200` (`roadmaps.Service.TreeCap`؛ شورتکات R12 بسته شد). کلید موجود ولی بی‌اثر `limits.max_roadmap_bytes` حالا واقعاً اعمال می‌شود: `roadmaps.Service.MaxBytes`، `LimitReader` آپلود، `SecurityManager.MaxUpload` در میان‌افزار، و متن خطا و برچسب فرم با `faSize` (قبلاً «۱ مگابایت» ثابت). ثابت‌های قبلی فقط پیش‌فرض‌اند؛ تست‌ها بدون تغییر. ⚠️ `limits.max_lesson_bytes` هنوز هیچ‌جا خوانده نمی‌شود (سقف درس رفتار جدید است، نه انتقال تنظیم). پیوست الف سند طراحی به‌روز شد. تست: `TestMovedSettings`. آگاهانه ثابت ماندند (داخلی یا پروتکل، نه ترجیح کاربر): `MaxPrompt`، `MaxTitleRunes`/`MaxChapterTitle`، `maxDirSlugRunes`، `KillGrace`، فاصله poll/heartbeat Runner، تایم‌اوت‌های `http.Server`، سقف ۳ برای `evaluate_parallelism` (§۶.۵)، `MaxSourceBytes` آپلود (برابر `limits.max_roadmap_bytes` که میان‌افزار اعمال می‌کند)
 
 ## 🔒 قوانین معماری تغییرناپذیر (Architectural Commandments)
 

@@ -1522,6 +1522,8 @@ base_dir        = "D:\\LearningHub"
 listen          = "127.0.0.1:8787"       # هر آدرس دیگری ⇒ عدم شروع
 language        = "fa"
 log_retention_days = 30
+backup_keep     = 7                       # تعداد پشتیبان روزانه DB در .app/backup
+draft_ttl       = "24h"                   # عمر پیش‌نمایش ورود تأییدنشده
 
 [adapter]
 kind    = "antigravity"
@@ -1537,6 +1539,7 @@ evaluate_parallelism  = 1
 timeout_lesson        = "10m"
 timeout_exercises     = "10m"
 timeout_evaluate_item = "5m"
+timeout_evaluate      = "30m"             # سقف کل Job ارزیابی (۶.۵)
 timeout_analyze       = "3m"
 stall_timeout         = "6m"
 
@@ -1551,6 +1554,7 @@ max_roadmap_bytes = 1048576
 max_answer_bytes  = 204800
 max_lesson_bytes  = 204800
 max_source_bytes  = 204800                # سقف source.md فصل که به AI می‌رود (۱۲.۸)
+max_tree_topics   = 200                   # سقف رکورد یک ورود با قاعده tree (R12)
 
 [editor]
 command = ""                              # خالی = دکمه «باز کردن» پنهان

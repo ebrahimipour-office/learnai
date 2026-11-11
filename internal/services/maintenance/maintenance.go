@@ -3,6 +3,7 @@
 package maintenance
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
@@ -20,14 +21,15 @@ import (
 )
 
 const (
-	backupDir   = ".app/backup"
-	KeepBackups = 7
+	backupDir          = ".app/backup"
+	defaultKeepBackups = 7
 )
 
 type Service struct {
 	DB           *store.DB
 	Root         *fsx.Root
 	LogRetention time.Duration
+	KeepBackups  int // config backup_keep; 0 = defaultKeepBackups
 }
 
 // Result says what one Run did.
@@ -36,7 +38,7 @@ type Result struct {
 	Backup  string   // relative path of the backup made; "" = today's already existed
 }
 
-// Run cleans expired job dirs, then makes today's backup and keeps the newest KeepBackups.
+// Run cleans expired job dirs, then makes today's backup and keeps the newest s.KeepBackups.
 func (s *Service) Run(ctx context.Context, now time.Time) (*Result, error) {
 	res := &Result{}
 	cutoff := now.Add(-s.LogRetention).UTC().Format("2006-01-02T15:04:05.000Z") // same form as jobs.finished_at
@@ -110,7 +112,7 @@ func (s *Service) backup(ctx context.Context, now time.Time, res *Result) error 
 		}
 	}
 	slices.Sort(names) // dated names sort oldest first
-	for _, n := range names[:max(0, len(names)-KeepBackups)] {
+	for _, n := range names[:max(0, len(names)-cmp.Or(s.KeepBackups, defaultKeepBackups))] {
 		rel := path.Join(backupDir, n)
 		if err := s.Root.Remove(rel); err != nil {
 			return err

@@ -289,6 +289,8 @@ func runServe(args []string) {
 	}
 	defer root.Close()
 	drafts := roadmaps.NewService(db, root)
+	drafts.DraftTTL, drafts.TreeCap, drafts.MaxBytes = cfg.DraftTTL, cfg.Limits.MaxTreeTopics, int(cfg.Limits.MaxRoadmapBytes)
+	sm.MaxUpload = cfg.Limits.MaxRoadmapBytes
 
 	if n, err := skills.Install(root); err != nil {
 		slog.Error("Failed to install default skills", "error", err)
@@ -310,7 +312,7 @@ func runServe(args []string) {
 	}).Handle)
 	runner.Register(domain.JobKindEvaluate, (&evaluation.Service{
 		DB: db, Root: root, Adapter: adapter, Model: cfg.Adapter.Model, Language: cfg.Language,
-		Timeout: cfg.Jobs.TimeoutEvaluateItem, Stall: cfg.Jobs.StallTimeout, Parallel: cfg.Jobs.EvaluateParallelism,
+		Timeout: cfg.Jobs.TimeoutEvaluateItem, JobTimeout: cfg.Jobs.TimeoutEvaluate, Stall: cfg.Jobs.StallTimeout, Parallel: cfg.Jobs.EvaluateParallelism,
 		MaxAnswerBytes: cfg.Limits.MaxAnswerBytes, MaxSource: cfg.Limits.MaxSourceBytes,
 	}).Handle)
 	analyzer := &roadmaps.Analyzer{
@@ -321,7 +323,7 @@ func runServe(args []string) {
 	srv := httpserver.NewServer(cfg.Listen, sm, drafts, topics.NewService(db), runner, root,
 		httpserver.Settings{DB: db, Adapter: adapter, Switch: adapter, Model: cfg.Adapter.Model, SkipPermissions: cfg.Adapter.SkipPermissions, Exercises: cfg.Exercises, MaxAnswerBytes: cfg.Limits.MaxAnswerBytes, Editor: cfg.Editor.Command})
 	// Maintenance at startup and hourly: expired job dirs/logs, daily DB backup, expired import drafts.
-	maint := &maintenance.Service{DB: db, Root: root, LogRetention: time.Duration(cfg.LogRetentionDays) * 24 * time.Hour}
+	maint := &maintenance.Service{DB: db, Root: root, LogRetention: time.Duration(cfg.LogRetentionDays) * 24 * time.Hour, KeepBackups: cfg.BackupKeep}
 	go func() {
 		for t := time.NewTicker(time.Hour); ; {
 			if res, err := maint.Run(ctx, time.Now()); err != nil {

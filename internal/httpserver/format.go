@@ -8,6 +8,14 @@ import (
 
 var faDigits = strings.NewReplacer("0", "۰", "1", "۱", "2", "۲", "3", "۳", "4", "۴", "5", "۵", "6", "۶", "7", "۷", "8", "۸", "9", "۹")
 
+// faSize spells a byte limit in Persian: whole megabytes as «۱ مگابایت», anything else in kilobytes.
+func faSize(n int) string {
+	if n >= 1<<20 && n%(1<<20) == 0 {
+		return faDigits.Replace(strconv.Itoa(n>>20)) + " مگابایت"
+	}
+	return faDigits.Replace(strconv.Itoa(n>>10)) + " کیلوبایت"
+}
+
 // localTime shows a stored RFC 3339 UTC timestamp in the machine's local zone (B8); anything unparsable is shown as is.
 func localTime(s string) string {
 	t, err := time.Parse(time.RFC3339Nano, s)

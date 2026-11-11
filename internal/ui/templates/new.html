@@ -3,7 +3,7 @@
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 <form method="post" action="/roadmaps/drafts" enctype="multipart/form-data">
   <input type="hidden" name="csrf_token" value="{{.CSRF}}">
-  <label>فایل Markdown (حداکثر ۱ مگابایت)
+  <label>فایل Markdown (حداکثر {{uploadLimit}})
     <input type="file" name="file" accept=".md,.markdown,text/markdown" required>
   </label>
   {{if .Roadmaps}}<label>مقصد

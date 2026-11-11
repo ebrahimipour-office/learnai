@@ -20,14 +20,14 @@ import (
 )
 
 const (
-	MaxSourceBytes = 1 << 20 // R2.2: uploads up to 1 MB
-	DraftTTL       = 24 * time.Hour
+	MaxSourceBytes = 1 << 20                    // R2.2: default of config limits.max_roadmap_bytes
+	DraftTTL       = 24 * time.Hour             // default of config draft_ttl
 	tsFormat       = "2006-01-02T15:04:05.000Z" // same shape as SQLite strftime('%Y-%m-%dT%H:%M:%fZ')
 )
 
 var (
 	ErrDraftNotFound = errors.New("draft not found or expired")
-	ErrTooLarge      = errors.New("roadmap file is larger than 1 MB")
+	ErrTooLarge      = errors.New("roadmap file is larger than limits.max_roadmap_bytes")
 	ErrInvalidSource = errors.New("invalid roadmap file")
 	ErrNoRoadmap     = errors.New("roadmap to re-import not found")
 )
@@ -77,10 +77,14 @@ type Service struct {
 	db   *store.DB
 	root *fsx.Root
 	Now  func() time.Time // replaceable in tests
+	// DraftTTL, TreeCap and MaxBytes come from config draft_ttl, limits.max_tree_topics and limits.max_roadmap_bytes.
+	DraftTTL time.Duration
+	TreeCap  int
+	MaxBytes int
 }
 
 func NewService(db *store.DB, root *fsx.Root) *Service {
-	return &Service{db: db, root: root, Now: time.Now}
+	return &Service{db: db, root: root, Now: time.Now, DraftTTL: DraftTTL, TreeCap: MaxTreeTopics, MaxBytes: MaxSourceBytes}
 }
 
 func (s *Service) ts(t time.Time) string { return t.UTC().Format(tsFormat) }
@@ -99,7 +103,7 @@ func (s *Service) createDraft(ctx context.Context, roadmapID int64, name string,
 	name = filepath.Base(strings.ReplaceAll(name, `\`, "/"))
 	ext := strings.ToLower(filepath.Ext(name))
 	switch {
-	case len(content) > MaxSourceBytes:
+	case len(content) > s.MaxBytes:
 		return "", ErrTooLarge
 	case ext != ".md" && ext != ".markdown":
 		return "", fmt.Errorf("%w: only .md files are accepted", ErrInvalidSource)
@@ -156,7 +160,7 @@ func (s *Service) createDraft(ctx context.Context, roadmapID int64, name string,
 	_, err = s.db.Writer().ExecContext(ctx,
 		`INSERT INTO import_drafts (id, roadmap_id, source_name, content, content_sha, parsed_tree, selection, expires_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, roadmapRef, name, string(content), fsx.HashBytes(content), string(tree), string(choice), s.ts(s.Now().Add(DraftTTL)))
+		id, roadmapRef, name, string(content), fsx.HashBytes(content), string(tree), string(choice), s.ts(s.Now().Add(s.DraftTTL)))
 	if err != nil {
 		return "", fmt.Errorf("inserting draft: %w", err)
 	}
@@ -232,7 +236,7 @@ func (s *Service) SetTitle(ctx context.Context, d *Draft, title string) error {
 	return nil
 }
 
-// PurgeExpired deletes drafts older than DraftTTL.
+// PurgeExpired deletes drafts older than s.DraftTTL.
 func (s *Service) PurgeExpired(ctx context.Context) (int64, error) {
 	res, err := s.db.Writer().ExecContext(ctx, `DELETE FROM import_drafts WHERE expires_at <= ?`, s.ts(s.Now()))
 	if err != nil {

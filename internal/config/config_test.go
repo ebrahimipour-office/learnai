@@ -2,6 +2,8 @@ package config_test
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -66,5 +68,21 @@ func TestDefaultStallTimeout(t *testing.T) {
 	}
 	if j.StallTimeout >= j.TimeoutLesson || j.StallTimeout >= j.TimeoutExercises {
 		t.Fatalf("stall_timeout %s must be below lesson %s and exercises %s", j.StallTimeout, j.TimeoutLesson, j.TimeoutExercises)
+	}
+}
+
+// T8.11: settings that were package constants are read from config.toml; 0 falls back to the default.
+func TestMovedSettings(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.toml")
+	toml := "backup_keep = 3\ndraft_ttl = \"2h\"\n[jobs]\ntimeout_evaluate = \"45m\"\n[limits]\nmax_tree_topics = 0\n"
+	if err := os.WriteFile(p, []byte(toml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := config.Load(p, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.BackupKeep != 3 || c.DraftTTL != 2*time.Hour || c.Jobs.TimeoutEvaluate != 45*time.Minute || c.Limits.MaxTreeTopics != 200 {
+		t.Fatalf("got backup_keep=%d draft_ttl=%s timeout_evaluate=%s max_tree_topics=%d", c.BackupKeep, c.DraftTTL, c.Jobs.TimeoutEvaluate, c.Limits.MaxTreeTopics)
 	}
 }

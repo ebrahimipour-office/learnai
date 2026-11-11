@@ -25,6 +25,8 @@ type Config struct {
 	Listen           string          `toml:"listen"`
 	Language         string          `toml:"language"`
 	LogRetentionDays int             `toml:"log_retention_days"`
+	BackupKeep       int             `toml:"backup_keep"` // daily DB backups kept in .app/backup
+	DraftTTL         time.Duration   `toml:"draft_ttl"`   // how long an unconfirmed import preview lives
 	Adapter          AdapterConfig   `toml:"adapter"`
 	Jobs             JobsConfig      `toml:"jobs"`
 	Exercises        ExercisesConfig `toml:"exercises"`
@@ -62,6 +64,7 @@ type JobsConfig struct {
 	TimeoutLesson       time.Duration `toml:"timeout_lesson"`
 	TimeoutExercises    time.Duration `toml:"timeout_exercises"`
 	TimeoutEvaluateItem time.Duration `toml:"timeout_evaluate_item"`
+	TimeoutEvaluate     time.Duration `toml:"timeout_evaluate"` // whole evaluation job (TDD §6.5)
 	TimeoutAnalyze      time.Duration `toml:"timeout_analyze"`
 	StallTimeout        time.Duration `toml:"stall_timeout"`
 }
@@ -78,6 +81,7 @@ type LimitsConfig struct {
 	MaxAnswerBytes  int64 `toml:"max_answer_bytes"`
 	MaxLessonBytes  int64 `toml:"max_lesson_bytes"`
 	MaxSourceBytes  int64 `toml:"max_source_bytes"` // chapter source.md sent to the AI (TDD §12.8)
+	MaxTreeTopics   int   `toml:"max_tree_topics"`  // records one "tree" import may create (R12)
 }
 
 type EditorConfig struct {
@@ -91,6 +95,8 @@ func DefaultConfig(defaultBaseDir string) Config {
 		Listen:           "127.0.0.1:8787",
 		Language:         "fa",
 		LogRetentionDays: 30,
+		BackupKeep:       7,
+		DraftTTL:         24 * time.Hour,
 		Adapter: AdapterConfig{
 			Kind:            "antigravity",
 			Binary:          "agy",
@@ -108,6 +114,7 @@ func DefaultConfig(defaultBaseDir string) Config {
 			TimeoutLesson:       10 * time.Minute,
 			TimeoutExercises:    10 * time.Minute,
 			TimeoutEvaluateItem: 5 * time.Minute,
+			TimeoutEvaluate:     30 * time.Minute,
 			TimeoutAnalyze:      3 * time.Minute,
 			StallTimeout:        6 * time.Minute, // agy sends nothing while writing a long final answer (B4); keep below lesson/exercises timeouts
 		},
@@ -125,6 +132,7 @@ func DefaultConfig(defaultBaseDir string) Config {
 			MaxAnswerBytes:  204800,  // 200 KB
 			MaxLessonBytes:  204800,  // 200 KB
 			MaxSourceBytes:  204800,  // 200 KB
+			MaxTreeTopics:   200,
 		},
 		Editor: EditorConfig{
 			Command: "",
@@ -215,6 +223,18 @@ func (c *Config) Validate() error {
 	}
 	if c.Limits.MaxSourceBytes <= 0 {
 		c.Limits.MaxSourceBytes = 204800
+	}
+	if c.Limits.MaxTreeTopics <= 0 {
+		c.Limits.MaxTreeTopics = 200
+	}
+	if c.BackupKeep < 1 {
+		c.BackupKeep = 7
+	}
+	if c.DraftTTL <= 0 {
+		c.DraftTTL = 24 * time.Hour
+	}
+	if c.Jobs.TimeoutEvaluate <= 0 {
+		c.Jobs.TimeoutEvaluate = 30 * time.Minute
 	}
 
 	// 5. Validate jobs concurrency

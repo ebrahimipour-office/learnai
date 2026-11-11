@@ -5,6 +5,7 @@ package evaluation
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -28,9 +29,9 @@ import (
 )
 
 const (
-	skillName  = "answer-evaluator"
-	JobTimeout = 30 * time.Minute // whole evaluation job (TDD §6.5)
-	nowSQL     = `strftime('%Y-%m-%dT%H:%M:%fZ','now')`
+	skillName         = "answer-evaluator"
+	defaultJobTimeout = 30 * time.Minute // whole evaluation job (TDD §6.5) when JobTimeout is 0
+	nowSQL            = `strftime('%Y-%m-%dT%H:%M:%fZ','now')`
 )
 
 // Params is jobs.params for an evaluate job.
@@ -45,6 +46,7 @@ type Service struct {
 	Model          string
 	Language       string
 	Timeout        time.Duration // per exercise: config jobs.timeout_evaluate_item
+	JobTimeout     time.Duration // whole job: config jobs.timeout_evaluate
 	Stall          time.Duration // config jobs.stall_timeout
 	Parallel       int           // config jobs.evaluate_parallelism
 	MaxAnswerBytes int64         // config limits.max_answer_bytes
@@ -72,11 +74,12 @@ func (s *Service) Handle(ctx context.Context, j jobs.Job) error {
 	if err := json.Unmarshal(j.Params, &p); err != nil {
 		return fmt.Errorf("%w: params: %v", domain.ErrInvalidInput, err)
 	}
-	ctx, cancel := context.WithTimeout(ctx, JobTimeout)
+	limit := cmp.Or(s.JobTimeout, defaultJobTimeout)
+	ctx, cancel := context.WithTimeout(ctx, limit)
 	defer cancel()
 	err := s.run(ctx, j, p.Mode)
 	if err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		err = fmt.Errorf("%w: evaluation job exceeded %s", ai.ErrTimeout, JobTimeout)
+		err = fmt.Errorf("%w: evaluation job exceeded %s", ai.ErrTimeout, limit)
 	}
 	return err
 }
