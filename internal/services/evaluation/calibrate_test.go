@@ -55,16 +55,40 @@ const calTpl = "package main\n\n// Write your answer below this line.\n"
 const calStatement = "Write `func Reverse(s string) string` that returns s with its characters in reverse order. " +
 	"It must work for any UTF-8 text (e.g. Persian «سلام» or emoji), not only ASCII, and for the empty string."
 
-// TestCalibrateEvaluator runs the real evaluation job through agy (opt-in: HUB_CALIBRATE=1; HUB_MODEL overrides
-// the model; HUB_CALIBRATE_DIR keeps the base dir and its agy logs). Pass: ≥ 4 of 5 in range and the half-correct answer's spread over 3 full attempts ≤ 15 points.
+// calibrateDir returns the base dir of one calibration run: a fresh run-* folder under HUB_CALIBRATE_DIR
+// (kept, with its agy logs, for inspection) or a temp dir that the test removes.
+func calibrateDir(t *testing.T) string {
+	d := os.Getenv("HUB_CALIBRATE_DIR")
+	if d == "" {
+		return t.TempDir()
+	}
+	d, err := filepath.Abs(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(d, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Logs hold prompts and answers: keep the dir out of git wherever it is (a relative path lands in this package).
+	if err := os.WriteFile(filepath.Join(d, ".gitignore"), []byte("*\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := os.MkdirTemp(d, "run-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("calibration base dir: %s", dir)
+	return dir
+}
+
+// TestCalibrateEvaluator runs the real evaluation job through agy (opt-in: HUB_CALIBRATE=1; HUB_MODEL
+// overrides the model; HUB_CALIBRATE_DIR keeps each run's base dir and agy logs in its own run-* folder).
+// Pass: ≥ 4 of 5 in range and the half-correct answer's spread over 3 full attempts ≤ 15 points.
 func TestCalibrateEvaluator(t *testing.T) {
 	if os.Getenv("HUB_CALIBRATE") != "1" {
 		t.Skip("real agy run; set HUB_CALIBRATE=1")
 	}
-	dir := t.TempDir()
-	if d := os.Getenv("HUB_CALIBRATE_DIR"); d != "" { // keep agy logs for inspection
-		dir = d
-	}
+	dir := calibrateDir(t)
 	db, err := store.Open(filepath.Join(dir, "app.db"))
 	if err != nil {
 		t.Fatal(err)
