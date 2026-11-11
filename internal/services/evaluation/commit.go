@@ -21,7 +21,7 @@ import (
 type setInfo struct {
 	ID                     int64
 	Version, RubricVersion int
-	ManifestRel            string
+	Manifest               []byte // verified against files.sha256 (CR-08)
 	TopicDir, StableKey    string
 	TopicTitle             string
 }
@@ -51,13 +51,9 @@ type outFile struct {
 // with WriteNew: an existing name fails the commit and earlier attempts are never touched.
 func (s *Service) commit(ctx context.Context, j jobs.Job, mode string, set setInfo, list []topics.Exercise,
 	sel *topics.Selection, sh shared) error {
-	mb, err := s.Root.ReadFile(set.ManifestRel)
-	if err != nil {
-		return fmt.Errorf("reading %s: %w", set.ManifestRel, err)
-	}
 	var m schema.Manifest
-	if err := json.Unmarshal(mb, &m); err != nil {
-		return fmt.Errorf("parsing %s: %w", set.ManifestRel, err)
+	if err := json.Unmarshal(set.Manifest, &m); err != nil {
+		return fmt.Errorf("parsing manifest: %w", err)
 	}
 	var k int
 	var started string
@@ -82,6 +78,10 @@ func (s *Service) commit(ctx context.Context, j jobs.Job, mode string, set setIn
 	sent := map[string]topics.Pick{}
 	for _, pk := range sel.Send {
 		sent[pk.ExID] = pk
+	}
+	review := map[string]bool{}
+	for _, x := range sel.Review {
+		review[x.ExID] = true
 	}
 
 	var files []outFile
@@ -118,6 +118,11 @@ func (s *Service) commit(ctx context.Context, j jobs.Job, mode string, set setIn
 		row, err := s.carried(ctx, x, me.Weight)
 		if err != nil {
 			return err
+		}
+		// CR-09: oversized or binary answers are never sent; they score 0 (an unchanged one keeps
+		// its carried score) and are flagged so they read «نیازمند بازبینی دستی», not «بدون پاسخ».
+		if review[me.ID] && row.item.Status == "unanswered" {
+			row.flags = []string{FlagNeedsReview}
 		}
 		rows = append(rows, row)
 	}

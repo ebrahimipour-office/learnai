@@ -133,8 +133,8 @@ func setup(t *testing.T, parallel int) *env {
 			(2, 1, 'a3f9c2d41b7e8f06', 'HTTP', 'http', 2, 'http', '02-http', 'exercises_ready')`,
 		`INSERT INTO files (id, topic_id, kind, rel_path, sha256, size_bytes) VALUES
 			(1, 2, 'exercises_md', 'topics/02-http/exercises/v1/exercises.md', 'x', 1),
-			(2, 2, 'manifest', 'topics/02-http/exercises/v1/manifest.json', 'x', 1),
-			(3, 2, 'rubric', 'topics/02-http/.internal/rubric-v1.json', 'x', 1),
+			(2, 2, 'manifest', 'topics/02-http/exercises/v1/manifest.json', '` + fsx.HashString(manifestJSON) + `', 1),
+			(3, 2, 'rubric', 'topics/02-http/.internal/rubric-v1.json', '` + fsx.HashBytes(rubJSON) + `', 1),
 			(4, 2, 'answer', 'topics/02-http/answers/v1/q01-one.go', 'x', 1),
 			(5, 2, 'answer', 'topics/02-http/answers/v1/q02-two.md', 'x', 1),
 			(6, 2, 'answer', 'topics/02-http/answers/v1/q03-three.go', 'x', 1)`,
@@ -601,5 +601,75 @@ func TestCrashBeforeTxRecovers(t *testing.T) {
 	e.db.Writer().QueryRow(`SELECT COUNT(*) FROM attempts WHERE set_id = 1 AND attempt_no = 1`).Scan(&n)
 	if n != 1 {
 		t.Error("next job did not record attempt 1")
+	}
+}
+
+// CR-08: an edited manifest or rubric is refused before any AI call; nothing is written.
+func TestEvaluateRefusesEditedSet(t *testing.T) {
+	for name, edit := range map[string]struct{ rel, body string }{
+		"exercise removed": {"topics/02-http/exercises/v1/manifest.json", strings.Replace(manifestJSON, `,{"id":"q03","weight":1}`, "", 1)},
+		"weight changed":   {"topics/02-http/exercises/v1/manifest.json", strings.Replace(manifestJSON, `"weight":2`, `"weight":9`, 1)},
+		"empty criteria": {"topics/02-http/.internal/rubric-v1.json", `{"schema_version":1,"rubric_version":1,"set_version":1,
+			"topic_stable_key":"a3f9c2d41b7e8f06","exercises":[{"id":"q01","criteria":[]}]}`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := setup(t, 1)
+			if err := os.WriteFile(filepath.Join(e.dir, edit.rel), []byte(edit.body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			id := e.enqueue("full")
+			if st, _ := e.wait(id); st != "failed" {
+				t.Fatalf("status %s, want failed", st)
+			}
+			var msg string
+			e.db.Writer().QueryRow(`SELECT COALESCE(error_message, '') FROM jobs WHERE id = ?`, id).Scan(&msg)
+			if !strings.Contains(msg, "edited") {
+				t.Errorf("error_message = %q", msg)
+			}
+			var n int
+			e.db.Writer().QueryRow(`SELECT COUNT(*) FROM attempts`).Scan(&n)
+			if c := e.calls(); len(c) != 0 || n != 0 {
+				t.Errorf("calls %v, attempts %d: want none", c, n)
+			}
+			if _, err := os.Stat(filepath.Join(e.dir, evaluation.AttemptRel("02-http", 1, 1))); err == nil {
+				t.Error("attempt folder created")
+			}
+		})
+	}
+}
+
+// CR-09: an answer held for manual review (binary here) is flagged needs_review, not plain «بدون پاسخ».
+func TestEvaluateNeedsReviewFlag(t *testing.T) {
+	e := setup(t, 1)
+	if st, _ := e.wait(e.enqueue("full")); st != "succeeded" {
+		t.Fatal(st)
+	}
+	write := func(rel, body string) {
+		if err := os.WriteFile(filepath.Join(e.dir, rel), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("topics/02-http/answers/v1/q02-two.md", tpl+"bin\x00ary\n")
+	write("topics/02-http/answers/v1/q01-one.go", tpl+"better\n")
+	if st, code := e.wait(e.enqueue("incremental")); st != "succeeded" {
+		t.Fatalf("status %s (%s)", st, code)
+	}
+	if c := e.calls(); c["q02"] != 1 {
+		t.Errorf("calls = %v: the binary q02 must not be sent again", c)
+	}
+	var status, flags string
+	var score int
+	e.db.Writer().QueryRow(`SELECT i.status, i.score, i.flags FROM attempt_items i JOIN attempts a ON a.id = i.attempt_id
+		JOIN exercises x ON x.id = i.exercise_id WHERE a.attempt_no = 2 AND x.ex_id = 'q02'`).Scan(&status, &score, &flags)
+	if status != "unanswered" || score != 0 || flags != `["needs_review"]` {
+		t.Errorf("q02 item = %s %d %s, want unanswered 0 [needs_review]", status, score, flags)
+	}
+	for _, line := range strings.Split(string(e.read(evaluation.AttemptRel("02-http", 1, 2)+"/summary.md")), "\n") {
+		if strings.HasPrefix(line, "| q02 ") && (!strings.Contains(line, "نیازمند بازبینی دستی") || strings.Contains(line, "بدون پاسخ")) {
+			t.Errorf("summary q02 row = %q", line)
+		}
+		if strings.HasPrefix(line, "| q03 ") && !strings.Contains(line, "بدون پاسخ") {
+			t.Errorf("summary q03 row = %q, a template answer stays unanswered", line)
+		}
 	}
 }

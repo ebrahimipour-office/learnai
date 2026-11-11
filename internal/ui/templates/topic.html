@@ -118,7 +118,7 @@
   <table class="grid"><thead><tr><th>شناسه</th><th>عنوان</th><th>وضعیت</th><th>نمره</th><th>گزارش</th></tr></thead>
     <tbody>{{range .AttemptItems}}<tr>
       <td><code>{{.ExID}}</code></td><td><bdi>{{.Title}}</bdi>{{if .Flags}} <span class="badge warn">⚠ نیازمند بازبینی</span>{{end}}</td>
-      <td>{{itemStatus .Status}}{{if .CarriedFrom}} (از تلاش {{.CarriedFrom}}){{end}}</td>
+      <td>{{if and .Flags (eq .Status "unanswered")}}نیازمند بازبینی دستی (ارسال نشد){{else}}{{itemStatus .Status}}{{end}}{{if .CarriedFrom}} (از تلاش {{.CarriedFrom}}){{end}}</td>
       <td class="score" data-ex="{{.ExID}}">{{.Score}}</td>
       <td>{{if .ReportRel}}<a href="/topics/{{$.Panel.ID}}/reports?v={{$.Set.Version}}&amp;attempt={{$.Attempt.No}}&amp;ex={{.ExID}}">گزارش</a>
         {{else if .CarriedFrom}}<a href="/topics/{{$.Panel.ID}}/reports?v={{$.Set.Version}}&amp;attempt={{.CarriedFrom}}&amp;ex={{.ExID}}">گزارش تلاش {{.CarriedFrom}}</a>{{end}}</td>

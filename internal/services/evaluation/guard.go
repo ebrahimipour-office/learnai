@@ -11,6 +11,7 @@ import (
 const (
 	FlagInjection         = "injection_suspected" // the answer talks to the grader
 	FlagTemplateHighScore = "template_high_score" // template re-spaced, yet a high score
+	FlagNeedsReview       = "needs_review"        // over max_answer_bytes or binary: never sent, scored 0 (RK17, CR-09)
 )
 
 // templateHighScore is the score from which an unchanged template is suspicious.

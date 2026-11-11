@@ -144,7 +144,7 @@ There are **no P0 tasks**.
   - [ ] Never-overwrite semantics are unchanged.
 - **Depends on:** none. Improves CR-03.
 
-### - [ ] CR-08 — Verify the manifest and rubric at evaluation commit
+### - [x] CR-08 — Verify the manifest and rubric at evaluation commit
 - **Problem:** the evaluation commit and step use an unvalidated, user-editable `manifest.json` and `rubric-vN.json`. Removed exercises are dropped silently, edited weights change scores, and empty criteria are accepted.
 - **Affected files:** `internal/services/evaluation/commit.go:54-123`; `internal/services/evaluation/evaluation.go:133-143`.
 - **Expected outcome:** the official score always uses the set as recorded in the DB.
@@ -158,7 +158,7 @@ There are **no P0 tasks**.
   - [ ] The normal flow is unchanged.
 - **Depends on:** none.
 
-### - [ ] CR-09 — Record answers that need manual review as "needs review", not "unanswered"
+### - [x] CR-09 — Record answers that need manual review as "needs review", not "unanswered"
 - **Problem:** answers in `sel.Review` (oversized or binary) become `unanswered` with score 0, with no label.
 - **Affected files:** `internal/services/evaluation/commit.go:90-123,237-245`; `internal/services/evaluation/report.go:209-211`; `internal/services/topics/select.go:47-66`; templates for item status labels.
 - **Expected outcome:** these items carry a `needs_review` flag and show «⚠ نیازمند بازبینی».

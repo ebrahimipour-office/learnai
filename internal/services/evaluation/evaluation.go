@@ -94,13 +94,13 @@ type shared struct {
 func (s *Service) run(ctx context.Context, j jobs.Job, mode string) error {
 	s.phase(ctx, j.ID, "prepare")
 	var set setInfo
-	var exRel, rubricRel, sourceRel string
-	err := s.DB.Writer().QueryRowContext(ctx, `SELECT x.id, x.version, x.rubric_version, fe.rel_path, fr.rel_path, fm.rel_path,
-		t.dir_name, t.stable_key, t.title, COALESCE(fs.rel_path, '') FROM exercise_sets x
+	var exRel, rubricRel, sourceRel, manifestRel, manifestSHA, rubricSHA string
+	err := s.DB.Writer().QueryRowContext(ctx, `SELECT x.id, x.version, x.rubric_version, fe.rel_path, fr.rel_path, fr.sha256,
+		fm.rel_path, fm.sha256, t.dir_name, t.stable_key, t.title, COALESCE(fs.rel_path, '') FROM exercise_sets x
 		JOIN files fe ON fe.id = x.exercises_file JOIN files fr ON fr.id = x.rubric_file JOIN files fm ON fm.id = x.manifest_file
 		JOIN topics t ON t.id = x.topic_id LEFT JOIN files fs ON fs.id = t.source_file_id
 		WHERE x.topic_id = ? AND x.is_current = 1`, j.TopicID).Scan(&set.ID, &set.Version, &set.RubricVersion, &exRel, &rubricRel,
-		&set.ManifestRel, &set.TopicDir, &set.StableKey, &set.TopicTitle, &sourceRel)
+		&rubricSHA, &manifestRel, &manifestSHA, &set.TopicDir, &set.StableKey, &set.TopicTitle, &sourceRel)
 	if errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("%w: topic %d has no exercise set", domain.ErrInvalidState, j.TopicID)
 	}
@@ -133,7 +133,19 @@ func (s *Service) run(ctx context.Context, j jobs.Job, mode string) error {
 			return err
 		}
 	}
-	rubricB, err := read(rubricRel)
+	// CR-08: the official score uses the set as recorded; an edited manifest (weights, removed
+	// exercises) or rubric (empty criteria) is refused before any AI call.
+	verified := func(rel, want string) ([]byte, error) {
+		b, err := read(rel)
+		if err == nil && fsx.HashBytes(b) != want {
+			err = fmt.Errorf("%w: %s was edited after the exercise set was created; restore it or generate a new set", domain.ErrInvalidState, rel)
+		}
+		return b, err
+	}
+	if set.Manifest, err = verified(manifestRel, manifestSHA); err != nil {
+		return err
+	}
+	rubricB, err := verified(rubricRel, rubricSHA)
 	if err != nil {
 		return err
 	}

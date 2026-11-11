@@ -206,7 +206,10 @@ func Summary(res *schema.Result, titles map[string]string, flagged map[string]bo
 		if it.CarriedFromAttempt != nil {
 			st = fmt.Sprintf("%s از تلاش %d", st, *it.CarriedFromAttempt)
 		}
-		if flagged[it.ExerciseID] {
+		switch {
+		case flagged[it.ExerciseID] && it.Status == "unanswered": // only needs_review flags an unanswered item
+			st = "⚠ نیازمند بازبینی دستی (ارسال نشد؛ نمره ۰)"
+		case flagged[it.ExerciseID]:
 			st += " ⚠ نیازمند بازبینی"
 		}
 		fmt.Fprintf(&b, "| %s | %s | %s | %s | %d |\n", id, cell(titles[it.ExerciseID]), trimFloat(it.Weight), st, it.Score)
