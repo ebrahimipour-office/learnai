@@ -318,6 +318,13 @@ func (a *Adapter) outcome(ctx, runCtx context.Context, req ai.Request, res *resu
 	if req.Timeout > 0 && dur >= req.Timeout {
 		return fmt.Errorf("%w: %s stopped after %s", ai.ErrTimeout, a.Name(), dur.Round(time.Second))
 	}
+	// R8-1: agy may report ERROR ("unexpected EOF") yet carry a complete structured_output;
+	// keep it, the caller's schema validation decides (invalid ⇒ invalid_output retry).
+	if res != nil {
+		if s := bytes.TrimSpace(res.StructuredOutput); len(s) > 0 && !bytes.Equal(s, []byte("null")) {
+			return nil
+		}
+	}
 	text := stderr
 	if res != nil && res.Error != "" {
 		text = res.Error + "\n" + stderr

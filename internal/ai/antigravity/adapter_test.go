@@ -85,6 +85,9 @@ func fakeAgy(sc string, args []string) int {
 	case "rate_limited":
 		fmt.Fprintln(out, `{"event":"result","result":{"status":"ERROR","error":"RESOURCE_EXHAUSTED: quota exceeded"}}`)
 		return 1
+	case "error_with_output": // R8-1: stream interrupted after the JSON arrived
+		fmt.Fprintln(out, `{"event":"result","result":{"status":"ERROR","error":"unexpected EOF","structured_output":{"lesson_markdown":"# x"}}}`)
+		return 1
 	case "crash":
 		fmt.Fprintln(errw, "panic: runtime error")
 		return 2
@@ -348,4 +351,12 @@ func TestNoteInvalidWritesNextToResponse(t *testing.T) {
 		t.Fatalf("validation_error.txt = %q (%v)", b, err)
 	}
 	a.NoteInvalid(&ai.Response{}, errors.New("x")) // no log dir: no-op, no panic
+}
+
+func TestRunErrorStatusKeepsStructuredOutput(t *testing.T) {
+	a, req := newRun(t, "error_with_output", nil)
+	resp, err := a.Run(context.Background(), req, nil)
+	if err != nil || string(resp.Structured) != `{"lesson_markdown":"# x"}` {
+		t.Fatalf("resp=%+v err=%v", resp, err)
+	}
 }
