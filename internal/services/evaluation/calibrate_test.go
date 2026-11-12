@@ -3,6 +3,7 @@ package evaluation_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"learninghub/internal/ai"
 	"learninghub/internal/ai/antigravity"
 	"learninghub/internal/config"
 	"learninghub/internal/domain"
@@ -103,67 +105,9 @@ func TestCalibrateEvaluator(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rub := schema.Rubric{SchemaVersion: 1, RubricVersion: 1, SetVersion: 1, TopicStableKey: "c0ffee0000000001"}
-	var md, manifest strings.Builder
-	md.WriteString("# Exercises\n")
-	manifest.WriteString(`{"schema_version":1,"topic":{"stable_key":"c0ffee0000000001","title":"Strings"},"set":{"version":1,"rubric_version":1},"exercises":[`)
-	files := map[string]string{}
-	for i, s := range calSamples {
-		rub.Exercises = append(rub.Exercises, schema.RubricExercise{ID: s.id,
-			ReferenceAnswer: schema.ReferenceAnswer{Format: "code", Content: calSamples[0].answer},
-			Criteria: []schema.Criterion{
-				{ID: "c1", Description: "Reverses by rune (Unicode code point), so multi-byte UTF-8 text stays valid", MaxPoints: 50, Category: "correctness"},
-				{ID: "c2", Description: "Correct for the empty string and single-character input", MaxPoints: 20, Category: "correctness"},
-				{ID: "c3", Description: "Clear, idiomatic Go with no needless allocations or complexity", MaxPoints: 30, Category: "style"},
-			}})
-		md.WriteString("\n## [" + s.id + "] Reverse a string\n\n" + calStatement + "\n")
-		if i > 0 {
-			manifest.WriteString(",")
-		}
-		manifest.WriteString(`{"id":"` + s.id + `","weight":1}`)
-		files["topics/01-strings/answers/v1/"+s.id+"-reverse.go"] = calTpl + s.answer
-	}
-	manifest.WriteString("]}")
-	rubJSON, _ := json.Marshal(rub)
-	files["topics/01-strings/exercises/v1/exercises.md"] = md.String()
-	files["topics/01-strings/exercises/v1/manifest.json"] = manifest.String()
-	files["topics/01-strings/.internal/rubric-v1.json"] = string(rubJSON)
-	for rel, body := range files {
-		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, rel)), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, rel), []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	w := db.Writer()
-	for _, q := range []string{
-		`INSERT INTO roadmaps (id, slug, title, select_rule) VALUES (1, 'go', 'Go', '{}')`,
-		`INSERT INTO topics (id, roadmap_id, stable_key, title, title_norm, ord, slug, dir_name, status) VALUES
-			(1, 1, 'c0ffee0000000001', 'Strings', 'strings', 1, 'strings', '01-strings', 'exercises_ready')`,
-		`INSERT INTO files (id, topic_id, kind, rel_path, sha256, size_bytes) VALUES
-			(1, 1, 'exercises_md', 'topics/01-strings/exercises/v1/exercises.md', 'x', 1),
-			(2, 1, 'manifest', 'topics/01-strings/exercises/v1/manifest.json', '` + fsx.HashString(manifest.String()) + `', 1),
-			(3, 1, 'rubric', 'topics/01-strings/.internal/rubric-v1.json', '` + fsx.HashBytes(rubJSON) + `', 1)`,
-		`INSERT INTO exercise_sets (id, topic_id, version, exercises_file, manifest_file, rubric_file, is_current) VALUES (1, 1, 1, 1, 2, 3, 1)`,
-	} {
-		if _, err := w.Exec(q); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for i, s := range calSamples {
-		fid := int64(10 + i)
-		if _, err := w.Exec(`INSERT INTO files (id, topic_id, kind, rel_path, sha256, size_bytes) VALUES (?, 1, 'answer', ?, 'x', 1)`,
-			fid, "topics/01-strings/answers/v1/"+s.id+"-reverse.go"); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := w.Exec(`INSERT INTO exercises (set_id, ex_id, ord, title, type, difficulty, weight, answer_file_id, template_sha256,
-			template_norm_sha256) VALUES (1, ?, ?, 'Reverse a string', 'coding', 'easy', 1, ?, ?, ?)`,
-			s.id, i+1, fid, fsx.HashString(calTpl), fsx.NormalizedAnswerSHA([]byte(calTpl))); err != nil {
-			t.Fatal(err)
-		}
-	}
+	seedCalibrationFixture(t, dir, db)
 
+	w := db.Writer()
 	cfg := config.DefaultConfig(dir)
 	model := cfg.Adapter.Model
 	if m := os.Getenv("HUB_MODEL"); m != "" {
@@ -228,5 +172,206 @@ func TestCalibrateEvaluator(t *testing.T) {
 	}
 	if h := scores["q02"]; slices.Max(h)-slices.Min(h) > 15 {
 		t.Errorf("half-correct answer spread %d over 3 runs, want ≤ 15: revise rubric/prompt", slices.Max(h)-slices.Min(h))
+	}
+}
+
+// seedCalibrationFixture creates the topic, exercise set, files and answers on disk and in DB.
+// Each files table row is populated from the actual disk bytes (fsx.HashBytes, len) so CR-08
+// and file integrity checks pass without discrepancy.
+func seedCalibrationFixture(t *testing.T, dir string, db *store.DB) map[string]string {
+	t.Helper()
+	rub := schema.Rubric{SchemaVersion: 1, RubricVersion: 1, SetVersion: 1, TopicStableKey: "c0ffee0000000001"}
+	var md, manifest strings.Builder
+	md.WriteString("# Exercises\n")
+	manifest.WriteString(`{"schema_version":1,"topic":{"stable_key":"c0ffee0000000001","title":"Strings"},"set":{"version":1,"rubric_version":1},"exercises":[`)
+	files := map[string]string{}
+	for i, s := range calSamples {
+		rub.Exercises = append(rub.Exercises, schema.RubricExercise{ID: s.id,
+			ReferenceAnswer: schema.ReferenceAnswer{Format: "code", Content: calSamples[0].answer},
+			Criteria: []schema.Criterion{
+				{ID: "c1", Description: "Reverses by rune (Unicode code point), so multi-byte UTF-8 text stays valid", MaxPoints: 50, Category: "correctness"},
+				{ID: "c2", Description: "Correct for the empty string and single-character input", MaxPoints: 20, Category: "correctness"},
+				{ID: "c3", Description: "Clear, idiomatic Go with no needless allocations or complexity", MaxPoints: 30, Category: "style"},
+			}})
+		md.WriteString("\n## [" + s.id + "] Reverse a string\n\n" + calStatement + "\n")
+		if i > 0 {
+			manifest.WriteString(",")
+		}
+		manifest.WriteString(`{"id":"` + s.id + `","weight":1}`)
+		files["topics/01-strings/answers/v1/"+s.id+"-reverse.go"] = calTpl + s.answer
+	}
+	manifest.WriteString("]}")
+	rubJSON, _ := json.Marshal(rub)
+	files["topics/01-strings/exercises/v1/exercises.md"] = md.String()
+	files["topics/01-strings/exercises/v1/manifest.json"] = manifest.String()
+	files["topics/01-strings/.internal/rubric-v1.json"] = string(rubJSON)
+	for rel, body := range files {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, rel)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, rel), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w := db.Writer()
+	for _, q := range []string{
+		`INSERT INTO roadmaps (id, slug, title, select_rule) VALUES (1, 'go', 'Go', '{}')`,
+		`INSERT INTO topics (id, roadmap_id, stable_key, title, title_norm, ord, slug, dir_name, status) VALUES
+			(1, 1, 'c0ffee0000000001', 'Strings', 'strings', 1, 'strings', '01-strings', 'exercises_ready')`,
+	} {
+		if _, err := w.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	insertFile := func(id int64, kind, rel string) {
+		body, ok := files[rel]
+		if !ok {
+			t.Fatalf("missing fixture file: %s", rel)
+		}
+		b := []byte(body)
+		if _, err := w.Exec(`INSERT INTO files (id, topic_id, kind, rel_path, sha256, size_bytes) VALUES (?, 1, ?, ?, ?, ?)`,
+			id, kind, rel, fsx.HashBytes(b), len(b)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	insertFile(1, "exercises_md", "topics/01-strings/exercises/v1/exercises.md")
+	insertFile(2, "manifest", "topics/01-strings/exercises/v1/manifest.json")
+	insertFile(3, "rubric", "topics/01-strings/.internal/rubric-v1.json")
+
+	if _, err := w.Exec(`INSERT INTO exercise_sets (id, topic_id, version, exercises_file, manifest_file, rubric_file, is_current) VALUES (1, 1, 1, 1, 2, 3, 1)`); err != nil {
+		t.Fatal(err)
+	}
+
+	for i, s := range calSamples {
+		fid := int64(10 + i)
+		rel := "topics/01-strings/answers/v1/" + s.id + "-reverse.go"
+		insertFile(fid, "answer", rel)
+		if _, err := w.Exec(`INSERT INTO exercises (set_id, ex_id, ord, title, type, difficulty, weight, answer_file_id, template_sha256,
+			template_norm_sha256) VALUES (1, ?, ?, 'Reverse a string', 'coding', 'easy', 1, ?, ?, ?)`,
+			s.id, i+1, fid, fsx.HashString(calTpl), fsx.NormalizedAnswerSHA([]byte(calTpl))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return files
+}
+
+type calMockAdapter struct{}
+
+func (a *calMockAdapter) Name() string { return "cal-mock" }
+func (a *calMockAdapter) Probe(context.Context) (ai.Capabilities, error) {
+	return ai.Capabilities{}, nil
+}
+func (a *calMockAdapter) Run(ctx context.Context, req ai.Request, _ chan<- ai.Event) (*ai.Response, error) {
+	taskBytes, err := os.ReadFile(filepath.Join(req.WorkDir, "inputs", "task.json"))
+	if err != nil {
+		return nil, err
+	}
+	var t struct {
+		ExerciseID string `json:"exercise_id"`
+	}
+	_ = json.Unmarshal(taskBytes, &t)
+	resp := fmt.Sprintf(`{"exercise_id":%q,"criteria_scores":[
+		{"criterion_id":"c1","awarded":40,"comment":"ok"},
+		{"criterion_id":"c2","awarded":15,"comment":"ok"},
+		{"criterion_id":"c3","awarded":25,"comment":"ok"}
+	],"score":80,"errors":[],"strengths":["good"],"corrected_answer":{"format":"code","content":"// fixed"},"teaching_notes_markdown":"notes"}`, t.ExerciseID)
+	return &ai.Response{Structured: json.RawMessage(resp)}, nil
+}
+
+// TestCalibrationFixtureIntegrity verifies R14: the calibration fixture uses real disk bytes
+// for sha256 and size_bytes in the files table (no 'x' or dummy size=1) and passes the CR-08
+// integrity check during evaluation prepare.
+func TestCalibrationFixtureIntegrity(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "app.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	root, err := fsx.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	if _, err := skills.Install(root); err != nil {
+		t.Fatal(err)
+	}
+
+	files := seedCalibrationFixture(t, dir, db)
+
+	// 1. Verify files table has real hashes and sizes matching disk
+	rows, err := db.Writer().Query(`SELECT id, rel_path, sha256, size_bytes FROM files`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	count := 0
+	for rows.Next() {
+		var id int64
+		var rel, sha string
+		var size int
+		if err := rows.Scan(&id, &rel, &sha, &size); err != nil {
+			t.Fatal(err)
+		}
+		count++
+		if sha == "x" {
+			t.Errorf("file %d (%s) still has placeholder sha256 'x'", id, rel)
+		}
+		diskBody, ok := files[rel]
+		if !ok {
+			t.Errorf("file %s not in seeded map", rel)
+			continue
+		}
+		b := []byte(diskBody)
+		if want := fsx.HashBytes(b); sha != want {
+			t.Errorf("file %s sha256 = %s, want %s", rel, sha, want)
+		}
+		if size != len(b) {
+			t.Errorf("file %s size_bytes = %d, want %d", rel, size, len(b))
+		}
+	}
+	if count != 8 { // 3 set files (exercises.md, manifest.json, rubric-v1.json) + 5 sample answers
+		t.Errorf("got %d rows in files table, want 8", count)
+	}
+
+	// 2. Verify CR-08 check passes during evaluation prepare & full run
+	ad := &calMockAdapter{}
+	r := jobs.New(db, 1)
+	r.Files = root
+	r.Register(domain.JobKindEvaluate, (&evaluation.Service{
+		DB: db, Root: root, Adapter: ad, Model: "cal-mock", Language: "fa",
+		Timeout: 5 * time.Second, Stall: 5 * time.Second, Parallel: 3, MaxAnswerBytes: 100000,
+	}).Handle)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() { defer close(done); r.Run(ctx) }()
+	defer func() { cancel(); <-done }()
+
+	id, err := r.Enqueue(ctx, jobs.Job{Kind: domain.JobKindEvaluate, Scope: "topic:1", TopicID: 1, Params: json.RawMessage(`{"mode":"full"}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var st, msg string
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		_ = db.Writer().QueryRow(`SELECT status, COALESCE(error_message, '') FROM jobs WHERE id = ?`, id).Scan(&st, &msg)
+		if st != "queued" && st != "running" {
+			break
+		}
+	}
+	if st != "succeeded" {
+		t.Fatalf("evaluation job status = %s, error = %s", st, msg)
+	}
+
+	var attemptCount int
+	if err := db.Writer().QueryRow(`SELECT COUNT(*) FROM attempts WHERE set_id = 1`).Scan(&attemptCount); err != nil {
+		t.Fatal(err)
+	}
+	if attemptCount != 1 {
+		t.Errorf("attempts count = %d, want 1", attemptCount)
 	}
 }
