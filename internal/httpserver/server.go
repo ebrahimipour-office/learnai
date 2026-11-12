@@ -29,6 +29,9 @@ func NewServer(addr string, sm *SecurityManager, drafts *roadmaps.Service, topic
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = io.WriteString(w, "ok")
 	})
+	mux.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(static)))
 	mux.Handle("GET /{$}", http.RedirectHandler("/topics", http.StatusSeeOther))
 	mux.HandleFunc("GET /topics", a.requireAck(a.listTopics))

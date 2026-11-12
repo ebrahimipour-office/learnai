@@ -719,13 +719,13 @@ There are **no P0 tasks**.
   - [ ] Every CR task's tests are in CI.
 - **Depends on:** CR-21 (for a green govulncheck). Grows with each task.
 
-### - [ ] CR-59 — Provide `favicon.ico` or 204 handler to clear browser console 404
+### - [x] CR-59 — Provide `favicon.ico` or 204 handler to clear browser console 404
 - **Problem:** Browser requests `/favicon.ico` and receives 404 Not Found, logging an error in Chrome Developer Tools console.
 - **Affected files:** `internal/httpserver/server.go`, `internal/ui/templates/layout.html`, or `internal/ui/static/`.
 - **Expected outcome:** Browsers loading any page encounter zero 404 console errors for favicon.
 - **Acceptance criteria:**
-  - [ ] Loading `/favicon.ico` returns 200 (with valid SVG/ICO) or 204 No Content.
-  - [ ] Chrome console logs 0 errors on clean load.
+  - [x] Loading `/favicon.ico` returns 200 (with valid SVG/ICO) or 204 No Content.
+  - [x] Chrome console logs 0 errors on clean load.
 
 ### - [ ] CR-60 — Improve search empty state UX and group title matching on `/topics`
 - **Problem:**

@@ -469,3 +469,11 @@ func TestReimportFlow(t *testing.T) {
 		t.Errorf("rev-002.md: %v", err)
 	}
 }
+
+func TestFaviconReturns204(t *testing.T) {
+	e := newEnv(t)
+	rec := e.do(httptest.NewRequest(http.MethodGet, "/favicon.ico", nil))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("GET /favicon.ico status = %d, want %d", rec.Code, http.StatusNoContent)
+	}
+}
