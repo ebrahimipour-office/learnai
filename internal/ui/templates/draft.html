@@ -1,5 +1,5 @@
 {{define "content"}}
-<h1>{{if .Draft.RoadmapID}}پیش‌نمایش ورود مجدد{{else}}پیش‌نمایش ورود{{end}}: <bdi>{{.Draft.SourceName}}</bdi></h1>
+<h1>{{if .Draft.RoadmapID}}پیش‌نمایش ورود مجدد{{else}}پیش‌نمایش ورود{{end}} «<bdi>{{.Draft.SourceName}}</bdi>»</h1>
 <p class="note">تا پیش از تأیید هیچ موضوع، گروه یا فایلی ثبت نمی‌شود. این پیش‌نویس تا <bdi>{{.Expires}}</bdi> نگه داشته می‌شود.</p>
 {{template "draft-ai" .}}
 {{template "draft-form" .}}

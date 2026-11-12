@@ -94,6 +94,13 @@ func (a *app) renderSettings(w http.ResponseWriter, r *http.Request, status int,
 		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
 		return
 	}
+	if ack != "" {
+		if t, err := time.Parse(time.RFC3339Nano, ack); err == nil {
+			ack = t.Local().Format("2006-01-02 15:04:05")
+		} else if t, err := time.Parse(time.RFC3339, ack); err == nil {
+			ack = t.Local().Format("2006-01-02 15:04:05")
+		}
+	}
 	ups, err := skills.Outdated(a.root)
 	if err != nil {
 		slog.Error("checking skill versions", "error", err)

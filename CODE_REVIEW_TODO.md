@@ -727,17 +727,17 @@ There are **no P0 tasks**.
   - [x] Loading `/favicon.ico` returns 200 (with valid SVG/ICO) or 204 No Content.
   - [x] Chrome console logs 0 errors on clean load.
 
-### - [ ] CR-60 — Improve search empty state UX and group title matching on `/topics`
+### - [x] CR-60 — Improve search empty state UX and group title matching on `/topics`
 - **Problem:**
   - When `?q=` matches 0 topics, the page outputs `0 موضوع یافت شد` and displays the "ورود نقشه راه جدید" (New Roadmap) button as if the library is empty, confusing users.
   - Search only queries `topics.title_norm`; it does not match roadmap group/phase names (e.g. searching "Recursion" misses topics inside "Phase 1 — Math, Complexity & Recursion").
-- **Affected files:** `internal/services/topics/service.go`, `internal/ui/templates/topics.html`.
+- **Affected files:** `internal/services/topics/list.go`, `internal/ui/templates/topics.html`.
 - **Expected outcome:** Clear "هیچ موضوعی با این مشخصات یافت نشد" message when filtered count is 0 while total topics > 0; optionally match group names.
 - **Acceptance criteria:**
-  - [ ] `topics.html` renders a distinct empty search result message instead of the initial setup state.
-  - [ ] Test covers empty search result display.
+  - [x] `topics.html` renders a distinct empty search result message instead of the initial setup state.
+  - [x] Test covers empty search result display.
 
-### - [ ] CR-61 — BiDi isolation and formatting in Persian RTL interface
+### - [x] CR-61 — BiDi isolation and formatting in Persian RTL interface
 - **Problem:** Multiple places where English identifiers, technical flags, and punctuation are mixed with Persian text produce visual scrambling:
   - Outdated skills list in `settings.html`: `:chapter-detector 1.0.0 ← 2.0.0`
   - Technical flags in `settings.html`: inverted parentheses `( --json-schema )` and broken `--dangerously-skip-permissions`
@@ -747,15 +747,15 @@ There are **no P0 tasks**.
 - **Affected files:** `internal/ui/templates/settings.html`, `internal/ui/templates/draft.html`, `internal/ui/static/app.css`, `internal/render/render.go`.
 - **Expected outcome:** English tokens and punctuation isolated with `<bdi>` or `dir="ltr"` and formatted correctly.
 - **Acceptance criteria:**
-  - [ ] All English/technical phrases in Persian text use `<bdi>` or `dir="ltr"`.
-  - [ ] Visual verification in Chrome shows no inverted punctuation or scrambled token orders.
+  - [x] All English/technical phrases in Persian text use `<bdi>` or `dir="ltr"`.
+  - [x] Visual verification in Chrome shows no inverted punctuation or scrambled token orders.
 
-### - [ ] CR-62 — Mobile responsive layout fixes for `/settings` (390px)
+### - [x] CR-62 — Mobile responsive layout fixes for `/settings` (390px)
 - **Problem:** At 390px viewport width, the AI adapter `<select>` and "ذخیره" submit button wrap onto separate lines awkwardly, and definition list `<dl>` elements have irregular alignment.
 - **Affected files:** `internal/ui/static/app.css`, `internal/ui/templates/settings.html`.
 - **Expected outcome:** Clean vertical or horizontal stacking without awkward overflow or misaligned keys.
 - **Acceptance criteria:**
-  - [ ] Settings page renders smoothly at 390px width without awkward wraps.
+  - [x] Settings page renders smoothly at 390px width without awkward wraps.
 
 ---
 

@@ -22,6 +22,9 @@
 {{define "topic-results"}}
 <div id="topic-results">
   {{if or .Query .Status}}<p class="count" aria-live="polite"><strong>{{.Matched}}</strong> موضوع یافت شد</p>{{end}}
+  {{if and (or .Query .Status) (eq .Matched 0)}}
+  <p class="note empty">هیچ موضوعی با این مشخصات یافت نشد.</p>
+  {{end}}
   {{range .Topics}}
   <section>
     <h2><bdi>{{.Title}}</bdi></h2>

@@ -101,6 +101,16 @@ func TestListSearchAndFilters(t *testing.T) {
 			t.Errorf("q=%q: want %q, got %v (total %d)", c.q, c.want, got, total)
 		}
 	}
+	// Matching group title returns topics inside that group
+	treeGroup, matchedGroup, _ := list(t, s, topics.Filter{Query: "همروندی"})
+	if matchedGroup != 1 || len(titles(treeGroup)) != 1 || titles(treeGroup)[0] != "گوروتین" {
+		t.Errorf("group title search: want [گوروتین], got %v", titles(treeGroup))
+	}
+	treeBasics, matchedBasics, _ := list(t, s, topics.Filter{Query: "مبانی"})
+	if matchedBasics != 2 || len(titles(treeBasics)) != 2 {
+		t.Errorf("group title search for مبانی: want 2 topics, got %d (%v)", matchedBasics, titles(treeBasics))
+	}
+
 	// A match keeps only its own branch: the همروندی group disappears.
 	if tree, _, _ := list(t, s, topics.Filter{Query: "نوع"}); len(tree[0].Items) != 1 {
 		t.Errorf("unmatched groups must be dropped: %+v", tree[0].Items)

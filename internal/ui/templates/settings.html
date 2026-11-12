@@ -19,8 +19,8 @@
 {{if .SkillUpdates}}<section>
 <h2>نسخه جدید مهارت</h2>
 <p class="note">نسخه نصب‌شده این مهارت‌ها قدیمی‌تر از نسخه همراه برنامه است. به‌روزرسانی، فایل فعلی را کنار آن پشتیبان می‌گیرد و سپس جایگزین می‌کند.</p>
-<ul>{{range .SkillUpdates}}
-  <li><bdi>{{.Name}}</bdi>: <bdi>{{.Installed}}</bdi> ← <bdi>{{.Embedded}}</bdi>
+<ul class="skills-list">{{range .SkillUpdates}}
+  <li><span dir="ltr"><strong><bdi>{{.Name}}</bdi></strong>: {{.Installed}} &larr; {{.Embedded}}</span>
     <form method="post" action="/settings/skills/{{.Name}}/upgrade" class="inline">
       <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
       <button type="submit">به‌روزرسانی</button>
@@ -31,28 +31,29 @@
 <section>
 <h2>ابزار هوش مصنوعی (doctor)</h2>
 {{if .Adapters}}
-<form method="post" action="/settings/adapter">
+<form method="post" action="/settings/adapter" class="adapter-form">
   <input type="hidden" name="csrf_token" value="{{.CSRF}}">
-  <label for="adapter">ابزار مورد استفاده</label>
-  <select id="adapter" name="adapter">
-    {{range .Adapters}}<option value="{{.}}"{{if eq . $.Adapter}} selected{{end}}>{{.}}</option>{{end}}
-  </select>
+  <label for="adapter">ابزار مورد استفاده
+    <select id="adapter" name="adapter">
+      {{range .Adapters}}<option value="{{.}}"{{if eq . $.Adapter}} selected{{end}}>{{.}}</option>{{end}}
+    </select>
+  </label>
   <button type="submit">ذخیره</button>
 </form>
-<p class="note">مدل و مسیر هر ابزار در config.toml تنظیم می‌شود: <code>[adapter]</code> برای agy، <code>[adapter.claude]</code> و <code>[adapter.codex]</code>.</p>
+<p class="note">مدل و مسیر هر ابزار در <bdi>config.toml</bdi> تنظیم می‌شود: <bdi><code>[adapter]</code></bdi> برای agy، <bdi><code>[adapter.claude]</code></bdi> و <bdi><code>[adapter.codex]</code></bdi>.</p>
 {{end}}
 {{with .Doctor}}
 {{if .Hint}}<p class="error" role="alert">{{.Hint}}</p>{{else}}<p>آماده است.</p>{{end}}
 {{with .ModelWarn}}<p class="error" role="alert">{{.}}</p>{{end}}
 <dl>
-  <dt>Adapter</dt><dd><bdi>{{$.Adapter}}</bdi></dd>
+  <dt><bdi>Adapter</bdi></dt><dd><bdi>{{$.Adapter}}</bdi></dd>
   <dt>نسخه</dt><dd><bdi>{{or .Caps.Version "—"}}</bdi></dd>
   <dt>احراز هویت</dt><dd>{{if .Caps.Authenticated}}بله{{else}}خیر{{end}}</dd>
   <dt>خروجی JSON بدون رابط</dt><dd>{{if .Caps.HeadlessJSON}}بله{{else}}خیر{{end}}</dd>
-  <dt>خروجی ساختاریافته (<code>--json-schema</code>)</dt><dd>{{if .Caps.StructuredOutput}}بله{{else}}خیر{{end}}</dd>
-  {{if eq $.Adapter "antigravity"}}<dt>رد نشدن مجوزها (<code>--dangerously-skip-permissions</code>، <code>adapter.skip_permissions</code>)</dt><dd>{{if $.SkipPermissions}}فعال (فقط همراه <code>--sandbox</code>){{else}}غیرفعال{{end}}</dd>{{end}}
+  <dt>خروجی ساختاریافته (<bdi><code>--json-schema</code></bdi>)</dt><dd>{{if .Caps.StructuredOutput}}بله{{else}}خیر{{end}}</dd>
+  {{if eq $.Adapter "antigravity"}}<dt>رد نشدن مجوزها (<bdi><code>--dangerously-skip-permissions</code></bdi>، <bdi><code>adapter.skip_permissions</code></bdi>)</dt><dd>{{if $.SkipPermissions}}فعال (فقط همراه <bdi><code>--sandbox</code></bdi>){{else}}غیرفعال{{end}}</dd>{{end}}
   <dt>مدل پیکربندی‌شده</dt><dd><bdi>{{or $.Model "پیش‌فرض ابزار"}}</bdi></dd>
-  <dt>مدل‌های در دسترس</dt><dd>{{range .Caps.Models}}<code>{{.}}</code> {{else}}—{{end}}</dd>
+  <dt>مدل‌های در دسترس</dt><dd>{{range .Caps.Models}}<bdi><code>{{.}}</code></bdi> {{else}}—{{end}}</dd>
 </dl>
 {{if or .Err .Caps.Notes}}<details><summary>جزئیات فنی</summary>
   {{with .Err}}<pre>{{.}}</pre>{{end}}{{range .Caps.Notes}}<pre>{{.}}</pre>{{end}}

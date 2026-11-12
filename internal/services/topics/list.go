@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"learninghub/internal/fsx"
 	"learninghub/internal/roadmap"
@@ -71,7 +72,27 @@ func (s *Service) List(ctx context.Context, f Filter) (tree []*Node, matched, to
 		return nil, 0, 0, err
 	}
 
-	rows, err := s.db.Writer().QueryContext(ctx, `
+	var matchingGroups map[int64]bool
+	if q != "" {
+		matchingGroups = make(map[int64]bool)
+		for id, g := range groups {
+			if strings.Contains(roadmap.Normalize(g.title), q) {
+				matchingGroups[id] = true
+			}
+		}
+		changed := true
+		for changed {
+			changed = false
+			for id, g := range groups {
+				if !matchingGroups[id] && g.parent.Valid && matchingGroups[g.parent.Int64] {
+					matchingGroups[id] = true
+					changed = true
+				}
+			}
+		}
+	}
+
+	baseQuery := `
 		WITH latest AS (
 		  SELECT s.topic_id, a.topic_score, a.is_partial,
 		         ROW_NUMBER() OVER (PARTITION BY s.topic_id ORDER BY a.attempt_no DESC) AS rn
@@ -82,8 +103,42 @@ func (s *Service) List(ctx context.Context, f Filter) (tree []*Node, matched, to
 		FROM topics t
 		JOIN roadmaps r ON r.id = t.roadmap_id
 		LEFT JOIN latest l ON l.topic_id = t.id AND l.rn = 1
-		WHERE (? = '' OR instr(t.title_norm, ?) > 0) AND (? = '' OR t.status = ?)
-		ORDER BY r.id, t.ord`, q, q, f.Status, f.Status)
+		WHERE `
+
+	var whereClauses []string
+	var args []any
+
+	if q != "" {
+		if len(matchingGroups) > 0 {
+			placeholders := make([]string, len(matchingGroups))
+			matchGroupArgs := make([]any, len(matchingGroups))
+			idx := 0
+			for gid := range matchingGroups {
+				placeholders[idx] = "?"
+				matchGroupArgs[idx] = gid
+				idx++
+			}
+			whereClauses = append(whereClauses, fmt.Sprintf("(instr(t.title_norm, ?) > 0 OR t.group_id IN (%s))", strings.Join(placeholders, ",")))
+			args = append(args, q)
+			args = append(args, matchGroupArgs...)
+		} else {
+			whereClauses = append(whereClauses, "instr(t.title_norm, ?) > 0")
+			args = append(args, q)
+		}
+	}
+	if f.Status != "" {
+		whereClauses = append(whereClauses, "t.status = ?")
+		args = append(args, f.Status)
+	}
+
+	if len(whereClauses) == 0 {
+		baseQuery += "1=1 "
+	} else {
+		baseQuery += strings.Join(whereClauses, " AND ") + " "
+	}
+	baseQuery += "ORDER BY r.id, t.ord"
+
+	rows, err := s.db.Writer().QueryContext(ctx, baseQuery, args...)
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("listing topics: %w", err)
 	}

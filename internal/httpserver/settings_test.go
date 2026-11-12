@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -79,6 +80,10 @@ func TestSettingsPrivacyAck(t *testing.T) {
 	}
 	if b := e.settingsPage(false); !strings.Contains(b, "تأییدشده") || strings.Contains(b, `name="ack"`) {
 		t.Fatalf("ack not shown:\n%s", b)
+	}
+	// Localized date format YYYY-MM-DD HH:MM:SS (CR-61)
+	if !regexp.MustCompile(`تأییدشده در <bdi>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}</bdi>`).MatchString(e.settingsPage(false)) {
+		t.Errorf("expected localized date in privacy ack, got:\n%s", e.settingsPage(false))
 	}
 }
 
@@ -172,8 +177,15 @@ func TestSettingsSelectAdapter(t *testing.T) {
 	if sw.Name() != "antigravity" || httpserver.SavedAdapter(context.Background(), e.db, "claude") != "antigravity" {
 		t.Fatalf("not switched/saved: %s", sw.Name())
 	}
-	if b := e.settingsPage(false); !strings.Contains(b, `<option value="antigravity" selected>`) {
+	b := e.settingsPage(false)
+	if !strings.Contains(b, `<option value="antigravity" selected>`) {
 		t.Fatalf("new tool not shown:\n%s", b)
+	}
+	if !strings.Contains(b, `<form method="post" action="/settings/adapter" class="adapter-form">`) {
+		t.Errorf("expected class adapter-form on adapter form, got:\n%s", b)
+	}
+	if !strings.Contains(b, `<bdi>config.toml</bdi>`) {
+		t.Errorf("expected <bdi>config.toml</bdi>, got:\n%s", b)
 	}
 }
 
@@ -188,6 +200,9 @@ func TestSettingsSkillUpgrade(t *testing.T) {
 	page := e.settingsPage(false)
 	if !strings.Contains(page, "نسخه جدید مهارت") || !strings.Contains(page, `action="/settings/skills/chapter-detector/upgrade"`) {
 		t.Fatalf("no upgrade offer\n%s", page)
+	}
+	if !strings.Contains(page, `<span dir="ltr"><strong><bdi>chapter-detector</bdi></strong>: 1.0.0 ← 2.0.0</span>`) {
+		t.Errorf("BiDi isolated skill update missing in page:\n%s", page)
 	}
 	if b, _ := e.root.ReadFile(rel); string(b) != string(old) {
 		t.Fatal("viewing settings changed the skill")

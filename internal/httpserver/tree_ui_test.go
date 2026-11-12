@@ -67,3 +67,27 @@ func TestTreeUI(t *testing.T) {
 		t.Error("parent panel does not list its sub-records")
 	}
 }
+
+func TestTopicSearchEmptyAndGroupMatching(t *testing.T) {
+	e := newEnv(t)
+	draft := e.upload("book.md", []byte("# Go Book\n## Phase 1 - Advanced Concepts\n### Concurrency\n### Channels\n")).Header().Get("Location")
+	e.selection(draft, url.Values{"rule": {"deepest"}}, true)
+	if rec := e.confirm(draft, url.Values{"csrf_token": {e.sm.CSRFToken()}, "confirm": {"1"}}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("confirm: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// 1. Searching by group name matches its topics
+	resGroup := e.do(httptest.NewRequest(http.MethodGet, "/topics?q=Advanced", nil)).Body.String()
+	if !strings.Contains(resGroup, "Concurrency") || !strings.Contains(resGroup, "Channels") {
+		t.Errorf("expected search by group name 'Advanced' to return topics, got: %s", resGroup)
+	}
+
+	// 2. Searching with 0 matches displays distinct empty search message
+	resEmpty := e.do(httptest.NewRequest(http.MethodGet, "/topics?q=NonExistentQuery", nil)).Body.String()
+	if !strings.Contains(resEmpty, "هیچ موضوعی با این مشخصات یافت نشد.") {
+		t.Errorf("expected empty search note, got: %s", resEmpty)
+	}
+	if !strings.Contains(resEmpty, "<strong>0</strong> موضوع یافت شد") {
+		t.Errorf("expected 0 matches count, got: %s", resEmpty)
+	}
+}
