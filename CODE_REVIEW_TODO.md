@@ -88,7 +88,7 @@ There are **no P0 tasks**.
   - [x] TDD §6.6 and `PROGRESS.md` mark journal recovery as implemented.
 - **Depends on:** none. CR-07 makes recovery more reliable, so do it next. CR-33 relies on this task.
 
-### - [ ] CR-04 — Sync scan aborts on any file name that `fsx` rejects
+### - [x] CR-04 — Sync scan aborts on any file name that `fsx` rejects
 - **Problem:** `syncsvc.unregistered` collects every file under `topics/`; `match` hashes them through `Root.HashFile` → `ValidateRelPath`. One name such as `aux.md`, `why?.md`, `notes. ` or a long Persian file name makes Scan fail completely.
 - **Affected files:** `internal/services/syncsvc/syncsvc.go:194-205,226-234`; `internal/httpserver/handlers_sync.go` and `internal/ui/templates/sync.html` (to show the new category).
 - **Expected outcome:** Scan always completes. Unsupported names are reported, never hashed and never used as move candidates.
@@ -98,15 +98,15 @@ There are **no P0 tasks**.
   - Share the helper with CR-50.
 - **Required regression tests:** missing `lesson.md` plus files `aux.md`, `a?.md`, `x. ` and a 230-byte name → Scan succeeds, `Missing=[lesson.md]`, all four are listed as unsupported, and none appear in the move proposals.
 - **Acceptance criteria:**
-  - [ ] Scan never returns an error caused by a user file name.
-  - [ ] The UI shows unsupported files.
+  - [x] Scan never returns an error caused by a user file name.
+  - [x] The UI shows unsupported files.
 - **Depends on:** none.
 
 ---
 
 ## P2 — Medium
 
-### - [ ] CR-05 — Make roadmap Confirm/re-import idempotent with leftover files
+### - [x] CR-05 — Make roadmap Confirm/re-import idempotent with leftover files
 - **Problem:** an orphan `rev-NNN.md`, `source.md` or `source-history/source.NNNN.md` (left by a crash or a failed undo) makes every later Confirm fail, and undo errors are ignored.
 - **Affected files:** `internal/services/roadmaps/confirm.go:105,207-222,268,286,292`.
 - **Expected outcome:** a retry succeeds without manual cleanup, and nothing is overwritten.
@@ -115,8 +115,8 @@ There are **no P0 tasks**.
   - Log every undo `Remove` error.
 - **Required regression tests:** orphan `rev-002.md` with the same bytes → adopted; with different bytes → `rev-003.md`; orphan `topics/04-x/source.md` → the import uses a free folder.
 - **Acceptance criteria:**
-  - [ ] All three scenarios succeed.
-  - [ ] Pre-existing files are byte-identical afterwards.
+  - [x] All three scenarios succeed.
+  - [x] Pre-existing files are byte-identical afterwards.
 - **Depends on:** CR-06.
 
 ### - [x] CR-06 — Compute topic folder numbers from the maximum in use, not `COUNT(*)`
@@ -349,14 +349,14 @@ There are **no P0 tasks**.
   - [ ] Test runs in Windows CI.
 - **Depends on:** CR-58.
 
-### - [ ] CR-25 — Unique log directories for parallel AI runs
+### - [x] CR-25 — Unique log directories for parallel AI runs
 - **Problem:** `.app/logs/jobs/<job>/<ns>-<task>` can collide between parallel evaluation steps.
 - **Affected files:** `internal/ai/antigravity/adapter.go:327-338`.
 - **Expected outcome:** each run gets its own directory.
 - **Suggested implementation:** include `req.Step` (validated with `fsx.ValidateSegment`) and a short random suffix in the name.
 - **Required regression tests:** two runs with an injected fixed clock and the same job and task → two directories, both succeed.
 - **Acceptance criteria:**
-  - [ ] Test passes.
+  - [x] Test passes.
 - **Depends on:** none.
 
 ### - [ ] CR-26 — Respect cancellation before starting and before retrying

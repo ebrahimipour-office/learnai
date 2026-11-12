@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -113,10 +114,32 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 				return err
 			}
 		}
+		choice, err := json.Marshal(Choice{Rule: d.Choice.Rule, Excluded: d.Choice.Excluded})
+		if err != nil {
+			return err
+		}
+		contentSHA := fsx.HashBytes(d.Content)
+		choiceSHA := fsx.HashBytes(choice)
 		rel := fmt.Sprintf("roadmaps/%s/rev-%03d.md", slug, revNo)
+		for {
+			rel = fmt.Sprintf("roadmaps/%s/rev-%03d.md", slug, revNo)
+			b, err := s.root.ReadFile(rel)
+			if errors.Is(err, fs.ErrNotExist) {
+				if !s.root.Exists(ChoiceRel(rel)) {
+					break
+				}
+			}
+			if err == nil && fsx.HashBytes(b) == contentSHA {
+				cb, cerr := s.root.ReadFile(ChoiceRel(rel))
+				if errors.Is(cerr, fs.ErrNotExist) || (cerr == nil && fsx.HashBytes(cb) == choiceSHA) {
+					break
+				}
+			}
+			revNo++
+		}
 		res, err = tx.ExecContext(ctx,
 			`INSERT INTO roadmap_revisions (roadmap_id, rev_no, rel_path, sha256, parsed_tree) VALUES (?, ?, ?, ?, ?)`,
-			roadmapID, revNo, rel, fsx.HashBytes(d.Content), string(tree))
+			roadmapID, revNo, rel, contentSHA, string(tree))
 		if err != nil {
 			return fmt.Errorf("inserting revision: %w", err)
 		}
@@ -187,8 +210,15 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 					return fmt.Errorf("updating topic %q: %w", t.Title, err)
 				}
 			} else {
-				seq++
-				slug, dir := TopicDir(seq, t.Title)
+				var slug, dir string
+				for {
+					seq++
+					slug, dir = TopicDir(seq, t.Title)
+					fi, err := s.root.Stat("topics/" + dir)
+					if err != nil || !fi.IsDir() {
+						break
+					}
+				}
 				res, err := tx.ExecContext(ctx,
 					`INSERT INTO topics (roadmap_id, group_id, parent_id, stable_key, title, title_norm, outline, ord, slug, dir_name, source_rev_id)
 					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -220,20 +250,14 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 		}
 
 		// Files go last: any earlier failure leaves nothing on disk. Files created with O_EXCL are ours to remove.
-		if err := s.root.WriteNew(rel, d.Content, 0o644); err != nil {
-			return fmt.Errorf("writing %s: %w", rel, err)
-		}
-		undo = append(undo, func() { _ = s.root.Remove(rel) })
-		// The choice beside the revision lets hub rebuild re-select the same topics (CR-19).
-		choiceRel := ChoiceRel(rel)
-		choice, err := json.Marshal(Choice{Rule: d.Choice.Rule, Excluded: d.Choice.Excluded})
-		if err != nil {
+		if _, err := s.writeOrAdopt(rel, d.Content, &undo); err != nil {
 			return err
 		}
-		if err := s.root.WriteNew(choiceRel, choice, 0o644); err != nil {
-			return fmt.Errorf("writing %s: %w", choiceRel, err)
+		// The choice beside the revision lets hub rebuild re-select the same topics (CR-19).
+		choiceRel := ChoiceRel(rel)
+		if _, err := s.writeOrAdopt(choiceRel, choice, &undo); err != nil {
+			return err
 		}
-		undo = append(undo, func() { _ = s.root.Remove(choiceRel) })
 		for _, w := range writes {
 			if err := s.writeSource(w, &undo); err != nil {
 				return err
@@ -291,8 +315,21 @@ func (s *Service) recordSource(ctx context.Context, tx *sql.Tx, o oldTopic, t ro
 		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM files WHERE topic_id = ? AND kind = 'source'`, o.ID).Scan(&n); err != nil {
 			return nil, err
 		}
-		w.hist, w.prev = path.Join("topics", o.Dir, "source-history", fmt.Sprintf("source.%04d.md", n)), prev
 		ph := fsx.HashBytes(prev)
+		for {
+			histRel := path.Join("topics", o.Dir, "source-history", fmt.Sprintf("source.%04d.md", n))
+			b, err := s.root.ReadFile(histRel)
+			if errors.Is(err, fs.ErrNotExist) {
+				w.hist = histRel
+				break
+			}
+			if err == nil && fsx.HashBytes(b) == ph {
+				w.hist = histRel
+				break
+			}
+			n++
+		}
+		w.prev = prev
 		if _, err := tx.ExecContext(ctx, `INSERT INTO files (topic_id, kind, owner_type, owner_id, rel_path, sha256, size_bytes, observed_sha256)
 			VALUES (?, 'source', 'topic', ?, ?, ?, ?, ?)`, o.ID, o.ID, w.hist, ph, len(prev), ph); err != nil {
 			return nil, err
@@ -309,25 +346,57 @@ func (s *Service) recordSource(ctx context.Context, tx *sql.Tx, o oldTopic, t ro
 // its history copy is removed, so the old text is never lost.
 func (s *Service) writeSource(w sourceWrite, undo *[]func()) error {
 	if w.hist == "" {
-		if err := s.root.WriteNew(w.rel, w.data, 0o644); err != nil {
-			return fmt.Errorf("writing %s: %w", w.rel, err)
+		if _, err := s.writeOrAdopt(w.rel, w.data, undo); err != nil {
+			return err
 		}
-		*undo = append(*undo, func() { _ = s.root.Remove(w.rel) })
 		return nil
 	}
-	if err := s.root.WriteNew(w.hist, w.prev, 0o644); err != nil {
-		return fmt.Errorf("writing %s: %w", w.hist, err)
+	histAdopted, err := s.writeOrAdopt(w.hist, w.prev, undo)
+	if err != nil {
+		return err
 	}
 	if err := s.root.WriteAtomic(w.rel, w.data, 0o644); err != nil {
-		_ = s.root.Remove(w.hist)
+		if !histAdopted {
+			if rerr := s.root.Remove(w.hist); rerr != nil && !errors.Is(rerr, fs.ErrNotExist) {
+				slog.Warn("confirm writeSource: removing history failed", "hist", w.hist, "err", rerr)
+			}
+		}
 		return fmt.Errorf("writing %s: %w", w.rel, err)
 	}
 	*undo = append(*undo, func() {
 		if s.root.WriteAtomic(w.rel, w.prev, 0o644) == nil {
-			_ = s.root.Remove(w.hist)
+			if !histAdopted {
+				if rerr := s.root.Remove(w.hist); rerr != nil && !errors.Is(rerr, fs.ErrNotExist) {
+					slog.Warn("confirm undo: removing history failed", "hist", w.hist, "err", rerr)
+				}
+			}
 		}
 	})
 	return nil
+}
+
+// writeOrAdopt writes data to rel using WriteNew, unless rel already exists with identical
+// SHA256 bytes, in which case it adopts the existing file without writing or adding an undo.
+func (s *Service) writeOrAdopt(rel string, data []byte, undo *[]func()) (adopted bool, err error) {
+	b, err := s.root.ReadFile(rel)
+	if err == nil {
+		if fsx.HashBytes(b) == fsx.HashBytes(data) {
+			return true, nil // adopted identical file; not ours to delete on undo
+		}
+		return false, fmt.Errorf("%s exists with different content: %w", rel, fs.ErrExist)
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		return false, fmt.Errorf("checking %s: %w", rel, err)
+	}
+	if err := s.root.WriteNew(rel, data, 0o644); err != nil {
+		return false, fmt.Errorf("writing %s: %w", rel, err)
+	}
+	*undo = append(*undo, func() {
+		if err := s.root.Remove(rel); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			slog.Warn("confirm undo: removing file failed", "rel", rel, "err", err)
+		}
+	})
+	return false, nil
 }
 
 // freeRoadmapSlug picks slug, slug-2, ... unused both in the DB and on disk.

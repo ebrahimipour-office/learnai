@@ -333,6 +333,38 @@ func TestRealSuccessEnvelope(t *testing.T) {
 	}
 }
 
+func TestStructuredFallbackResponseExtraction(t *testing.T) {
+	// 1. structured_output is null, response has preamble + markdown fence
+	line1 := `{"event":"result","result":{"conversation_id":"r15-test","status":"SUCCESS","response":"Here is the evaluation result:\n\n` + "```" + `json\n{\"exercise_id\":\"q01\",\"score\":80}\n` + "```" + `\n","structured_output":null}}`
+	var env1 envelope
+	if err := json.Unmarshal([]byte(line1), &env1); err != nil {
+		t.Fatal(err)
+	}
+	var r1 result
+	if err := json.Unmarshal(env1.Result, &r1); err != nil {
+		t.Fatal(err)
+	}
+	got1, err := r1.structured()
+	if err != nil || string(got1) != `{"exercise_id":"q01","score":80}` {
+		t.Fatalf("expected extracted JSON from fenced response, got %s, %v", got1, err)
+	}
+
+	// 2. structured_output is empty, response has conversational text with bare object
+	line2 := `{"event":"result","result":{"conversation_id":"r15-test2","status":"SUCCESS","response":"Result: {\"exercise_id\":\"q02\",\"score\":45}\nDone.","structured_output":{}}}`
+	var env2 envelope
+	if err := json.Unmarshal([]byte(line2), &env2); err != nil {
+		t.Fatal(err)
+	}
+	var r2 result
+	if err := json.Unmarshal(env2.Result, &r2); err != nil {
+		t.Fatal(err)
+	}
+	got2, err := r2.structured()
+	if err != nil || string(got2) != `{"exercise_id":"q02","score":45}` {
+		t.Fatalf("expected extracted JSON from conversational response, got %s, %v", got2, err)
+	}
+}
+
 func TestNoteInvalidWritesNextToResponse(t *testing.T) {
 	base := t.TempDir()
 	logs, err := fsx.OpenRoot(base)
@@ -360,3 +392,36 @@ func TestRunErrorStatusKeepsStructuredOutput(t *testing.T) {
 		t.Fatalf("resp=%+v err=%v", resp, err)
 	}
 }
+
+// CR-25: unique log directories for parallel AI runs with same JobID, Task, and Step.
+func TestOpenLogUniqueDirsForParallelRuns(t *testing.T) {
+	base := t.TempDir()
+	logs, err := fsx.OpenRoot(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer logs.Close()
+	a := New(Config{Logs: logs})
+	req := ai.Request{JobID: 42, Task: "evaluate", Step: "q01", Prompt: "test"}
+	l1, err := a.openLog(req)
+	if err != nil {
+		t.Fatalf("first openLog: %v", err)
+	}
+	if l1.events != nil {
+		_ = l1.events.Close()
+	}
+	l2, err := a.openLog(req)
+	if err != nil {
+		t.Fatalf("second openLog: %v", err)
+	}
+	if l2.events != nil {
+		_ = l2.events.Close()
+	}
+	if l1.dir == l2.dir {
+		t.Fatalf("expected distinct log directories, got %q == %q", l1.dir, l2.dir)
+	}
+	if !strings.Contains(l1.dir, "q01") || !strings.Contains(l2.dir, "q01") {
+		t.Fatalf("expected step in log dir names, got %q and %q", l1.dir, l2.dir)
+	}
+}
+

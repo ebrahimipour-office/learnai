@@ -233,3 +233,109 @@ func TestConfirmRoadmapTitle(t *testing.T) {
 		t.Errorf("re-import with replace: got %q", got)
 	}
 }
+
+// CR-05: confirm is idempotent when orphan revision files, source files, or topic folders exist.
+func TestConfirmIdempotentWithLeftoverFiles(t *testing.T) {
+	ctx := context.Background()
+	base := t.TempDir()
+	s, db, root := newServiceIn(t, base)
+
+	// 1. Initial import: creates roadmap "go" with rev-001.md and topics 01-types, 02-loops, 03-goroutines.
+	id, err := s.CreateDraft(ctx, "go.md", []byte(sample))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rid, n, err := s.Confirm(ctx, id)
+	if err != nil || n != 3 {
+		t.Fatalf("initial confirm: %d topics, %v", n, err)
+	}
+
+	// Scenario 1: orphan rev-002.md with identical bytes is adopted on re-import.
+	reimport1 := "# Go\n## Basics\n### Types\nIntro to types\n### Loops\nIntro to loops\n"
+	orphanRel := "roadmaps/go/rev-002.md"
+	if err := os.WriteFile(filepath.Join(base, orphanRel), []byte(reimport1), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	id2, err := s.CreateReimport(ctx, rid, "go.md", []byte(reimport1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Confirm(ctx, id2); err != nil {
+		t.Fatalf("confirm with identical orphan rev-002: %v", err)
+	}
+	// Verify rev_no 2 recorded rev-002.md and file content was not corrupted.
+	var revPath string
+	if err := db.Writer().QueryRow(`SELECT rel_path FROM roadmap_revisions WHERE roadmap_id = ? AND rev_no = 2`, rid).Scan(&revPath); err != nil {
+		t.Fatal(err)
+	}
+	if revPath != orphanRel {
+		t.Errorf("rev 2: got %s, want %s", revPath, orphanRel)
+	}
+	gotBytes, err := root.ReadFile(orphanRel)
+	if err != nil || string(gotBytes) != reimport1 {
+		t.Errorf("rev-002 bytes altered or missing: %q, %v", string(gotBytes), err)
+	}
+
+	// Scenario 2: orphan rev-003.md with different bytes causes re-import to advance to rev-004.md.
+	orphan3Rel := "roadmaps/go/rev-003.md"
+	orphan3Content := "orphan different bytes"
+	if err := os.WriteFile(filepath.Join(base, orphan3Rel), []byte(orphan3Content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reimport2 := "# Go\n## Basics\n### Types\nIntro to types v3\n### Loops\nIntro to loops v3\n"
+	id3, err := s.CreateReimport(ctx, rid, "go.md", []byte(reimport2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Confirm(ctx, id3); err != nil {
+		t.Fatalf("confirm with conflicting orphan rev-003: %v", err)
+	}
+	var rev3Path string
+	if err := db.Writer().QueryRow(`SELECT rel_path FROM roadmap_revisions WHERE roadmap_id = ? AND rev_no = 4`, rid).Scan(&rev3Path); err != nil {
+		t.Fatalf("expected rev_no 4 after skipping conflicting rev-003: %v", err)
+	}
+	if rev3Path != "roadmaps/go/rev-004.md" {
+		t.Errorf("revPath: got %s, want rev-004.md", rev3Path)
+	}
+	// Pre-existing rev-003.md must remain byte-identical.
+	orphan3Got, err := root.ReadFile(orphan3Rel)
+	if err != nil || string(orphan3Got) != orphan3Content {
+		t.Errorf("orphan rev-003 altered: got %q, want %q (%v)", string(orphan3Got), orphan3Content, err)
+	}
+	// rev-004.md contains reimport2.
+	rev4Got, err := root.ReadFile(rev3Path)
+	if err != nil || string(rev4Got) != reimport2 {
+		t.Errorf("rev-004 bytes: got %q, want %q (%v)", string(rev4Got), reimport2, err)
+	}
+
+	// Scenario 3: orphan folder topics/04-x/source.md: next import skips 04 and uses a free folder (05-x).
+	orphanFolder := filepath.Join(base, "topics", "04-orphan")
+	if err := os.MkdirAll(orphanFolder, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	orphanSource := "stray orphan source"
+	if err := os.WriteFile(filepath.Join(orphanFolder, "source.md"), []byte(orphanSource), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	id4, err := s.CreateDraft(ctx, "fresh.md", []byte("# Fresh\n## Topics\n### Alpha\nContent of alpha\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rid4, _, err := s.Confirm(ctx, id4)
+	if err != nil {
+		t.Fatalf("confirm fresh draft with orphan topic folder: %v", err)
+	}
+	var freshDir string
+	if err := db.Writer().QueryRow(`SELECT dir_name FROM topics WHERE roadmap_id = ?`, rid4).Scan(&freshDir); err != nil {
+		t.Fatal(err)
+	}
+	if strings.HasPrefix(freshDir, "04-") {
+		t.Errorf("expected fresh topic to skip 04-orphan, got %s", freshDir)
+	}
+	// The pre-existing orphan folder and source.md must remain byte-identical.
+	strayGot, err := root.ReadFile("topics/04-orphan/source.md")
+	if err != nil || string(strayGot) != orphanSource {
+		t.Errorf("orphan source.md altered: got %q, want %q (%v)", string(strayGot), orphanSource, err)
+	}
+}

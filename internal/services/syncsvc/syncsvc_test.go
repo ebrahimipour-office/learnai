@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"learninghub/internal/domain"
@@ -274,11 +275,13 @@ func TestAmbiguousHashStaysMissingAndNew(t *testing.T) {
 
 // CR-04: a file name fsx rejects is reported as skipped; the rest of the scan is complete.
 func TestInvalidNameIsSkippedNotFatal(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("the file system itself refuses these names")
-	}
 	e := setup(t)
-	const bad = "topics/01-http/notes:draft.md"
+	// On Windows, `:` or `?` cannot be created on NTFS, but a >220 byte path can be created.
+	// On Unix, `:` can also be created.
+	bad := "topics/01-http/" + strings.Repeat("a", 215) + ".md"
+	if runtime.GOOS != "windows" {
+		bad = "topics/01-http/notes:draft.md"
+	}
 	e.write(bad, "x")
 	e.write("topics/01-http/extra.md", "new")
 	e.move(rubricRel, "topics/01-http/rubric-moved.json")

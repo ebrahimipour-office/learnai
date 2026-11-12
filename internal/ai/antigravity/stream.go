@@ -41,14 +41,19 @@ func eventKind(name string) string {
 }
 
 // structured picks the JSON object from a SUCCESS result. Confirmed against agy 1.4.12
-// (2026-11-01): it lives in "structured_output"; "response" holds free text plus the JSON,
-// so the fallback only covers a bare-JSON response.
+// (2026-11-01): it lives in "structured_output"; if missing, fallback extracts bare JSON
+// or JSON enclosed in markdown fences/text from "response".
 func (r *result) structured() (json.RawMessage, error) {
-	if s := bytes.TrimSpace(r.StructuredOutput); len(s) > 0 && !bytes.Equal(s, []byte("null")) {
+	if s := bytes.TrimSpace(r.StructuredOutput); len(s) > 0 && !bytes.Equal(s, []byte("null")) && !bytes.Equal(s, []byte("{}")) {
 		return s, nil
 	}
-	if s := strings.TrimSpace(r.Response); strings.HasPrefix(s, "{") && json.Valid([]byte(s)) {
-		return json.RawMessage(s), nil
+	if s := strings.TrimSpace(r.Response); s != "" {
+		if strings.HasPrefix(s, "{") && json.Valid([]byte(s)) {
+			return json.RawMessage(s), nil
+		}
+		if raw := extractJSON(s); raw != nil {
+			return raw, nil
+		}
 	}
 	return nil, fmt.Errorf("%w: no structured output in result", ai.ErrInvalidOutput)
 }

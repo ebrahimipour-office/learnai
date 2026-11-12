@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -355,9 +356,17 @@ func (a *Adapter) openLog(req ai.Request) (*jobLog, error) {
 	if a.cfg.Logs == nil {
 		return nil, nil
 	}
+	stepSuffix := ""
+	if req.Step != "" {
+		if err := fsx.ValidateSegment(req.Step); err == nil {
+			stepSuffix = "-" + req.Step
+		}
+	}
+	var rnd [4]byte
+	_, _ = rand.Read(rnd[:])
 	// One dir per Run: a job may call Run more than once (invalid_output retry, parallel evaluate).
 	dir := path.Join(".app/logs/jobs", strconv.FormatInt(req.JobID, 10),
-		time.Now().UTC().Format("20060102T150405.000000000")+"-"+string(req.Task))
+		fmt.Sprintf("%s-%s%s-%x", time.Now().UTC().Format("20060102T150405.000000000"), req.Task, stepSuffix, rnd))
 	l := &jobLog{root: a.cfg.Logs, dir: dir, req: req, adName: a.Name()}
 	if v := a.version.Load(); v != nil {
 		l.ver = *v

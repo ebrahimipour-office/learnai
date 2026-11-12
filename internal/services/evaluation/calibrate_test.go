@@ -1,12 +1,14 @@
 package evaluation_test
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -114,11 +116,25 @@ func TestCalibrateEvaluator(t *testing.T) {
 		model = m
 	}
 	ad := antigravity.New(antigravity.Config{Binary: cfg.Adapter.Binary, Model: model, Effort: cfg.Adapter.Effort,
-		Sandbox: cfg.Adapter.Sandbox, ExtraArgs: cfg.Adapter.ExtraArgs, Logs: root})
+		Sandbox: cfg.Adapter.Sandbox, SkipPermissions: cfg.Adapter.SkipPermissions, ExtraArgs: cfg.Adapter.ExtraArgs, Logs: root})
 	r := jobs.New(db, 1)
 	r.Files = root
+	parallel := cmp.Or(cfg.Jobs.EvaluateParallelism, 1)
+	if p := os.Getenv("HUB_PARALLEL"); p != "" {
+		if n, err := strconv.Atoi(p); err == nil && n > 0 {
+			parallel = n
+		}
+	}
+	timeout := cfg.Jobs.TimeoutEvaluateItem
+	if t := os.Getenv("HUB_TIMEOUT"); t != "" {
+		if d, err := time.ParseDuration(t); err == nil && d > 0 {
+			timeout = d
+		}
+	} else if timeout < 8*time.Minute {
+		timeout = 8 * time.Minute
+	}
 	r.Register(domain.JobKindEvaluate, (&evaluation.Service{DB: db, Root: root, Adapter: ad, Model: model, Language: "fa",
-		Timeout: cfg.Jobs.TimeoutEvaluateItem, Stall: cfg.Jobs.StallTimeout, Parallel: 3, MaxAnswerBytes: cfg.Limits.MaxAnswerBytes}).Handle)
+		Timeout: timeout, Stall: cfg.Jobs.StallTimeout, Parallel: parallel, MaxAnswerBytes: cfg.Limits.MaxAnswerBytes}).Handle)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { defer close(done); r.Run(ctx) }()
