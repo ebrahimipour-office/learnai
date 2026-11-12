@@ -67,3 +67,35 @@ Pages covered: `/`, `/topics`, `/sync`, `/settings`, `/roadmaps/new`, and for to
 - Draft pages (`/roadmaps/drafts/{id}`): no draft existed.
 - Live job cards / progress polling: no job was running.
 - Keyboard-only navigation and color contrast measurement.
+
+---
+
+# Browser Test Report: Learning Hub (Session 2 — Windows & Chrome Live Test)
+
+- **Date:** 2026-11-12
+- **Environment:** Windows (amd64), Google Chrome (Playwright engine)
+- **Target:** `http://127.0.0.1:8787` (`hub.exe serve` with real database and real AI tool probe)
+- **Profiles tested:**
+  - Desktop: 1280×844 (Light mode & Dark mode via `prefers-color-scheme: dark`)
+  - Mobile: 390×844 (Light mode & Dark mode)
+- **Scope executed:**
+  - Full server startup on Windows loopback (`127.0.0.1:8787`)
+  - Live exploration of `/topics`, `/settings`, `/sync`, `/roadmaps/new`, `/roadmaps/drafts/{id}`, `/topics/{id}` (tabs: `lesson`, `source`, `exercises`, `answers`, `reports`, `suggestions`)
+  - Live interactive operations:
+    - Search & filter on `/topics` with instant debounced htmx query
+    - AI tool doctor probe display on `/settings`
+    - Upgrading all outdated skills (`chapter-detector` 1.0.0 → 2.0.0, `exercise-generator` 1.1.0 → 1.2.0, `lesson-generator` 1.1.0 → 1.2.0)
+    - Full filesystem sync scan via `POST /sync/scan`
+    - Markdown roadmap upload (`persian.md`), draft preview generation, and "Continue without AI" (`ادامه بدون AI`) fallback confirmation leading to creation of 6 new topics and chapter sources
+  - Visual & BiDi inspection with screenshots at every key interaction
+
+## Summary of Findings
+
+| ID | Severity | Area | Description | Status |
+|---|---|---|---|---|
+| **B1** | Low (Cosmetic) | Console / Network | `favicon.ico` returns 404, logging an error in the Chrome Developer Tools console. | Open |
+| **B2** | Medium (UX) | Search (`/topics`) | When search returns 0 matches, the UI displays `0 موضوع یافت شد` followed immediately by the large "ورود نقشه راه جدید" button without an informative "no matching results" empty state message. In addition, search queries only match `topics.title_norm` and not group/phase headers. | Open |
+| **B3** | Medium (BiDi / Typography) | RTL Layout across pages | Multiple BiDi isolation issues when mixing English keywords, punctuation, code tokens, and numbers inside RTL text: (1) Outdated skills list reorders English names and colons (`:chapter-detector`); (2) Config tags like `[adapter]` and `--json-schema` invert surrounding punctuation and parentheses; (3) Draft preview heading flips colon on English filename (`persian.md :پیش‌نمایش ورود`); (4) Inline code with neutral operators in lesson/source (e.g. `:=` and `var`) reverses token sequence. | Open |
+| **B4** | Low (CSS / Responsive) | Mobile Viewport (`390px`) | On `/settings`, the AI tool select box and "ذخیره" button wrap onto separate lines awkwardly, and the `<dl>` definition list dt/dd elements have inconsistent alignment on narrow viewports. | Open |
+| **B5** | High (Platform / Windows) | Test suite on Windows | Three Windows-specific compatibility bugs were discovered and fixed during test preparation: (1) `filepath.Dir` in `cancel_test.go:40` generating backslashes rejected by `fsx.ValidateRelPath`; (2) `filepath.FromSlash` required in `exercises_test.go:140,144`; (3) CRLF normalization required in `parse_test.go:49`. | **Fixed ✅** |
+

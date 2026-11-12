@@ -3,6 +3,7 @@ package jobs_test
 import (
 	"context"
 	"errors"
+	"path"
 	"path/filepath"
 	"testing"
 	"time"
@@ -37,7 +38,7 @@ func lessonLike(root *fsx.Root, a ai.Adapter, req ai.Request, inCommit func()) j
 			if inCommit != nil {
 				inCommit()
 			}
-			if err := root.MkdirAll(filepath.Dir(lessonRel), 0o755); err != nil {
+			if err := root.MkdirAll(path.Dir(lessonRel), 0o755); err != nil {
 				return err
 			}
 			return root.WriteNew(lessonRel, []byte("# lesson"), 0o644)

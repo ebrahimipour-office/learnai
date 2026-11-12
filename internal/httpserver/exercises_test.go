@@ -137,10 +137,10 @@ func TestExercisesTab(t *testing.T) {
 	}
 	id, _ := e.lastJob()
 	e.pollUntilDone(id)
-	if p := e.get("/topics/1/answers?v=1").Body.String(); !strings.Contains(p, "مجموعه قدیمی v1") || !strings.Contains(p, "answers/v1/q01-hello.go") {
+	if p := e.get("/topics/1/answers?v=1").Body.String(); !strings.Contains(p, "مجموعه قدیمی v1") || !strings.Contains(p, filepath.FromSlash("answers/v1/q01-hello.go")) {
 		t.Error("?v=1 must show the old set's answer files")
 	}
-	if p := e.get("/topics/1/answers").Body.String(); !strings.Contains(p, "answers/v2/q01-hello.go") {
+	if p := e.get("/topics/1/answers").Body.String(); !strings.Contains(p, filepath.FromSlash("answers/v2/q01-hello.go")) {
 		t.Error("default must be the current set v2")
 	}
 }

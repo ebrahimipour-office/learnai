@@ -719,6 +719,44 @@ There are **no P0 tasks**.
   - [ ] Every CR task's tests are in CI.
 - **Depends on:** CR-21 (for a green govulncheck). Grows with each task.
 
+### - [ ] CR-59 — Provide `favicon.ico` or 204 handler to clear browser console 404
+- **Problem:** Browser requests `/favicon.ico` and receives 404 Not Found, logging an error in Chrome Developer Tools console.
+- **Affected files:** `internal/httpserver/server.go`, `internal/ui/templates/layout.html`, or `internal/ui/static/`.
+- **Expected outcome:** Browsers loading any page encounter zero 404 console errors for favicon.
+- **Acceptance criteria:**
+  - [ ] Loading `/favicon.ico` returns 200 (with valid SVG/ICO) or 204 No Content.
+  - [ ] Chrome console logs 0 errors on clean load.
+
+### - [ ] CR-60 — Improve search empty state UX and group title matching on `/topics`
+- **Problem:**
+  - When `?q=` matches 0 topics, the page outputs `0 موضوع یافت شد` and displays the "ورود نقشه راه جدید" (New Roadmap) button as if the library is empty, confusing users.
+  - Search only queries `topics.title_norm`; it does not match roadmap group/phase names (e.g. searching "Recursion" misses topics inside "Phase 1 — Math, Complexity & Recursion").
+- **Affected files:** `internal/services/topics/service.go`, `internal/ui/templates/topics.html`.
+- **Expected outcome:** Clear "هیچ موضوعی با این مشخصات یافت نشد" message when filtered count is 0 while total topics > 0; optionally match group names.
+- **Acceptance criteria:**
+  - [ ] `topics.html` renders a distinct empty search result message instead of the initial setup state.
+  - [ ] Test covers empty search result display.
+
+### - [ ] CR-61 — BiDi isolation and formatting in Persian RTL interface
+- **Problem:** Multiple places where English identifiers, technical flags, and punctuation are mixed with Persian text produce visual scrambling:
+  - Outdated skills list in `settings.html`: `:chapter-detector 1.0.0 ← 2.0.0`
+  - Technical flags in `settings.html`: inverted parentheses `( --json-schema )` and broken `--dangerously-skip-permissions`
+  - Draft preview heading in `draft.html`: `persian.md :پیش‌نمایش ورود`
+  - Privacy ack date in `settings.html`: raw UTC ISO timestamp instead of localized date
+  - Markdown bullet points with operators in `source.md`: `var و :=` reordered as `=: و var`
+- **Affected files:** `internal/ui/templates/settings.html`, `internal/ui/templates/draft.html`, `internal/ui/static/app.css`, `internal/render/render.go`.
+- **Expected outcome:** English tokens and punctuation isolated with `<bdi>` or `dir="ltr"` and formatted correctly.
+- **Acceptance criteria:**
+  - [ ] All English/technical phrases in Persian text use `<bdi>` or `dir="ltr"`.
+  - [ ] Visual verification in Chrome shows no inverted punctuation or scrambled token orders.
+
+### - [ ] CR-62 — Mobile responsive layout fixes for `/settings` (390px)
+- **Problem:** At 390px viewport width, the AI adapter `<select>` and "ذخیره" submit button wrap onto separate lines awkwardly, and definition list `<dl>` elements have irregular alignment.
+- **Affected files:** `internal/ui/static/app.css`, `internal/ui/templates/settings.html`.
+- **Expected outcome:** Clean vertical or horizontal stacking without awkward overflow or misaligned keys.
+- **Acceptance criteria:**
+  - [ ] Settings page renders smoothly at 390px width without awkward wraps.
+
 ---
 
 ## INFO — Optional improvements (not defects)

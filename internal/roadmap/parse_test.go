@@ -45,7 +45,9 @@ func TestGolden(t *testing.T) {
 			if err != nil {
 				t.Fatalf("missing golden (run go test ./internal/roadmap -update): %v", err)
 			}
-			if !bytes.Equal(got, want) {
+			want = bytes.ReplaceAll(want, []byte("\r\n"), []byte("\n"))
+			gotNorm := bytes.ReplaceAll(got, []byte("\r\n"), []byte("\n"))
+			if !bytes.Equal(gotNorm, want) {
 				t.Errorf("output differs from %s\n--- got ---\n%s", golden, got)
 			}
 		})
