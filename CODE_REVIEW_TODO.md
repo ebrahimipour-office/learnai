@@ -130,7 +130,7 @@ There are **no P0 tasks**.
   - [x] Both tests pass.
 - **Depends on:** none.
 
-### - [ ] CR-07 — `WriteNew` via temp file + hard link (crash-safe never-overwrite)
+### - [x] CR-07 — `WriteNew` via temp file + hard link (crash-safe never-overwrite)
 - **Problem:** `WriteNew` writes directly to the final name, so a crash leaves a truncated protected file that can never be rewritten.
 - **Affected files:** `internal/fsx/writenew.go:20-48`; `internal/fsx/fsx_test.go`.
 - **Expected outcome:** the final name appears only with complete, fsynced content (TDD §6.4).
@@ -140,8 +140,8 @@ There are **no P0 tasks**.
   - Existing target → `ErrFileExists`, target unchanged.
   - Concurrent `WriteNew` calls to the same name → exactly one wins.
 - **Acceptance criteria:**
-  - [ ] All existing `WriteNew` tests pass.
-  - [ ] Never-overwrite semantics are unchanged.
+  - [x] All existing `WriteNew` tests pass.
+  - [x] Never-overwrite semantics are unchanged.
 - **Depends on:** none. Improves CR-03.
 
 ### - [x] CR-08 — Verify the manifest and rubric at evaluation commit

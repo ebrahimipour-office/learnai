@@ -2,6 +2,7 @@ package fsx_test
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -268,5 +269,108 @@ func TestReservedNames(t *testing.T) {
 		if err := fsx.ValidateSegment(name); err != nil {
 			t.Errorf("ValidateSegment(%q) = %v, want nil", name, err)
 		}
+	}
+}
+
+// CR-07: WriteNew via temp file + hard link (crash-safe never-overwrite)
+func TestWriteNew_PartialWriteFailureRemovesTempAndLeavesTargetAbsent(t *testing.T) {
+	tempDir := t.TempDir()
+	root, err := fsx.OpenRoot(tempDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+
+	// Inject a failure that writes half the bytes then returns an error
+	cleanup := fsx.SetWriteSyncHookForTest(func(f *os.File, data []byte) error {
+		_, _ = f.Write(data[:len(data)/2])
+		return errors.New("simulated crash during write")
+	})
+	defer cleanup()
+
+	relPath := "protected/doc.md"
+	err = root.WriteNew(relPath, []byte("complete important content"), 0644)
+	if err == nil {
+		t.Fatal("expected WriteNew to fail when writer fails")
+	}
+
+	// Final target must be completely absent
+	if root.Exists(relPath) {
+		t.Errorf("target %s must not exist after failed write", relPath)
+	}
+
+	// No temporary files must remain
+	entries, err := os.ReadDir(filepath.Join(tempDir, "protected"))
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		t.Errorf("unexpected file left behind after write failure: %s", e.Name())
+	}
+}
+
+func TestWriteNew_ConcurrentWritesOnlyOneWins(t *testing.T) {
+	tempDir := t.TempDir()
+	root, err := fsx.OpenRoot(tempDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+
+	relPath := "shared/single.txt"
+	const concurrency = 20
+	type result struct {
+		id  int
+		err error
+	}
+	results := make(chan result, concurrency)
+
+	for i := 0; i < concurrency; i++ {
+		go func(id int) {
+			data := []byte(fmt.Sprintf("winner-%02d", id))
+			err := root.WriteNew(relPath, data, 0644)
+			results <- result{id: id, err: err}
+		}(i)
+	}
+
+	var wins int
+	var errExistsCount int
+	var winnerID int
+	for i := 0; i < concurrency; i++ {
+		res := <-results
+		if res.err == nil {
+			wins++
+			winnerID = res.id
+		} else if errors.Is(res.err, fsx.ErrFileExists) {
+			errExistsCount++
+		} else {
+			t.Errorf("unexpected error from goroutine %d: %v", res.id, res.err)
+		}
+	}
+
+	if wins != 1 {
+		t.Fatalf("expected exactly 1 winner, got %d", wins)
+	}
+	if errExistsCount != concurrency-1 {
+		t.Fatalf("expected %d ErrFileExists, got %d", concurrency-1, errExistsCount)
+	}
+
+	// Verify target file content exactly matches the winning goroutine
+	content, err := root.ReadFile(relPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantContent := fmt.Sprintf("winner-%02d", winnerID)
+	if string(content) != wantContent {
+		t.Errorf("target content mismatch: got %q, want %q", string(content), wantContent)
+	}
+
+	// Verify no temporary files remain in directory
+	entries, err := os.ReadDir(filepath.Join(tempDir, "shared"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "single.txt" {
+		t.Errorf("unexpected entries in directory: %v", entries)
 	}
 }
