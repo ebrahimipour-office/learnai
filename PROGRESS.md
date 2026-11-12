@@ -10,7 +10,7 @@
 |---|---|
 | **فاز فعال کنونی** | **فاز ۷.۵ — پرداخت بدهی بازبینی (R1 تا R12) 🚀**، سپس فاز ۸ (فازهای ۱ تا ۷ کامل ✅؛ معوق‌های T5.8 واقعی، چک‌لیست ویندوز و `make vuln` در R6 تا R8 قرار گرفتند) |
 | **کار بعدی برای اجرا** | **T8.0** منتظر فایل نمونه از کاربر؛ فاز ۸ جز آن بسته شد؛ آزمون تعاملی Chrome روی ویندوز (R8) کامل شد و گزارش در BROWSER_TEST_REPORT.md ثبت شد؛ باگ‌ها به تسک‌های R18 تا R21 و CR-59 تا CR-62 اضافه شدند. کارهای باز: R14 تا R17 (یافته‌های calibrate_test.go و دستور پروتکل) و R18 تا R21 (رفع باگ‌های رابط کاربری/مرورگر). |
-| **آخرین کامیت Git** | `test(browser): complete Chrome testing on Windows, document report and backlog tasks` (`c53b6da`) |
+| **آخرین کامیت Git** | `chore: ignore .playwright-mcp directory` (`79526e9`) |
 | **✅ بسته‌شده از T3.1** | **۲۰۲۶-۱۱-۰۱:** اجرای واقعی دستی با `agy` 1.4.12 (`gemini-3.8-flash-high`، `--json-schema`، `--sandbox`) موفق بود. تأیید شد: خروجی ساختاریافته در `result.structured_output` است؛ `response` متن آزاد + JSON است (fallback فقط برای JSON خالص)؛ رویدادهای میانی `init` و `step_update` درست‌اند. خط واقعی در `TestRealSuccessEnvelope` ثبت شد. |
 | **وضعیت آزمون‌های خودکار** | **۱۰۰٪ سبز و موفق** (`go test ./...` روی همه پکیج‌ها) |
 | **مسیر دایرکتوری پایه** | `/home/ebrahimipour/11111111/learnai` (ریشه همین مخزن؛ `.app/` و `topics/` در `.gitignore`) |
