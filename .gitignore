@@ -50,3 +50,4 @@ desktop.ini
 # Claude Code local worktrees
 .claude/worktrees/
 __pycache__/
+.playwright-mcp/
