@@ -7,13 +7,31 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
 var (
-	ErrFileExists = errors.New("file already exists: cannot overwrite protected file")
-	ErrRootClosed = errors.New("root directory handle is closed")
+	ErrFileExists          = errors.New("file already exists: cannot overwrite protected file")
+	ErrRootClosed          = errors.New("root directory handle is closed")
+	ErrSymlinkNotAllowed   = errors.New("symlink or reparse point is not allowed")
+	ErrRemoveAllRestricted = errors.New("RemoveAll is restricted to paths under .app/work/, .app/staging/, or .app/logs/")
 )
+
+var allowedRemoveAllPrefixes = []string{
+	".app/work/",
+	".app/staging/",
+	".app/logs/",
+}
+
+func isAllowedRemoveAll(clean string) bool {
+	for _, p := range allowedRemoveAllPrefixes {
+		if strings.HasPrefix(clean, p) && len(clean) > len(p) {
+			return true
+		}
+	}
+	return false
+}
 
 // Root wraps Go 1.24+ os.Root to provide hardened, secure file access inside the base directory (D12).
 type Root struct {
@@ -98,15 +116,85 @@ func (r *Root) Stat(relPath string) (os.FileInfo, error) {
 	return r.rawRoot.Stat(path.Clean(relPath))
 }
 
+// Lstat returns FileInfo for relPath without following symbolic links.
+func (r *Root) Lstat(relPath string) (os.FileInfo, error) {
+	if err := ValidateRelPath(relPath); err != nil {
+		return nil, err
+	}
+
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.closed {
+		return nil, ErrRootClosed
+	}
+
+	return r.rawRoot.Lstat(path.Clean(relPath))
+}
+
+// EnsureRealDir verifies that each path component of relPath exists or will exist as a real
+// directory without following symlinks or Windows junctions/reparse points.
+func (r *Root) EnsureRealDir(relPath string) error {
+	if err := ValidateRelPath(relPath); err != nil {
+		return err
+	}
+
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.closed {
+		return ErrRootClosed
+	}
+
+	clean := path.Clean(relPath)
+	if clean == "." || clean == "" {
+		return nil
+	}
+
+	parts := strings.Split(clean, "/")
+	current := ""
+	for _, p := range parts {
+		if p == "" || p == "." {
+			continue
+		}
+		if current == "" {
+			current = p
+		} else {
+			current = current + "/" + p
+		}
+
+		fi, err := r.rawRoot.Lstat(current)
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) || os.IsNotExist(err) {
+				break
+			}
+			return err
+		}
+
+		mode := fi.Mode()
+		if mode&(os.ModeSymlink|os.ModeIrregular) != 0 {
+			return fmt.Errorf("%w: %s", ErrSymlinkNotAllowed, current)
+		}
+		if !fi.IsDir() {
+			return fmt.Errorf("path component is not a directory: %s", current)
+		}
+	}
+
+	return nil
+}
+
 // Exists checks whether a file or directory exists at relPath.
 func (r *Root) Exists(relPath string) bool {
 	_, err := r.Stat(relPath)
 	return err == nil
 }
 
-// MkdirAll creates a directory and any necessary parents beneath the root.
+// MkdirAll creates a directory and any necessary parents beneath the root, ensuring no
+// path components are symlinks or reparse points.
 func (r *Root) MkdirAll(relPath string, perm os.FileMode) error {
 	if err := ValidateRelPath(relPath); err != nil {
+		return err
+	}
+
+	if err := r.EnsureRealDir(relPath); err != nil {
 		return err
 	}
 
@@ -164,9 +252,19 @@ func (r *Root) Remove(relPath string) error {
 	return r.rawRoot.Remove(path.Clean(relPath))
 }
 
-// RemoveAll removes relPath and everything under it; only for internal scratch dirs (.app/work, .app/staging).
+// RemoveAll removes relPath and everything under it; restricted to allowed scratch paths
+// (.app/work/, .app/staging/, .app/logs/). Refuses to follow symlinks or reparse points.
 func (r *Root) RemoveAll(relPath string) error {
 	if err := ValidateRelPath(relPath); err != nil {
+		return err
+	}
+
+	clean := path.Clean(relPath)
+	if !isAllowedRemoveAll(clean) {
+		return fmt.Errorf("%w: %s", ErrRemoveAllRestricted, clean)
+	}
+
+	if err := r.EnsureRealDir(clean); err != nil {
 		return err
 	}
 
@@ -176,7 +274,7 @@ func (r *Root) RemoveAll(relPath string) error {
 		return ErrRootClosed
 	}
 
-	return r.rawRoot.RemoveAll(path.Clean(relPath))
+	return r.rawRoot.RemoveAll(clean)
 }
 
 // HashFile calculates the SHA-256 hash and byte length of a file within the root.

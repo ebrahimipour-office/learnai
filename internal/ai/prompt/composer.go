@@ -98,10 +98,17 @@ func (c *Composer) Compose(in Input) (ai.Request, error) {
 	if len(prompt) > MaxPrompt {
 		return ai.Request{}, fmt.Errorf("prompt: %d bytes exceeds %d", len(prompt), MaxPrompt)
 	}
+	if err := c.Root.EnsureRealDir(work); err != nil {
+		return ai.Request{}, err
+	}
 	if err := c.Root.RemoveAll(work); err != nil {
 		return ai.Request{}, err
 	}
-	if err := c.Root.MkdirAll(path.Join(work, "inputs"), 0o755); err != nil {
+	inputsDir := path.Join(work, "inputs")
+	if err := c.Root.EnsureRealDir(inputsDir); err != nil {
+		return ai.Request{}, err
+	}
+	if err := c.Root.MkdirAll(inputsDir, 0o755); err != nil {
 		return ai.Request{}, err
 	}
 	for rel, b := range files {
@@ -145,7 +152,13 @@ func ReadSource(root *fsx.Root, rel string, max int64) ([]byte, error) {
 }
 
 // Cleanup removes the job's sandbox; missing is fine.
-func (c *Composer) Cleanup(jobID int64) error { return c.Root.RemoveAll(WorkRel(jobID)) }
+func (c *Composer) Cleanup(jobID int64) error {
+	work := WorkRel(jobID)
+	if err := c.Root.EnsureRealDir(work); err != nil {
+		return err
+	}
+	return c.Root.RemoveAll(work)
+}
 
 // parseSkill reads name/version from the frontmatter and inserts Preamble right after it.
 func parseSkill(raw []byte) (ai.SkillRef, []byte, error) {

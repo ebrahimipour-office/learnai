@@ -56,6 +56,9 @@ func (s *Service) Run(ctx context.Context, now time.Time) (*Result, error) {
 // clean removes <dir>/<job id> unless its job is queued/running, or finished within the retention
 // window and still needed: logs always are, work/staging only for a failed job (retry reuses them).
 func (s *Service) clean(ctx context.Context, dir, cutoff string, res *Result) error {
+	if err := s.Root.EnsureRealDir(dir); err != nil {
+		return fmt.Errorf("checking maintenance dir %s: %w", dir, err)
+	}
 	entries, err := fs.ReadDir(s.Root.FS(), dir)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
@@ -68,6 +71,11 @@ func (s *Service) clean(ctx context.Context, dir, cutoff string, res *Result) er
 		if err != nil || !e.IsDir() {
 			continue // not ours
 		}
+		rel := path.Join(dir, e.Name())
+		if err := s.Root.EnsureRealDir(rel); err != nil {
+			// Skip symlinked or irregular entries (CR-10)
+			continue
+		}
 		var status, finished string
 		err = s.DB.Writer().QueryRowContext(ctx, `SELECT status, COALESCE(finished_at, '') FROM jobs WHERE id = ?`, id).Scan(&status, &finished)
 		switch {
@@ -79,7 +87,6 @@ func (s *Service) clean(ctx context.Context, dir, cutoff string, res *Result) er
 		case finished >= cutoff && (dir == ".app/logs/jobs" || status == "failed"):
 			continue
 		}
-		rel := path.Join(dir, e.Name())
 		if err := s.Root.RemoveAll(rel); err != nil {
 			return fmt.Errorf("removing %s: %w", rel, err)
 		}

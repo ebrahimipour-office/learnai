@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -131,5 +133,71 @@ func TestRunCleansExpiredAndBacksUp(t *testing.T) {
 		if after[rel] != h {
 			t.Errorf("%s changed", rel)
 		}
+	}
+}
+
+// CR-10: maintenance skips symlinked entries
+func TestMaintenance_SkipsSymlinkedEntries(t *testing.T) {
+	base := t.TempDir()
+	db, err := store.Open(filepath.Join(base, "app.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	root, err := fsx.OpenRoot(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+
+	// Create user topic directory with important user files
+	topicDir := filepath.Join(base, "topics", "01-http")
+	if err := os.MkdirAll(topicDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	answerPath := filepath.Join(topicDir, "answer.go")
+	if err := os.WriteFile(answerPath, []byte("package main\n// student code"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create .app/work
+	workBase := filepath.Join(base, ".app", "work")
+	if err := os.MkdirAll(workBase, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create symlink .app/work/88 -> topics/01-http
+	linkPath := filepath.Join(workBase, "88")
+	err = os.Symlink(topicDir, linkPath)
+	if err != nil && runtime.GOOS == "windows" {
+		cmd := exec.Command("cmd", "/c", "mklink", "/J", linkPath, topicDir)
+		if out, jerr := cmd.CombinedOutput(); jerr != nil {
+			t.Skipf("cannot create symlink or junction: %v / %s", err, string(out))
+		}
+	} else if err != nil {
+		t.Skipf("symlinks not supported: %v", err)
+	}
+
+	svc := &maintenance.Service{DB: db, Root: root, LogRetention: 30 * 24 * time.Hour}
+	now := time.Date(2026, 11, 7, 12, 0, 0, 0, time.UTC)
+	res, err := svc.Run(context.Background(), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Symlinked entry must NOT be removed through the symlink
+	for _, removed := range res.Removed {
+		if removed == ".app/work/88" {
+			t.Error("maintenance removed symlinked directory")
+		}
+	}
+
+	// User answer file in topics/01-http/answer.go must be intact
+	b, err := os.ReadFile(answerPath)
+	if err != nil {
+		t.Fatalf("topics/01-http/answer.go was deleted: %v", err)
+	}
+	if string(b) != "package main\n// student code" {
+		t.Fatalf("topics/01-http/answer.go content modified: %s", string(b))
 	}
 }

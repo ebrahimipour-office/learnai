@@ -169,7 +169,7 @@ There are **no P0 tasks**.
   - [ ] The score policy is documented (0 or carried).
 - **Depends on:** none.
 
-### - [ ] CR-10 — Refuse in-root symlinks under `.app/` and restrict `Root.RemoveAll`
+### - [x] CR-10 — Refuse in-root symlinks under `.app/` and restrict `Root.RemoveAll`
 - **Problem:** a symlink or junction such as `.app/work` → `topics` makes sandbox cleanup delete user folders and write the sandbox into them. `RemoveAll` accepts any path.
 - **Affected files:** `internal/fsx/root.go:167-180`; `internal/ai/prompt/composer.go:94-105`; `internal/jobs/runner.go:327`; `internal/services/maintenance/maintenance.go:58-81`.
 - **Expected outcome:** no operation under `.app/` follows a symlink or reparse point; `RemoveAll` only works under `.app/work/`, `.app/staging/` or `.app/logs/`.
@@ -179,8 +179,8 @@ There are **no P0 tasks**.
   - Add a prefix allowlist inside `RemoveAll`.
 - **Required regression tests:** `.app/work` → `topics` symlink → `Compose` fails and `topics/7` is unchanged; `RemoveAll("topics")` returns an error; maintenance skips symlinked entries.
 - **Acceptance criteria:**
-  - [ ] All tests pass on Linux.
-  - [ ] Windows junction handling is reviewed in code.
+  - [x] All tests pass on Linux.
+  - [x] Windows junction handling is reviewed in code.
 - **Depends on:** none.
 
 ### - [ ] CR-11 — Confine Claude/Codex reads to the sandbox and ignore project settings

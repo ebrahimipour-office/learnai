@@ -5,7 +5,9 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -216,5 +218,54 @@ func TestComposeRejects(t *testing.T) {
 	}
 	if r.Exists(".app/work") {
 		t.Error("rejected compose left a sandbox behind")
+	}
+}
+
+// CR-10: .app/work -> topics symlink -> Compose fails and topics/7 is unchanged
+func TestCompose_RejectsSymlinkedWorkDir(t *testing.T) {
+	r := realFiles(t)
+	c := &Composer{Root: r}
+
+	// Create user file in topics/7/answer.go
+	write(t, r.BaseDir(), "topics/7/answer.go", "package main\n// student answer\n")
+
+	// Ensure .app exists
+	if err := os.MkdirAll(filepath.Join(r.BaseDir(), ".app"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Symlink .app/work -> topics
+	target := filepath.Join(r.BaseDir(), "topics")
+	link := filepath.Join(r.BaseDir(), ".app", "work")
+
+	err := os.Symlink(target, link)
+	if err != nil && runtime.GOOS == "windows" {
+		cmd := exec.Command("cmd", "/c", "mklink", "/J", link, target)
+		if out, jerr := cmd.CombinedOutput(); jerr != nil {
+			t.Skipf("cannot create symlink or junction: %v / %s", err, string(out))
+		}
+	} else if err != nil {
+		t.Skipf("symlinks not supported: %v", err)
+	}
+
+	in := evalInput(t, r)
+	in.JobID = 7
+
+	_, err = c.Compose(in)
+	if err == nil {
+		t.Fatal("expected Compose to fail on symlinked .app/work")
+	}
+
+	// Crucial: topics/7/answer.go must be completely unchanged and not deleted!
+	b, err := os.ReadFile(filepath.Join(r.BaseDir(), "topics", "7", "answer.go"))
+	if err != nil {
+		t.Fatalf("topics/7/answer.go was removed or missing: %v", err)
+	}
+	if string(b) != "package main\n// student answer\n" {
+		t.Fatalf("topics/7/answer.go content modified: %s", string(b))
+	}
+	// And no inputs dir created in topics/7
+	if _, err := os.Stat(filepath.Join(r.BaseDir(), "topics", "7", "inputs")); !os.IsNotExist(err) {
+		t.Error("topics/7/inputs was created inside user directory through symlink")
 	}
 }

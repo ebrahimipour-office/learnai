@@ -322,6 +322,28 @@ func (r *Runner) execute(ctx context.Context, j Job) {
 			code = "internal" // not from the AI tool
 		}
 	}
+	if r.Files != nil && status != domain.JobStatusFailed {
+		work := prompt.WorkRel(j.ID)
+		staging := StagingRel(j.ID)
+		var errs []error
+		if err := r.Files.EnsureRealDir(work); err == nil {
+			if err := r.Files.RemoveAll(work); err != nil {
+				errs = append(errs, err)
+			}
+		} else {
+			slog.Error("Refusing to remove job work with symlinks", "job", j.ID, "error", err)
+		}
+		if err := r.Files.EnsureRealDir(staging); err == nil {
+			if err := r.Files.RemoveAll(staging); err != nil {
+				errs = append(errs, err)
+			}
+		} else {
+			slog.Error("Refusing to remove job staging with symlinks", "job", j.ID, "error", err)
+		}
+		if len(errs) > 0 {
+			slog.Error("Removing job work/staging failed", "job", j.ID, "error", errors.Join(errs...))
+		}
+	}
 	// The final write must land even when ctx is already cancelled by shutdown.
 	// A succeeded job's commit landed; its journal is no longer needed (CR-03).
 	_, werr := r.db.Writer().ExecContext(context.WithoutCancel(ctx), `UPDATE jobs SET status = ?1, error_code = ?2,
@@ -330,11 +352,6 @@ func (r *Runner) execute(ctx context.Context, j Job) {
 		status, nullStr(code), nullStr(msg), j.ID)
 	if werr != nil {
 		slog.Error("Recording job result failed", "job", j.ID, "error", werr)
-	}
-	if r.Files != nil && status != domain.JobStatusFailed {
-		if err := errors.Join(r.Files.RemoveAll(prompt.WorkRel(j.ID)), r.Files.RemoveAll(StagingRel(j.ID))); err != nil {
-			slog.Error("Removing job work/staging failed", "job", j.ID, "error", err)
-		}
 	}
 	slog.Info("Job finished", "job", j.ID, "status", status, "error_code", code)
 }

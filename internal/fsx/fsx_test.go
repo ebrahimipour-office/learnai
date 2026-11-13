@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -372,5 +374,123 @@ func TestWriteNew_ConcurrentWritesOnlyOneWins(t *testing.T) {
 	}
 	if len(entries) != 1 || entries[0].Name() != "single.txt" {
 		t.Errorf("unexpected entries in directory: %v", entries)
+	}
+}
+
+// CR-10: Refuse in-root symlinks under .app/ and restrict Root.RemoveAll
+func TestRoot_RemoveAll_Restricted(t *testing.T) {
+	tempDir := t.TempDir()
+	root, err := fsx.OpenRoot(tempDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+
+	// Paths that must be refused
+	restrictedPaths := []string{
+		"topics",
+		"topics/01-intro",
+		"roadmaps",
+		"roadmaps/backend",
+		"app.db",
+		".app",
+		".app/work",
+		".app/staging",
+		".app/logs",
+	}
+
+	for _, p := range restrictedPaths {
+		err := root.RemoveAll(p)
+		if !errors.Is(err, fsx.ErrRemoveAllRestricted) {
+			t.Errorf("RemoveAll(%q) expected ErrRemoveAllRestricted, got: %v", p, err)
+		}
+	}
+
+	// Allowed scratch paths under .app/work/, .app/staging/, .app/logs/
+	allowedPaths := []string{
+		".app/work/1",
+		".app/staging/1",
+		".app/logs/jobs/1",
+	}
+
+	for _, p := range allowedPaths {
+		if err := root.MkdirAll(p, 0755); err != nil {
+			t.Fatalf("MkdirAll(%q) failed: %v", p, err)
+		}
+		if !root.Exists(p) {
+			t.Fatalf("path %q does not exist after MkdirAll", p)
+		}
+		if err := root.RemoveAll(p); err != nil {
+			t.Errorf("RemoveAll(%q) failed on allowed scratch path: %v", p, err)
+		}
+		if root.Exists(p) {
+			t.Errorf("path %q still exists after RemoveAll", p)
+		}
+	}
+}
+
+func createSymlinkOrJunction(t *testing.T, target, link string) {
+	t.Helper()
+	err := os.Symlink(target, link)
+	if err == nil {
+		return
+	}
+	if runtime.GOOS == "windows" {
+		cmd := exec.Command("cmd", "/c", "mklink", "/J", link, target)
+		if out, jerr := cmd.CombinedOutput(); jerr == nil {
+			return
+		} else {
+			t.Skipf("cannot create symlink or junction: %v / %s", err, string(out))
+		}
+	}
+	t.Skipf("symlinks not supported: %v", err)
+}
+
+func TestRoot_EnsureRealDir_Symlink(t *testing.T) {
+	tempDir := t.TempDir()
+	root, err := fsx.OpenRoot(tempDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+
+	// 1. Normal real directory passes
+	if err := root.MkdirAll(".app/work/7", 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := root.EnsureRealDir(".app/work/7"); err != nil {
+		t.Errorf("EnsureRealDir on real dir failed: %v", err)
+	}
+
+	// 2. Non-existent sub-path under real directory passes
+	if err := root.EnsureRealDir(".app/work/7/inputs/nested"); err != nil {
+		t.Errorf("EnsureRealDir on non-existent sub-path failed: %v", err)
+	}
+
+	// 3. Symlink / junction to a directory is refused
+	targetDir := filepath.Join(tempDir, "topics")
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	linkPath := filepath.Join(tempDir, ".app", "symwork")
+	createSymlinkOrJunction(t, targetDir, linkPath)
+
+	err = root.EnsureRealDir(".app/symwork/7")
+	if !errors.Is(err, fsx.ErrSymlinkNotAllowed) {
+		t.Errorf("EnsureRealDir through symlink expected ErrSymlinkNotAllowed, got: %v", err)
+	}
+
+	// 4. MkdirAll through symlink is refused
+	err = root.MkdirAll(".app/symwork/7/inputs", 0755)
+	if !errors.Is(err, fsx.ErrSymlinkNotAllowed) {
+		t.Errorf("MkdirAll through symlink expected ErrSymlinkNotAllowed, got: %v", err)
+	}
+
+	// 5. Regular file instead of directory is refused
+	if err := root.WriteNew(".app/work/file.txt", []byte("file"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := root.EnsureRealDir(".app/work/file.txt/sub"); err == nil {
+		t.Errorf("EnsureRealDir through file expected error, got nil")
 	}
 }
