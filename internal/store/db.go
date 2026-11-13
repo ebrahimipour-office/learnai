@@ -6,6 +6,7 @@ import (
 	"embed"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	_ "modernc.org/sqlite"
@@ -21,6 +22,14 @@ type DB struct {
 	mu     sync.Mutex
 }
 
+// dsn formats an absolute database path into a valid SQLite URI DSN with required settings.
+// It escapes '%', '#', and '?' in the path (CR-14) so SQLite's URI parser does not treat them
+// as percent-decoding, fragment delimiters, or query parameter starts.
+func dsn(absPath string) string {
+	escaped := strings.NewReplacer("%", "%25", "#", "%23", "?", "%3f").Replace(filepath.ToSlash(absPath))
+	return fmt.Sprintf("file:%s?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_txlock=immediate", escaped)
+}
+
 // Open initializes the SQLite database at dbPath, applies PRAGMAs, and runs all pending migrations.
 func Open(dbPath string) (*DB, error) {
 	absPath, err := filepath.Abs(dbPath)
@@ -28,10 +37,7 @@ func Open(dbPath string) (*DB, error) {
 		return nil, fmt.Errorf("resolving db path: %w", err)
 	}
 
-	// DSN with strict settings (foreign keys, busy timeout, immediate tx lock)
-	dsn := fmt.Sprintf("file:%s?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_txlock=immediate", absPath)
-
-	db, err := sql.Open("sqlite", dsn)
+	db, err := sql.Open("sqlite", dsn(absPath))
 	if err != nil {
 		return nil, fmt.Errorf("opening sqlite database: %w", err)
 	}

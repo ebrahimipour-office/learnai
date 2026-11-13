@@ -3,7 +3,9 @@ package store_test
 import (
 	"context"
 	"database/sql"
+	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"learninghub/internal/store"
@@ -136,5 +138,56 @@ func TestDB_Constraints(t *testing.T) {
 	})
 	if err != nil {
 		t.Errorf("Completed job should be allowed in same scope: %v", err)
+	}
+}
+
+// CR-14: database paths containing '#', '%', or '?' must be escaped in SQLite DSN
+// so they open at the exact intended location without creating stray files in parent directories.
+func TestDB_EscapedPath(t *testing.T) {
+	cases := []struct {
+		name    string
+		subDir  string
+		skipWin bool
+	}{
+		{name: "hash in path", subDir: "a#b"},
+		{name: "percent in path", subDir: "p%41"},
+		{name: "question mark in path", subDir: "q?x", skipWin: true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.skipWin && runtime.GOOS == "windows" {
+				t.Skip("skipping filename with '?' on Windows")
+			}
+			tempDir := t.TempDir()
+			dir := filepath.Join(tempDir, tc.subDir)
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				t.Fatalf("failed to create subdir: %v", err)
+			}
+			dbPath := filepath.Join(dir, "app.db")
+			db, err := store.Open(dbPath)
+			if err != nil {
+				t.Fatalf("failed to open database at %q: %v", dbPath, err)
+			}
+			defer db.Close()
+
+			// Verify the database file was created at the exact path
+			if _, err := os.Stat(dbPath); err != nil {
+				t.Errorf("database file does not exist at expected path %q: %v", dbPath, err)
+			}
+
+			// Verify nothing stray was created in tempDir (parent of subDir)
+			entries, err := os.ReadDir(tempDir)
+			if err != nil {
+				t.Fatalf("reading tempDir: %v", err)
+			}
+			if len(entries) != 1 || entries[0].Name() != tc.subDir {
+				var names []string
+				for _, e := range entries {
+					names = append(names, e.Name())
+				}
+				t.Errorf("unexpected files created in parent tempDir: got %v, want [%s]", names, tc.subDir)
+			}
+		})
 	}
 }

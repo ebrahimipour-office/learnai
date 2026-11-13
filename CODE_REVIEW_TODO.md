@@ -222,14 +222,14 @@ There are **no P0 tasks**.
   - [ ] The manual Windows checklist covers Claude and Codex.
 - **Depends on:** CR-58 (Windows CI) for verification.
 
-### - [ ] CR-14 — Escape the database path in the SQLite DSN
+### - [x] CR-14 — Escape the database path in the SQLite DSN
 - **Problem:** `fmt.Sprintf("file:%s?…", absPath)` lets `#`, `?` and `%` change which file is opened.
 - **Affected files:** `internal/store/db.go:24-40`; `internal/store/db_test.go`.
 - **Expected outcome:** the database is always created at exactly `<base_dir>/app.db` (or the given `--db`).
 - **Suggested implementation:** `p := strings.NewReplacer("%", "%25", "#", "%23", "?", "%3f").Replace(filepath.ToSlash(absPath))`. Verify the Windows `file:C:/…` form with modernc, and add a leading `/` if it is required.
 - **Required regression tests:** `Open(tmp/"a#b"/"app.db")`, `Open(tmp/"p%41"/"app.db")` and `Open(tmp/"q?x"/"app.db")` (skip the last on Windows) → the file exists at the exact path and nothing is created in the parent.
 - **Acceptance criteria:**
-  - [ ] Tests pass on Linux and, through CR-58, on Windows.
+  - [x] Tests pass on Linux and, through CR-58, on Windows.
 - **Depends on:** none.
 
 ### - [ ] CR-15 — Make stable-key de-duplication linear

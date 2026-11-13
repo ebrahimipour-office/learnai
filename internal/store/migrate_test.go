@@ -11,7 +11,7 @@ import (
 func openAt(t *testing.T, v int) *DB {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "m.db")
-	w, err := sql.Open("sqlite", "file:"+path+"?_pragma=foreign_keys(1)&_txlock=immediate")
+	w, err := sql.Open("sqlite", dsn(path))
 	if err != nil {
 		t.Fatal(err)
 	}
