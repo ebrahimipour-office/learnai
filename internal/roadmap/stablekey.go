@@ -42,14 +42,30 @@ func stableKey(path string) string {
 // childPath returns the normalized path of title under parent ("" = top level). A path already in
 // used gets the first free "#N" suffix (N ≥ 2), so duplicate titles under one parent get distinct
 // keys in document order. Renaming a heading changes its path and therefore its key.
-func childPath(parent, title string, used map[string]bool) string {
+// next tracks the next suffix number to try for each base path to keep de-duplication linear O(1).
+func childPath(parent, title string, used map[string]bool, next map[string]int) string {
 	p := Normalize(title)
 	if parent != "" {
 		p = parent + "\n" + p
 	}
+	if !used[p] {
+		used[p] = true
+		return p
+	}
 	base := p
-	for n := 2; used[p]; n++ {
+	n := 2
+	if next != nil {
+		n = max(2, next[base])
+	}
+	for {
 		p = base + "#" + strconv.Itoa(n)
+		if !used[p] {
+			break
+		}
+		n++
+	}
+	if next != nil {
+		next[base] = n + 1
 	}
 	used[p] = true
 	return p

@@ -1,9 +1,12 @@
 package roadmap
 
 import (
+	"fmt"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 )
 
 const nested = `# Roadmap
@@ -180,6 +183,55 @@ func TestSelectRejectsBadRule(t *testing.T) {
 	for _, r := range []Rule{{Kind: RuleLevel}, {Kind: RuleLevel, Level: 7}, {Kind: "bogus"}} {
 		if _, err := Select(root, r); err == nil {
 			t.Errorf("Select(%+v) returned no error", r)
+		}
+	}
+}
+
+// CR-15: Select over duplicate headings must be linear O(n), completing 50k duplicates under 1s.
+func TestSelectDuplicateHeadingsLinear(t *testing.T) {
+	const count = 50_000
+	var sb strings.Builder
+	sb.Grow(count * 6)
+	for i := 0; i < count; i++ {
+		sb.WriteString("## h\n")
+	}
+	root := Parse([]byte(sb.String()))
+	start := time.Now()
+	s, err := Select(root, Rule{})
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Topics) != count {
+		t.Fatalf("got %d topics, want %d", len(s.Topics), count)
+	}
+	if elapsed > 1*time.Second {
+		t.Errorf("Select over %d duplicate headings took %v, want < 1s", count, elapsed)
+	}
+
+	if got := s.Topics[0].StableKey; got != stableKey("h") {
+		t.Errorf("topic 0 key = %s, want %s", got, stableKey("h"))
+	}
+	if got := s.Topics[1].StableKey; got != stableKey("h#2") {
+		t.Errorf("topic 1 key = %s, want %s", got, stableKey("h#2"))
+	}
+	if got := s.Topics[count-1].StableKey; got != stableKey(fmt.Sprintf("h#%d", count)) {
+		t.Errorf("topic %d key = %s, want %s", count-1, got, stableKey(fmt.Sprintf("h#%d", count)))
+	}
+}
+
+func BenchmarkSelectDuplicateHeadings(b *testing.B) {
+	const count = 50_000
+	var sb strings.Builder
+	sb.Grow(count * 6)
+	for i := 0; i < count; i++ {
+		sb.WriteString("## h\n")
+	}
+	root := Parse([]byte(sb.String()))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := Select(root, Rule{}); err != nil {
+			b.Fatal(err)
 		}
 	}
 }

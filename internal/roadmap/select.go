@@ -66,6 +66,7 @@ func Select(root *Node, r Rule) (*Selection, error) {
 	groupIdx := map[*Node]int{}
 	var groupPaths []string // normalized key path of each entry in s.Groups
 	usedG, usedT := map[string]bool{}, map[string]bool{}
+	nextG, nextT := map[string]int{}, map[string]int{}
 	chapter := map[int]Chapter{} // RuleChapters: the chapter title and range replace the heading's, not its key
 	if r.Kind == RuleChapters {
 		for _, c := range r.Chapters {
@@ -88,7 +89,7 @@ func Select(root *Node, r Rule) (*Selection, error) {
 			if !ok {
 				i = len(s.Groups)
 				groupIdx[h] = i
-				p := childPath(pathOf(parent), h.Title, usedG)
+				p := childPath(pathOf(parent), h.Title, usedG, nextG)
 				groupPaths = append(groupPaths, p)
 				s.Groups = append(s.Groups, Group{StableKey: stableKey(p), Title: h.Title, Level: h.Level, Line: h.Line, Parent: parent})
 			}
@@ -102,7 +103,7 @@ func Select(root *Node, r Rule) (*Selection, error) {
 		for _, c := range n.Children {
 			if isTopic(c, n) {
 				g := group(path)
-				key := stableKey(childPath(pathOf(g), c.Title, usedT))
+				key := stableKey(childPath(pathOf(g), c.Title, usedT, nextT))
 				t := Topic{StableKey: key, Title: c.Title, Line: c.Line, Group: g, Parent: -1, Outline: outline(c)}
 				if c.Kind == KindHeading {
 					t.EndLine = c.EndLine
@@ -202,17 +203,18 @@ func selectTree(root *Node, r Rule) *Selection {
 func deepestPaths(root *Node) map[*Node]string {
 	paths := map[*Node]string{}
 	usedG, usedT := map[string]bool{}, map[string]bool{}
+	nextG, nextT := map[string]int{}, map[string]int{}
 	var walk func(n *Node, parent string)
 	walk = func(n *Node, parent string) {
 		for _, c := range n.Children {
 			if c.Kind != KindHeading {
 				continue
 			}
-			used := usedT
+			used, next := usedT, nextT
 			if hasHeadingChild(c) {
-				used = usedG
+				used, next = usedG, nextG
 			}
-			paths[c] = childPath(parent, c.Title, used)
+			paths[c] = childPath(parent, c.Title, used, next)
 			walk(c, paths[c])
 		}
 	}

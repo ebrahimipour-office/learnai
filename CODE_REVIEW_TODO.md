@@ -232,15 +232,15 @@ There are **no P0 tasks**.
   - [x] Tests pass on Linux and, through CR-58, on Windows.
 - **Depends on:** none.
 
-### - [ ] CR-15 — Make stable-key de-duplication linear
+### - [x] CR-15 — Make stable-key de-duplication linear
 - **Problem:** `childPath` restarts the `#n` search at 2 for every duplicate, which is O(d²); 10 k duplicate headings take 5.4 s.
 - **Affected files:** `internal/roadmap/stablekey.go:45-56`; `internal/roadmap/select.go` (the caller holding `used`).
 - **Expected outcome:** linear time, and identical keys for every existing input.
 - **Suggested implementation:** keep `next map[string]int` beside `used`; start the loop at `max(2, next[base])` and store `next[base] = n+1`.
 - **Required regression tests:** benchmark plus a test: 50 k `## h` headings → `Select` takes under 1 s. Golden and stable-key tests unchanged.
 - **Acceptance criteria:**
-  - [ ] Golden outputs are byte-identical.
-  - [ ] The performance test passes.
+  - [x] Golden outputs are byte-identical.
+  - [x] The performance test passes.
 - **Depends on:** none.
 
 ### - [ ] CR-16 — Slice roadmap sources in one pass and outside the write transaction
