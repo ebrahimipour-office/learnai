@@ -4,12 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"learninghub/internal/fsx"
+	"learninghub/internal/roadmap"
 	"learninghub/internal/services/roadmaps"
 )
 
@@ -337,5 +339,38 @@ func TestConfirmIdempotentWithLeftoverFiles(t *testing.T) {
 	strayGot, err := root.ReadFile("topics/04-orphan/source.md")
 	if err != nil || string(strayGot) != orphanSource {
 		t.Errorf("orphan source.md altered: got %q, want %q (%v)", string(strayGot), orphanSource, err)
+	}
+}
+
+// CR-16: BenchmarkConfirm benchmarks confirming a roadmap containing multiple topics with source ranges.
+func BenchmarkConfirm(b *testing.B) {
+	const count = 50
+	var sb strings.Builder
+	sb.WriteString("# Book\npreface\n")
+	for i := 0; i < count; i++ {
+		sb.WriteString(fmt.Sprintf("## Chapter %d\nline 1 of content\nline 2 of content\n", i))
+	}
+	content := []byte(sb.String())
+
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		s, _, _ := newServiceIn(b, b.TempDir())
+		ctx := context.Background()
+		id, err := s.CreateDraft(ctx, "book.md", content)
+		if err != nil {
+			b.Fatal(err)
+		}
+		d, err := s.Draft(ctx, id)
+		if err != nil {
+			b.Fatal(err)
+		}
+		d.Choice = roadmaps.Choice{Rule: roadmap.Rule{Kind: roadmap.RuleLevel, Level: 2}}
+		if err := s.SetChoice(ctx, d, d.Choice); err != nil {
+			b.Fatal(err)
+		}
+		b.StartTimer()
+		if _, _, err := s.Confirm(ctx, id); err != nil {
+			b.Fatal(err)
+		}
 	}
 }

@@ -255,3 +255,42 @@ func TestDetectChaptersKeepsUserSelection(t *testing.T) {
 		t.Errorf("user's selection overwritten: %+v %q", d.Choice, d.Title)
 	}
 }
+
+// CR-16: Outline over 50k headings must be linear O(n), completing in under 1s.
+func TestOutline50kHeadingsLinear(t *testing.T) {
+	const count = 50_000
+	var sb strings.Builder
+	sb.Grow(count * 16)
+	for i := 0; i < count; i++ {
+		sb.WriteString("## h\nbody\n")
+	}
+	src := []byte(sb.String())
+	tree := roadmap.Parse(src)
+
+	start := time.Now()
+	out := roadmaps.Outline(tree, src)
+	elapsed := time.Since(start)
+
+	if len(out) != count {
+		t.Fatalf("got %d outline entries, want %d", len(out), count)
+	}
+	if elapsed > 1*time.Second {
+		t.Errorf("Outline over %d headings took %v, want < 1s", count, elapsed)
+	}
+}
+
+func BenchmarkOutline(b *testing.B) {
+	const count = 5_000
+	var sb strings.Builder
+	sb.Grow(count * 16)
+	for i := 0; i < count; i++ {
+		sb.WriteString("## h\nbody\n")
+	}
+	src := []byte(sb.String())
+	tree := roadmap.Parse(src)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = roadmaps.Outline(tree, src)
+	}
+}

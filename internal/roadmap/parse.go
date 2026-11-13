@@ -34,14 +34,55 @@ type Node struct {
 
 var md = goldmark.New() // CommonMark only: no raw-HTML rendering is involved, we only read the AST.
 
+// Lines holds normalized source bytes and line offsets for fast multi-slice operations.
+type Lines struct {
+	src    []byte
+	starts []int
+	count  int
+}
+
+// NewLines normalizes src (strips BOM and converts CRLF to LF) and indexes line start offsets.
+func NewLines(src []byte) *Lines {
+	norm := normalize(src)
+	return &Lines{
+		src:    norm,
+		starts: lineStarts(norm),
+		count:  lineCount(norm),
+	}
+}
+
+// Slice returns lines start..end (1-based, inclusive) of the normalized source.
+// end is clamped to the last line; an empty range yields nil.
+func (l *Lines) Slice(start, end int) []byte {
+	if l == nil {
+		return nil
+	}
+	end = min(end, l.count)
+	if start < 1 || end < start {
+		return nil
+	}
+	stop := len(l.src)
+	if end < len(l.starts) {
+		stop = l.starts[end]
+	}
+	return l.src[l.starts[start-1]:stop]
+}
+
+// Count returns the number of lines in the normalized source.
+func (l *Lines) Count() int {
+	if l == nil {
+		return 0
+	}
+	return l.count
+}
+
 // Parse builds the tree. Headings nest by level; lists attach to the nearest preceding heading
 // (or the root). Paragraphs, code blocks, block quotes and HTML are ignored, so a '#' inside a
 // fenced block never becomes a heading. Headings with no text are dropped.
 func Parse(src []byte) *Node {
-	src = normalize(src)
+	lines := NewLines(src)
 
-	doc := md.Parser().Parse(text.NewReader(src))
-	lines := lineStarts(src)
+	doc := md.Parser().Parse(text.NewReader(lines.src))
 	root := &Node{Kind: KindRoot}
 
 	// stack[i] is the innermost open heading; stack[0] is the root.
@@ -50,11 +91,11 @@ func Parse(src []byte) *Node {
 	for n := doc.FirstChild(); n != nil; n = n.NextSibling() {
 		switch b := n.(type) {
 		case *ast.Heading:
-			title := inlineText(b, src)
+			title := inlineText(b, lines.src)
 			if title == "" {
 				continue
 			}
-			line := lineOf(b, lines)
+			line := lineOf(b, lines.starts)
 			for len(stack) > 1 && stack[len(stack)-1].Level >= b.Level {
 				stack[len(stack)-1].EndLine = line - 1
 				stack = stack[:len(stack)-1]
@@ -65,10 +106,10 @@ func Parse(src []byte) *Node {
 			stack = append(stack, h)
 		case *ast.List:
 			parent := stack[len(stack)-1]
-			parent.Children = append(parent.Children, listItems(b, 1, src, lines)...)
+			parent.Children = append(parent.Children, listItems(b, 1, lines.src, lines.starts)...)
 		}
 	}
-	last := lineCount(src)
+	last := lines.count
 	for _, h := range stack[1:] {
 		h.EndLine = last
 	}
@@ -79,17 +120,7 @@ func Parse(src []byte) *Node {
 // normalization Parse applies, so Node.Line/EndLine index it directly. end is clamped to the
 // last line; an empty range yields nil.
 func Slice(src []byte, start, end int) []byte {
-	src = normalize(src)
-	starts := lineStarts(src)
-	end = min(end, lineCount(src))
-	if start < 1 || end < start {
-		return nil
-	}
-	stop := len(src)
-	if end < len(starts) {
-		stop = starts[end]
-	}
-	return src[starts[start-1]:stop]
+	return NewLines(src).Slice(start, end)
 }
 
 func normalize(src []byte) []byte {

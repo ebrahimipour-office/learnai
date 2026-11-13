@@ -243,15 +243,15 @@ There are **no P0 tasks**.
   - [x] The performance test passes.
 - **Depends on:** none.
 
-### - [ ] CR-16 — Slice roadmap sources in one pass and outside the write transaction
+### - [x] CR-16 — Slice roadmap sources in one pass and outside the write transaction
 - **Problem:** `roadmap.Slice` re-normalises the whole file on each call; `Outline` and `Confirm.recordSource` call it per heading or topic, the latter inside the IMMEDIATE transaction.
 - **Affected files:** `internal/roadmap/parse.go:81-93`; `internal/services/roadmaps/analyze.go:273`; `internal/services/roadmaps/confirm.go:237`.
 - **Expected outcome:** O(size + topics), and no CPU-heavy work while the writer is held.
 - **Suggested implementation:** add `type Lines struct{…}` with `NewLines(src)` (normalise and compute line starts once) and `Slice(start, end)`. Compute every `source.md` body before `WithTx`. Optionally add a `limits.max_topics_per_import` cap.
 - **Required regression tests:** `Outline` over 50 k headings in under 1 s; equality test `NewLines(src).Slice(a,b) == Slice(src,a,b)` for random ranges; `Confirm` benchmark.
 - **Acceptance criteria:**
-  - [ ] Results are byte-identical to the old `Slice`.
-  - [ ] The benchmark improves by ≥ 10×.
+  - [x] Results are byte-identical to the old `Slice`.
+  - [x] The benchmark improves by ≥ 10×.
 - **Depends on:** none.
 
 ### - [ ] CR-17 — Bound and cache the re-import diff guesses

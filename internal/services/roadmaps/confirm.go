@@ -77,6 +77,23 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 	keysJSON := func(keys []string) string { b, _ := json.Marshal(append([]string{}, keys...)); return string(b) }
 	var undo []func() // reverts each file write done so far, so a failed commit leaves the disk as it was
 
+	// Pre-slice and hash every chapter source before taking the database write lock (CR-16).
+	lines := roadmap.NewLines(d.Content)
+	type topicSource struct {
+		data []byte
+		sha  string
+	}
+	sources := make([]topicSource, len(kept))
+	for i, t := range kept {
+		if t.EndLine > 0 {
+			data := lines.Slice(t.Line, t.EndLine)
+			sources[i] = topicSource{
+				data: data,
+				sha:  fsx.HashBytes(data),
+			}
+		}
+	}
+
 	err = s.db.WithTx(ctx, func(tx *sql.Tx) error {
 		// Deleting first makes a second concurrent confirm of the same draft fail instead of importing twice.
 		res, err := tx.ExecContext(ctx, `DELETE FROM import_drafts WHERE id = ? AND expires_at > ?`, id, s.ts(s.Now()))
@@ -234,7 +251,8 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 			}
 			ids[i] = o.ID
 			if t.EndLine > 0 {
-				w, err := s.recordSource(ctx, tx, o, t, d.Content)
+				src := sources[i]
+				w, err := s.recordSource(ctx, tx, o, t, src.data, src.sha)
 				if err != nil {
 					return fmt.Errorf("recording source of %q: %w", t.Title, err)
 				}
@@ -283,9 +301,7 @@ type sourceWrite struct {
 
 // recordSource records the chapter text of topic o (range t.Line..t.EndLine of content) and returns the
 // file write it needs, or nil when the text is unchanged since the last import (§12.6).
-func (s *Service) recordSource(ctx context.Context, tx *sql.Tx, o oldTopic, t roadmap.Topic, content []byte) (*sourceWrite, error) {
-	data := roadmap.Slice(content, t.Line, t.EndLine)
-	sha := fsx.HashBytes(data)
+func (s *Service) recordSource(ctx context.Context, tx *sql.Tx, o oldTopic, t roadmap.Topic, data []byte, sha string) (*sourceWrite, error) {
 	if _, err := tx.ExecContext(ctx, `UPDATE topics SET source_start_line = ?, source_end_line = ?, source_sha256 = ? WHERE id = ?`,
 		t.Line, t.EndLine, sha, o.ID); err != nil {
 		return nil, err

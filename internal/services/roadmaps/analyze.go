@@ -290,6 +290,7 @@ func Outline(tree *roadmap.Node, src []byte) []OutlineEntry {
 		}
 	}
 	walk(tree)
+	lines := roadmap.NewLines(src)
 	out := []OutlineEntry{}
 	for i, h := range heads {
 		end := h.EndLine
@@ -297,7 +298,7 @@ func Outline(tree *roadmap.Node, src []byte) []OutlineEntry {
 			end = min(end, heads[i+1].Line-1)
 		}
 		var keep []string
-		for _, l := range strings.Split(string(roadmap.Slice(src, h.Line+1, end)), "\n") {
+		for _, l := range strings.Split(string(lines.Slice(h.Line+1, end)), "\n") {
 			if l = strings.TrimSpace(l); l != "" && len(keep) < 5 {
 				keep = append(keep, l)
 			}

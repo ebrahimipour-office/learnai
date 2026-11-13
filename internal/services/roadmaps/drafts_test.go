@@ -21,7 +21,7 @@ func newService(t *testing.T) (*roadmaps.Service, *store.DB) {
 	return s, db
 }
 
-func newServiceIn(t *testing.T, base string) (*roadmaps.Service, *store.DB, *fsx.Root) {
+func newServiceIn(t testing.TB, base string) (*roadmaps.Service, *store.DB, *fsx.Root) {
 	t.Helper()
 	db, err := store.Open(filepath.Join(base, "app.db"))
 	if err != nil {

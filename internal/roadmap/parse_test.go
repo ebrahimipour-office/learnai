@@ -129,3 +129,32 @@ func TestSliceEdges(t *testing.T) {
 		t.Errorf("item EndLine = %d, want its Line 2", items[1].EndLine)
 	}
 }
+
+// CR-16: Lines.Slice must be byte-identical to Slice for all inputs and ranges.
+func TestLinesSliceEquivalence(t *testing.T) {
+	testSources := [][]byte{
+		nil,
+		{},
+		[]byte("single line without newline"),
+		[]byte("single line with newline\n"),
+		[]byte("\xEF\xBB\xBFBOM without newline"),
+		[]byte("\xEF\xBB\xBFBOM with CRLF\r\nline 2\r\nline 3\r\n"),
+		[]byte("line 1\r\nline 2\r\nline 3"),
+		[]byte("a\n\n\nb\n"),
+		[]byte("# Book\npreface\n## Ch1\nintro\n### S1\ntext\n## Ch2\nend\n"),
+	}
+
+	for idx, src := range testSources {
+		lines := NewLines(src)
+		maxLine := lines.Count() + 5
+		for start := -2; start <= maxLine; start++ {
+			for end := -2; end <= maxLine; end++ {
+				want := Slice(src, start, end)
+				got := lines.Slice(start, end)
+				if !bytes.Equal(got, want) {
+					t.Fatalf("src[%d] range (%d, %d): got %q, want %q", idx, start, end, got, want)
+				}
+			}
+		}
+	}
+}
