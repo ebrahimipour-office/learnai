@@ -19,7 +19,12 @@ const (
 var defaultBinary = map[string]string{KindAgy: "agy", KindClaude: "claude", KindCodex: "codex"}
 
 // readTools is all Claude may use: it reads SKILL.md and inputs/ from WorkDir and nothing else.
-const readTools = "Read,Glob,Grep"
+// readAllowedTools confines tool execution strictly to the sandbox WorkDir (./**) to prevent reading
+// sensitive files outside the sandbox (such as app.db or ~/.ssh).
+const (
+	readTools        = "Read,Glob,Grep"
+	readAllowedTools = "Read(./**),Glob(./**),Grep(./**)"
+)
 
 // Flags the adapter owns or that widen what the tool may do (dashes stripped, value cut at "=").
 var (
@@ -74,8 +79,8 @@ func buildClaudeArgs(s argSpec, schema []byte) ([]string, error) {
 		return nil, err
 	}
 	args := []string{"-p", s.Prompt, "--output-format", "stream-json", "--verbose",
-		"--tools", readTools, "--allowedTools", readTools,
-		"--no-session-persistence", "--strict-mcp-config", "--setting-sources", "project"}
+		"--tools", readTools, "--allowedTools", readAllowedTools,
+		"--no-session-persistence", "--strict-mcp-config", "--setting-sources", ""}
 	if len(schema) > 0 {
 		args = append(args, "--json-schema", string(schema)) // takes the schema text, not a path
 	}

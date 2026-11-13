@@ -78,13 +78,26 @@ func TestDialectArgs(t *testing.T) {
 		t.Fatal(err)
 	}
 	j := strings.Join(c, " ")
-	for _, want := range []string{"--tools Read,Glob,Grep", "--json-schema {\"type\":\"object\"}", "--effort max", "--strict-mcp-config"} {
+	for _, want := range []string{
+		"--tools Read,Glob,Grep",
+		"--allowedTools Read(./**),Glob(./**),Grep(./**)",
+		"--json-schema {\"type\":\"object\"}",
+		"--effort max",
+		"--strict-mcp-config",
+	} {
 		if !strings.Contains(j, want) {
 			t.Errorf("claude args miss %q: %q", want, c)
 		}
 	}
 	if slices.Contains(c, "--model") {
 		t.Errorf("empty model must use claude's default: %q", c)
+	}
+	idx := slices.Index(c, "--setting-sources")
+	if idx == -1 || idx+1 >= len(c) || c[idx+1] != "" {
+		t.Errorf("claude args must pass empty --setting-sources: %q", c)
+	}
+	if strings.Contains(j, "project") {
+		t.Errorf("claude args must not include project setting sources: %q", c)
 	}
 
 	x, err := buildCodexArgs(argSpec{Prompt: "-p looks like a flag", Model: "gpt-x", Effort: "max"})
@@ -96,7 +109,13 @@ func TestDialectArgs(t *testing.T) {
 		t.Errorf("codex args: %q", x)
 	}
 
-	for _, bad := range []string{"--permission-mode=bypassPermissions", "--add-dir", "--allow-dangerously-skip-permissions"} {
+	for _, bad := range []string{
+		"--permission-mode=bypassPermissions",
+		"--add-dir",
+		"--allow-dangerously-skip-permissions",
+		"--setting-sources=project",
+		"--allowedTools=Read",
+	} {
 		if _, err := buildClaudeArgs(argSpec{Prompt: "go", Extra: []string{bad}}, nil); !errors.Is(err, ErrForbiddenArg) {
 			t.Errorf("claude accepted %q", bad)
 		}

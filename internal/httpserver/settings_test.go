@@ -151,7 +151,7 @@ type named struct {
 func (a named) Name() string { return a.n }
 
 func TestSettingsSelectAdapter(t *testing.T) {
-	sw := ai.NewSwitch("claude", named{&fake.Adapter{}, "antigravity"}, named{&fake.Adapter{}, "claude"})
+	sw := ai.NewSwitch("claude", named{&fake.Adapter{}, "antigravity"}, named{&fake.Adapter{}, "claude"}, named{&fake.Adapter{}, "codex"})
 	e := newEnv(t, func(s *httpserver.Settings) { s.Adapter, s.Switch = sw, sw })
 	if b := e.settingsPage(false); !strings.Contains(b, `<option value="claude" selected>`) {
 		t.Fatalf("current tool not selected:\n%s", b)
@@ -186,6 +186,18 @@ func TestSettingsSelectAdapter(t *testing.T) {
 	}
 	if !strings.Contains(b, `<bdi>config.toml</bdi>`) {
 		t.Errorf("expected <bdi>config.toml</bdi>, got:\n%s", b)
+	}
+	if strings.Contains(b, "ساندباکس Codex") {
+		t.Errorf("antigravity must not show codex warning:\n%s", b)
+	}
+
+	// Switching to codex should display the residual sandbox risk warning (CR-11)
+	if rec := e.post("/settings/adapter", url.Values{"adapter": {"codex"}}, false); rec.Code != http.StatusSeeOther {
+		t.Fatalf("select codex: %d %s", rec.Code, rec.Body.String())
+	}
+	b = e.settingsPage(false)
+	if !strings.Contains(b, "هشدار امنیتی") || !strings.Contains(b, "ساندباکس Codex") {
+		t.Errorf("expected codex security warning banner on settings page, got:\n%s", b)
 	}
 }
 

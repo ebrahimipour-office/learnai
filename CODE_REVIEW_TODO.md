@@ -183,7 +183,7 @@ There are **no P0 tasks**.
   - [x] Windows junction handling is reviewed in code.
 - **Depends on:** none.
 
-### - [ ] CR-11 — Confine Claude/Codex reads to the sandbox and ignore project settings
+### - [x] CR-11 — Confine Claude/Codex reads to the sandbox and ignore project settings
 - **Problem:** `--allowedTools Read,Glob,Grep` has no path scope; `--setting-sources project` honours `.claude/settings.json` in the base directory or git root; `codex --sandbox read-only` can read the whole disk.
 - **Affected files:** `internal/ai/antigravity/dialects.go:67-113`; `internal/ai/antigravity/dialects_test.go`; `INSTALL.md` (risk note).
 - **Expected outcome:** an AI run can read only its `WorkDir`, and no project hooks or settings apply.
@@ -193,9 +193,9 @@ There are **no P0 tasks**.
   - For Codex, document the residual risk in `INSTALL.md` and the settings page.
 - **Required regression tests:** an argument-builder test asserting the scoped rules and the setting sources. A manual check (recorded in `PROGRESS.md`): a prompt that asks to read `../../app.db` is refused by the real CLI.
 - **Acceptance criteria:**
-  - [ ] Tests pass.
-  - [ ] The manual verification is recorded.
-  - [ ] The residual Codex risk is documented.
+  - [x] Tests pass.
+  - [x] The manual verification is recorded.
+  - [x] The residual Codex risk is documented.
 - **Depends on:** none.
 
 ### - [ ] CR-12 — Bound `Probe` subprocesses and classify probe timeouts correctly

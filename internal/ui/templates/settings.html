@@ -41,6 +41,7 @@
   <button type="submit">ذخیره</button>
 </form>
 <p class="note">مدل و مسیر هر ابزار در <bdi>config.toml</bdi> تنظیم می‌شود: <bdi><code>[adapter]</code></bdi> برای agy، <bdi><code>[adapter.claude]</code></bdi> و <bdi><code>[adapter.codex]</code></bdi>.</p>
+{{if eq $.Adapter "codex"}}<p class="error" role="alert"><strong>هشدار امنیتی:</strong> ساندباکس Codex در حالت read-only دسترسی خواندن به تمام دیسک دارد و ایزولاسیون آن به پوشه کار محدود نمی‌شود.</p>{{end}}
 {{end}}
 {{with .Doctor}}
 {{if .Hint}}<p class="error" role="alert">{{.Hint}}</p>{{else}}<p>آماده است.</p>{{end}}

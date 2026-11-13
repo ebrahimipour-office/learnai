@@ -25,13 +25,16 @@ Learning Hub یک فایل اجرایی تنهاست (`hub.exe` برای وین�
 
 1. Claude Code را نصب کنید و `claude --version` اجرا شود؛ نسخه باید `--json-schema` و `--output-format stream-json` را در `claude --help` داشته باشد.
 2. یک‌بار `claude` را باز کنید و وارد شوید؛ `claude auth status` باید `loggedIn: true` بدهد.
-3. برنامه آن را با `-p … --tools Read,Glob,Grep --allowedTools Read,Glob,Grep --no-session-persistence --strict-mcp-config --setting-sources project` اجرا می‌کند: فقط خواندن، بدون MCP، hook و پلاگین‌های کاربر. نیازی به تنظیم مجوز یا `--dangerously-skip-permissions` نیست (و در `extra_args` ممنوع است).
+3. برنامه آن را با `-p … --tools Read,Glob,Grep --allowedTools Read(./**),Glob(./**),Grep(./**) --no-session-persistence --strict-mcp-config --setting-sources ""` اجرا می‌کند: فقط خواندن درون پوشه کاری (`WorkDir`)، بدون دسترسی به فایل‌های خارج از آن (نظیر `app.db` یا کلیدهای سیستم)، بدون MCP، هوک و بدون بارگذاری تنظیمات پروژه (`.claude/settings.json`) یا کاربر. نیازی به تنظیم مجوز یا `--dangerously-skip-permissions` نیست (و در `extra_args` ممنوع است).
 
 ### Codex (`codex`)
 
 1. Codex CLI را نصب کنید و `codex --version` اجرا شود؛ `codex exec --help` باید `--json` داشته باشد.
 2. `codex login` را اجرا کنید؛ `codex login status` باید موفق باشد.
 3. برنامه آن را با `codex exec --json --skip-git-repo-check --sandbox read-only …` اجرا می‌کند؛ پرچم‌های `--sandbox`، `--yolo`، `--full-auto` و `--dangerously-bypass-approvals-and-sandbox` در `extra_args` ممنوع‌اند.
+
+> [!WARNING]
+> **ریسک امنیتی دسترسی خواندن Codex:** ساندباکس `read-only` در Codex امکان خواندن تمام دیسک را به فرآیند می‌دهد و ابزار پرچمی برای محدودسازی مسیر خواندن به پوشه کاری ندارد. در صورت وجود تزریق پرامپت خصمانه درون منابع نقشه راه، امکان دارد ابزار فایل‌های دیگر را بخواند و محتوای آن‌ها در خروجی منعکس شود. توصیه می‌شود در محیط‌های با فایل‌های حساس، از `antigravity` یا `claude` که ایزولاسیون دقیق‌تری دارند استفاده کنید.
 
 ## نصب
 
