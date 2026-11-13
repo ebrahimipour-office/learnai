@@ -10,7 +10,7 @@
 |---|---|
 | **فاز فعال کنونی** | **فاز ۷.۵ — پرداخت بدهی بازبینی (بدهی‌های R1 تا R21 بسته شدند ✅) 🚀**؛ اجرای معوق‌های P1/P2 از `CODE_REVIEW_TODO.md` (CR-04، CR-05، CR-07، CR-10، CR-25 بسته شدند) |
 | **کار بعدی برای اجرا** | **CR-11** (محدودسازی دامنه‌ی خواندن Claude/Codex به sandbox و نادیده‌گرفتن تنظیمات پروژه) |
-| **آخرین کامیت Git** | `fix(fsx): refuse in-root symlinks under .app/ and restrict Root.RemoveAll (CR-10)` |
+| **آخرین کامیت Git** | `fix(fsx): refuse in-root symlinks under .app/ and restrict Root.RemoveAll (CR-10)` (`763959a`) |
 | **✅ بسته‌شده از T3.1 و T5.8** | **۲۰۲۶-۱۱-۱۳ (CR-10):** رد کردن symlink/junction درون‌ریشه در مسیرهای `.app/` با افزودن `Root.EnsureRealDir` و `Root.Lstat`؛ محافظت کامل در برابر تخریب پوشه‌های کاربر (`topics/`) در Composer، Runner و Maintenance؛ محدودسازی دامنه `Root.RemoveAll` صرفاً به پیشوندهای مجاز اسکرچ (`.app/work/`، `.app/staging/`، `.app/logs/`) با آزمون‌های رگرسیون کامل. |
 | **وضعیت آزمون‌های خودکار** | **۱۰۰٪ سبز و موفق** (`go test ./cmd/... ./internal/... ./skills/...` یا `make test`) |
 | **مسیر دایرکتوری پایه** | `/home/ebrahimipour/11111111/learnai` (ریشه همین مخزن؛ `.app/` و `topics/` در `.gitignore`) |
