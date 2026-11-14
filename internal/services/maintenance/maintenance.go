@@ -126,10 +126,20 @@ func (s *Service) backup(ctx context.Context, now time.Time, res *Result) error 
 		return err
 	}
 	rel := path.Join(backupDir, "app-"+now.UTC().Format("2006-01-02")+".db")
-	if !s.Root.Exists(rel) {
-		// VACUUM INTO refuses an existing file, so a backup is never overwritten.
-		abs := filepath.Join(s.Root.BaseDir(), filepath.FromSlash(rel))
+	if !s.nonEmpty(rel) {
+		// Only a complete backup gets the final name (CR-36): VACUUM INTO refuses an existing file, so
+		// drop a leftover temp first, and rename only on success. A real backup is never overwritten.
+		tmp := rel + ".tmp"
+		if err := s.Root.Remove(tmp); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		abs := filepath.Join(s.Root.BaseDir(), filepath.FromSlash(tmp))
 		if _, err := s.DB.Writer().ExecContext(ctx, `VACUUM INTO ?`, abs); err != nil {
+			_ = s.Root.Remove(tmp)
+			return fmt.Errorf("backing up database: %w", err)
+		}
+		if err := s.Root.Rename(tmp, rel); err != nil {
+			_ = s.Root.Remove(tmp)
 			return fmt.Errorf("backing up database: %w", err)
 		}
 		res.Backup = rel
@@ -140,7 +150,8 @@ func (s *Service) backup(ctx context.Context, now time.Time, res *Result) error 
 	}
 	var names []string
 	for _, e := range entries {
-		if n := e.Name(); e.Type().IsRegular() && strings.HasPrefix(n, "app-") && strings.HasSuffix(n, ".db") {
+		// 0-byte files are interrupted backups from before CR-36: they must not push a real one out.
+		if n := e.Name(); strings.HasPrefix(n, "app-") && strings.HasSuffix(n, ".db") && s.nonEmpty(path.Join(backupDir, n)) {
 			names = append(names, n)
 		}
 	}
@@ -153,4 +164,10 @@ func (s *Service) backup(ctx context.Context, now time.Time, res *Result) error 
 		res.Removed = append(res.Removed, rel)
 	}
 	return nil
+}
+
+// nonEmpty reports whether rel is a regular file with content.
+func (s *Service) nonEmpty(rel string) bool {
+	info, err := s.Root.Lstat(rel)
+	return err == nil && info.Mode().IsRegular() && info.Size() > 0
 }

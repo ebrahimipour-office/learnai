@@ -252,6 +252,24 @@ func (r *Root) Remove(relPath string) error {
 	return r.rawRoot.Remove(path.Clean(relPath))
 }
 
+// Rename atomically moves oldRel to newRel within the root, replacing an existing file.
+func (r *Root) Rename(oldRel, newRel string) error {
+	if err := ValidateRelPath(oldRel); err != nil {
+		return err
+	}
+	if err := ValidateRelPath(newRel); err != nil {
+		return err
+	}
+
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.closed {
+		return ErrRootClosed
+	}
+
+	return r.rawRoot.Rename(path.Clean(oldRel), path.Clean(newRel))
+}
+
 // RemoveAll removes relPath and everything under it; restricted to allowed scratch paths
 // (.app/work/, .app/staging/, .app/logs/). Refuses to follow symlinks or reparse points.
 func (r *Root) RemoveAll(relPath string) error {

@@ -461,14 +461,14 @@ There are **no P0 tasks**.
   - [x] Test passes.
 - **Depends on:** CR-09 (same selection data).
 
-### - [ ] CR-36 — Make the daily backup atomic
+### - [x] CR-36 — Make the daily backup atomic
 - **Problem:** an interrupted `VACUUM INTO` leaves a 0-byte `app-DATE.db`, which blocks that day's backup and pushes a real one out of the rotation.
 - **Affected files:** `internal/services/maintenance/maintenance.go:90-119`.
 - **Expected outcome:** only complete backups carry the final name.
 - **Suggested implementation:** remove any stale `.tmp`, run `VACUUM INTO app-DATE.db.tmp`, rename on success, remove on failure; ignore 0-byte files in the exists and rotation checks.
 - **Required regression tests:** `Run` with a cancelled ctx → no `app-*.db`; a second run the same day → a non-empty backup exists.
 - **Acceptance criteria:**
-  - [ ] Tests pass.
+  - [x] Tests pass.
 - **Depends on:** none.
 
 ### - [ ] CR-37 — Retry `Recover` instead of stopping the runner

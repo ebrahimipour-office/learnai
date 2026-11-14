@@ -249,3 +249,46 @@ func TestRunSweepsStaleTempFiles(t *testing.T) {
 		}
 	}
 }
+
+func TestBackupIsAtomic(t *testing.T) {
+	base := t.TempDir()
+	db, err := store.Open(filepath.Join(base, "app.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	root, err := fsx.OpenRoot(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	svc := &maintenance.Service{DB: db, Root: root, LogRetention: time.Hour}
+	now := time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := svc.Run(ctx, now); err == nil {
+		t.Fatal("cancelled run: want an error")
+	}
+	if left, _ := filepath.Glob(filepath.Join(base, ".app/backup/*")); len(left) != 0 {
+		t.Fatalf("interrupted backup left %v", left)
+	}
+
+	// Leftovers of an interrupted backup: a 0-byte final name (pre-CR-36) and a stale temp.
+	today := filepath.Join(base, ".app/backup/app-2026-11-14.db")
+	for _, p := range []string{today, today + ".tmp"} {
+		if err := os.WriteFile(p, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	res, err := svc.Run(context.Background(), now)
+	if err != nil || res.Backup != ".app/backup/app-2026-11-14.db" {
+		t.Fatalf("second run: backup %q, err %v", res.Backup, err)
+	}
+	if info, err := os.Stat(today); err != nil || info.Size() == 0 {
+		t.Fatalf("today's backup is missing or empty: %v", err)
+	}
+	if _, err := os.Stat(today + ".tmp"); !os.IsNotExist(err) {
+		t.Fatalf("temp file left behind: %v", err)
+	}
+}
