@@ -97,10 +97,7 @@ func firstLine(s string) string {
 	if i := strings.IndexByte(s, '\n'); i >= 0 {
 		s = s[:i]
 	}
-	if len(s) > 300 {
-		s = s[:300] + "…"
-	}
-	return s
+	return ai.Truncate(s, 300)
 }
 
 var secrets = []struct {

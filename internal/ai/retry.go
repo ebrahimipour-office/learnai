@@ -5,10 +5,24 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"unicode/utf8"
 )
 
 // maxRetryNote keeps the retry prompt well under the -p ceiling (prompt.MaxPrompt).
 const maxRetryNote = 1500
+
+// Truncate cuts s to at most maxBytes bytes (plus "…") without splitting a UTF-8
+// rune, so Persian text in error messages stays valid (CR-28).
+func Truncate(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+	n := maxBytes
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n] + "…"
+}
 
 // InvalidNoter is optionally implemented by adapters that keep per-run logs: WatchValid
 // calls it on every validator rejection so the reason sits next to that run's response.
@@ -27,10 +41,7 @@ func WatchValid(ctx context.Context, a Adapter, req Request, events chan<- Event
 	if cerr := CtxErr(ctx); cerr != nil { // CR-26: a cancel after the first run must not start a second
 		return resp, cerr
 	}
-	note := err.Error()
-	if len(note) > maxRetryNote {
-		note = note[:maxRetryNote] + "…"
-	}
+	note := Truncate(err.Error(), maxRetryNote)
 	req.Prompt += "\nYour previous reply was rejected by the validator:\n" + note +
 		"\nReply again with one corrected JSON object that satisfies output.schema.json and SKILL.md.\n"
 	first := resp

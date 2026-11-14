@@ -380,14 +380,14 @@ There are **no P0 tasks**.
   - [x] Tests pass.
 - **Depends on:** CR-02 (the same reader code changes).
 
-### - [ ] CR-28 — Truncate strings on rune boundaries
+### - [x] CR-28 — Truncate strings on rune boundaries
 - **Problem:** byte slicing splits Persian UTF-8 in error messages and retry notes.
 - **Affected files:** `internal/ai/retry.go:28-29`; `internal/ai/antigravity/stream.go:95-96`.
 - **Expected outcome:** truncated strings are always valid UTF-8.
 - **Suggested implementation:** a helper `truncateRunes(s, maxBytes)` that steps back to `utf8.RuneStart`.
 - **Required regression tests:** for every byte length of a Persian string, the result is `utf8.ValidString`.
 - **Acceptance criteria:**
-  - [ ] Tests pass.
+  - [x] Tests pass.
 - **Depends on:** none.
 
 ### - [ ] CR-29 — Narrow the error-classification input

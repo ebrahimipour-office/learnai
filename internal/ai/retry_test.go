@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"learninghub/internal/ai"
 )
@@ -62,5 +64,22 @@ func TestWatchValidNoRetryAfterCancel(t *testing.T) {
 	})
 	if !errors.Is(err, ai.ErrCanceled) || a.calls != 1 {
 		t.Fatalf("want ErrCanceled after 1 call, got %v after %d", err, a.calls)
+	}
+}
+
+// CR-28: every cut point of a Persian string yields valid UTF-8 within the byte cap.
+func TestTruncateRuneBoundary(t *testing.T) {
+	s := "خطای اعتبارسنجی: فیلد عنوان خالی است"
+	for n := 0; n <= len(s)+1; n++ {
+		got := ai.Truncate(s, n)
+		if !utf8.ValidString(got) {
+			t.Fatalf("Truncate(%d) = %q: invalid UTF-8", n, got)
+		}
+		if body := strings.TrimSuffix(got, "…"); len(body) > n {
+			t.Fatalf("Truncate(%d) kept %d bytes", n, len(body))
+		}
+	}
+	if got := ai.Truncate(s, len(s)); got != s {
+		t.Fatalf("no-op truncate changed string: %q", got)
 	}
 }
