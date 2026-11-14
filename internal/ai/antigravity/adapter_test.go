@@ -448,4 +448,3 @@ func TestOpenLogUniqueDirsForParallelRuns(t *testing.T) {
 		t.Fatalf("expected step in log dir names, got %q and %q", l1.dir, l2.dir)
 	}
 }
-

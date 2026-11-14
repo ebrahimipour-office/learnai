@@ -553,15 +553,15 @@ There are **no P0 tasks**.
   - [ ] `PROGRESS.md:210` caveat removed.
 - **Depends on:** none.
 
-### - [ ] CR-44 — Non-zero exit status on fatal `serve` errors
+### - [x] CR-44 — Non-zero exit status on fatal `serve` errors
 - **Problem:** several fatal startup paths `return` from `runServe`, so the process exits 0.
 - **Affected files:** `cmd/hub/main.go:220-372`.
 - **Expected outcome:** exit 1 after the deferred cleanup.
 - **Suggested implementation:** `func runServe(args) error`; `main` calls `os.Exit(1)` on a non-nil result, after `runServe` has returned (so its defers have run).
 - **Required regression tests:** subprocess test: port 8787 occupied (use a custom `--config` with a free port that the test binds first) → exit status 1.
 - **Acceptance criteria:**
-  - [ ] Test passes.
-  - [ ] `cmd/hub` has at least one test file.
+  - [x] Test passes.
+  - [x] `cmd/hub` has at least one test file.
 - **Depends on:** none.
 
 ### - [ ] CR-45 — Full page on htmx history restore for `/topics`

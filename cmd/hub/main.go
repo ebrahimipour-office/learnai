@@ -44,7 +44,7 @@ var (
 
 func main() {
 	if len(os.Args) < 2 {
-		runServe(os.Args[1:])
+		serve(os.Args[1:])
 		return
 	}
 
@@ -53,7 +53,7 @@ func main() {
 
 	switch subcommand {
 	case "serve":
-		runServe(args)
+		serve(args)
 	case "doctor":
 		runDoctor(args)
 	case "migrate":
@@ -65,7 +65,7 @@ func main() {
 	default:
 		// If first argument is a flag like --config, default to serve
 		if strings.HasPrefix(subcommand, "-") {
-			runServe(os.Args[1:])
+			serve(os.Args[1:])
 			return
 		}
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\nUsage: hub [serve | doctor | migrate | rebuild | version]\n", subcommand)
@@ -226,7 +226,8 @@ func runRebuild(args []string) {
 	}
 }
 
-func runServe(args []string) {
+// runServe returns an error on any fatal path so main exits 1 only after the defers have run.
+func runServe(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	configPath := fs.String("config", "", "Path to config.toml")
 	_ = fs.Parse(args)
@@ -235,7 +236,7 @@ func runServe(args []string) {
 	cfg, err := config.Load(*configPath, cwd)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
-		os.Exit(1)
+		return err
 	}
 
 	// Setup slog JSON logger
@@ -246,13 +247,13 @@ func runServe(args []string) {
 	root, err := fsx.OpenRoot(cfg.BaseDir)
 	if err != nil {
 		slog.Error("Failed to open base directory", "path", cfg.BaseDir, "error", err)
-		os.Exit(1)
+		return err
 	}
 	defer root.Close()
 	appDir := filepath.Join(cfg.BaseDir, ".app")
 	if err := root.MkdirAll(".app", 0o755); err != nil {
 		slog.Error("Failed to create .app directory", "error", err)
-		os.Exit(1)
+		return err
 	}
 
 	// Single instance lock via .app/hub.lock (D13)
@@ -261,11 +262,11 @@ func runServe(args []string) {
 	locked, err := fileLock.TryLock()
 	if err != nil {
 		slog.Error("Failed to acquire single instance lock", "path", lockPath, "error", err)
-		os.Exit(1)
+		return err
 	}
 	if !locked {
 		fmt.Fprintf(os.Stderr, "\n[FATAL] Another instance of LearningHub is already running.\nOnly a single instance is permitted on this machine (D13).\nLock file: %s\n\n", lockPath)
-		os.Exit(1)
+		return errors.New("another instance is running")
 	}
 	defer func() {
 		_ = fileLock.Unlock()
@@ -286,7 +287,7 @@ func runServe(args []string) {
 	db, err := store.Open(dbPath)
 	if err != nil {
 		slog.Error("Failed to initialize database", "path", dbPath, "error", err)
-		os.Exit(1)
+		return err
 	}
 	defer db.Close()
 
@@ -295,7 +296,7 @@ func runServe(args []string) {
 	sm, err := httpserver.NewSecurityManager(cfg.Listen)
 	if err != nil {
 		slog.Error("Failed to initialize security manager", "error", err)
-		return
+		return err
 	}
 	drafts := roadmaps.NewService(db, root)
 	drafts.DraftTTL, drafts.TreeCap, drafts.MaxBytes = cfg.DraftTTL, cfg.Limits.MaxTreeTopics, int(cfg.Limits.MaxRoadmapBytes)
@@ -303,7 +304,7 @@ func runServe(args []string) {
 
 	if n, err := skills.Install(root); err != nil {
 		slog.Error("Failed to install default skills", "error", err)
-		return
+		return err
 	} else if n > 0 {
 		slog.Info("Installed default AGENTS.md, profile and skills", "files", n)
 	}
@@ -370,7 +371,7 @@ func runServe(args []string) {
 	select {
 	case err := <-errCh:
 		slog.Error("HTTP server failed", "error", err)
-		return // return (not os.Exit) so deferred DB close and unlock run
+		return err
 	case <-ctx.Done():
 	}
 
@@ -379,6 +380,13 @@ func runServe(args []string) {
 	defer cancelShutdown()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("Graceful shutdown failed", "error", err)
+	}
+	return nil
+}
+
+func serve(args []string) {
+	if runServe(args) != nil {
+		os.Exit(1)
 	}
 }
 

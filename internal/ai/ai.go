@@ -38,7 +38,7 @@ type SkillRef struct {
 type Request struct {
 	JobID        int64
 	Task         Task
-	Step         string   // optional step/sub-task identifier (e.g. exercise ID for evaluate)
+	Step         string // optional step/sub-task identifier (e.g. exercise ID for evaluate)
 	Skill        SkillRef
 	Prompt       string   // short; large data lives in WorkDir files
 	WorkDir      string   // absolute temporary sandbox
