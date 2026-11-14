@@ -2,6 +2,7 @@ package jobs_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"sync"
@@ -253,4 +254,45 @@ func TestHeartbeat(t *testing.T) {
 	}
 	close(release)
 	waitStatus(t, db, id, domain.JobStatusSucceeded)
+}
+
+// CR-37: a Recover that fails at startup (DB locked past busy_timeout) is retried, not fatal.
+func TestRunRetriesRecover(t *testing.T) {
+	if testing.Short() {
+		t.Skip("holds a DB lock for 6s")
+	}
+	path := filepath.Join(t.TempDir(), "app.db")
+	db, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	r := jobs.New(db, 1)
+	r.Poll = 20 * time.Millisecond
+	r.Register(domain.JobKindLesson, func(context.Context, jobs.Job) error { return nil })
+	id := enqueue(t, r, "topic:1")
+
+	other, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	conn, err := other.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(context.Background(), `BEGIN IMMEDIATE`); err != nil {
+		t.Fatal(err)
+	}
+	start(t, r)
+	time.Sleep(6 * time.Second) // longer than busy_timeout: the first Recover fails
+	if _, err := conn.ExecContext(context.Background(), `ROLLBACK`); err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(15 * time.Second); get(t, db, id).status != "succeeded"; time.Sleep(20 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("job never ran: %+v", get(t, db, id))
+		}
+	}
 }

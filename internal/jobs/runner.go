@@ -215,14 +215,29 @@ func (r *Runner) Recover(ctx context.Context) (int64, error) {
 	return n, r.replayJournals(ctx)
 }
 
-// Run recovers interrupted jobs, then dispatches queued jobs in FIFO order until ctx is done.
+// Run recovers interrupted jobs (retrying until that works), then dispatches queued jobs in FIFO order until ctx is done.
 // Jobs still running at that point are cancelled and recorded as failed/interrupted; Run returns
 // after every worker has finished.
 func (r *Runner) Run(ctx context.Context) error {
-	if n, err := r.Recover(ctx); err != nil {
-		return fmt.Errorf("recovering jobs: %w", err)
-	} else if n > 0 {
-		slog.Warn("Marked jobs interrupted by the previous run as failed", "count", n)
+	// A failed Recover (e.g. the DB is locked) must not leave a runner that never runs the jobs the UI
+	// keeps enqueueing (CR-37): retry with backoff. Recover is safe to repeat.
+	for backoff := time.Second; ; backoff = min(2*backoff, 30*time.Second) {
+		n, err := r.Recover(ctx)
+		if err == nil {
+			if n > 0 {
+				slog.Warn("Marked jobs interrupted by the previous run as failed", "count", n)
+			}
+			break
+		}
+		if ctx.Err() != nil {
+			return nil
+		}
+		slog.Error("Recovering jobs failed; retrying", "error", err, "retry_in", backoff)
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(backoff):
+		}
 	}
 	sem := make(chan struct{}, r.max)
 	var wg sync.WaitGroup

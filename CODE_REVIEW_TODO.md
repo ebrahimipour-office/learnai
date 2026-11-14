@@ -471,14 +471,14 @@ There are **no P0 tasks**.
   - [x] Tests pass.
 - **Depends on:** none.
 
-### - [ ] CR-37 — Retry `Recover` instead of stopping the runner
+### - [x] CR-37 — Retry `Recover` instead of stopping the runner
 - **Problem:** if `Recover` fails at startup, `Run` returns and jobs never execute, while the UI still enqueues them.
 - **Affected files:** `internal/jobs/runner.go:214-219`; `cmd/hub/main.go:346-351`.
 - **Expected outcome:** the runner keeps trying with backoff (or `serve` exits with an error).
 - **Suggested implementation:** a loop with exponential backoff up to 30 s, honouring ctx; log every failure.
 - **Required regression tests:** hold `BEGIN IMMEDIATE` on a second connection, start `Run`, release after 6 s → a queued job runs.
 - **Acceptance criteria:**
-  - [ ] Test passes under `-race`.
+  - [x] Test passes under `-race`.
 - **Depends on:** none.
 
 ### - [ ] CR-38 — Retry the final job-status write
