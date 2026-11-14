@@ -268,16 +268,17 @@ There are **no P0 tasks**.
   - [x] Guess quality is unchanged on the existing fixtures.
 - **Depends on:** none.
 
-### - [ ] CR-18 — Rebuild must survive copied topic folders
+### - [x] CR-18 — Rebuild must survive copied topic folders
 - **Problem:** two folders with the same `stable_key` in their manifest or result make rebuild fail with `UNIQUE(roadmap_id, stable_key)`.
 - **Affected files:** `internal/services/rebuild/rebuild.go:243-275`.
 - **Expected outcome:** rebuild completes with a warning for the duplicate.
 - **Suggested implementation:** track used keys per roadmap; on a clash, use `fsx.HashString("rebuild:"+dir)[:16]` and append a warning.
 - **Required regression tests:** `topics/02-http` and `topics/02-http-bak` with the same manifest → success, two topics, one warning.
 - **Acceptance criteria:**
-  - [ ] Test passes.
-  - [ ] The CLI prints the warning.
+  - [x] Test passes.
+  - [x] The CLI prints the warning.
 - **Depends on:** none.
+- **Done (2026-11-14):** the clash is checked in the suggested-topic branch (the only path that can reuse a key); the copy keeps its original key for manifest/result checks, so its sets and attempts are recorded. `TestRebuildToleratesCopiedFolder`.
 
 ### - [x] CR-19 — Persist the selection rule so rebuild can reproduce topics
 - **Problem:** rebuild always applies `deepest` and puts unmatched topics in the first roadmap, which distorts roadmaps imported with chapters, items or level rules.

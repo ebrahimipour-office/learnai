@@ -292,12 +292,23 @@ func (r *run) topics(cands map[string][]*candidate) error {
 			if title == "" {
 				title = m[2]
 			}
-			if key == "" {
-				key = fsx.HashString("rebuild:" + dir)[:16]
+			// dbKey differs from key only for a copied folder; key still checks the copy's manifests and results.
+			dbKey := key
+			var taken bool
+			if err := r.tx.QueryRowContext(r.ctx, `SELECT EXISTS (SELECT 1 FROM topics WHERE roadmap_id = ? AND stable_key = ?)`,
+				fallbackRoadmap, key).Scan(&taken); err != nil {
+				return err
 			}
-			r.warn("topics/%s: not in any roadmap revision, recorded as a suggested topic", dir)
+			if key == "" || taken {
+				dbKey = fsx.HashString("rebuild:" + dir)[:16]
+			}
+			if taken {
+				r.warn("topics/%s: stable key %s already used by another folder (a copy?), recorded as a suggested topic", dir, key)
+			} else {
+				r.warn("topics/%s: not in any roadmap revision, recorded as a suggested topic", dir)
+			}
 			if err := r.tx.QueryRowContext(r.ctx, `INSERT INTO topics (roadmap_id, stable_key, title, title_norm, ord, slug, dir_name, origin)
-				VALUES (?, ?, ?, ?, ?, ?, ?, 'suggested') RETURNING id`, fallbackRoadmap, key, title, roadmap.Normalize(title),
+				VALUES (?, ?, ?, ?, ?, ?, ?, 'suggested') RETURNING id`, fallbackRoadmap, dbKey, title, roadmap.Normalize(title),
 				float64(1000+seq), m[2], dir).Scan(&topicID); err != nil {
 				return fmt.Errorf("topics/%s: %w", dir, err)
 			}

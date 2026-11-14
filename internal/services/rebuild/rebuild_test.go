@@ -197,3 +197,61 @@ func TestRebuildFromFiles(t *testing.T) {
 		t.Errorf("second run: %v, want ErrNotEmpty", err)
 	}
 }
+
+// CR-18: a copied topic folder shares its manifest's stable key; rebuild keeps both, warning about the copy.
+func TestRebuildToleratesCopiedFolder(t *testing.T) {
+	base := t.TempDir()
+	key := keyOf(t, "HTTP")
+	manifest := fmt.Sprintf(`{"schema_version":1,"topic":{"stable_key":%q,"title":"HTTP"},
+		"set":{"version":1,"rubric_version":1,"created_at":"2026-11-01T10:00:00Z","generator":{"adapter":"agy","model":"m1","skill":"exercises","skill_version":"1"}},
+		"exercises":[{"id":"q01","order":1,"title":"One","type":"coding","difficulty":"easy","weight":1,"answer":{"slug":"one","ext":".go","file_name":"q01-one.go"}}]}`, key)
+	files := map[string]string{"roadmaps/go/rev-001.md": roadmapMD}
+	for _, dir := range []string{"02-http", "02-http-bak"} {
+		files["topics/"+dir+"/exercises/v1/exercises.md"] = "## [q01] One\n"
+		files["topics/"+dir+"/exercises/v1/manifest.json"] = manifest
+		files["topics/"+dir+"/.internal/rubric-v1.json"] = "{}"
+		files["topics/"+dir+"/answers/v1/q01-one.go"] = "package main\n"
+	}
+	for rel, body := range files {
+		p := filepath.Join(base, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db, err := store.Open(filepath.Join(base, "app.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	root, err := fsx.OpenRoot(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+
+	rep, err := rebuild.Run(context.Background(), db, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var dup int
+	for _, w := range rep.Warnings {
+		if strings.Contains(w, "already used") {
+			dup++
+			if !strings.Contains(w, "02-http-bak") {
+				t.Errorf("warning names the wrong folder: %s", w)
+			}
+		}
+	}
+	if dup != 1 {
+		t.Errorf("duplicate warnings = %d, want 1: %v", dup, rep.Warnings)
+	}
+	var topics, sets int
+	db.Writer().QueryRow(`SELECT COUNT(*) FROM topics WHERE dir_name IN ('02-http', '02-http-bak')`).Scan(&topics)
+	db.Writer().QueryRow(`SELECT COUNT(*) FROM exercise_sets`).Scan(&sets)
+	if topics != 2 || sets != 2 {
+		t.Errorf("topics %d sets %d, want 2 and 2", topics, sets)
+	}
+}
