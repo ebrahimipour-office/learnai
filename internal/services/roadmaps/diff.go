@@ -20,6 +20,7 @@ type DiffItem struct {
 type Diff struct {
 	New, Changed, Gone []DiffItem
 	Same               int
+	GuessSkipped       bool // too many new × gone pairs to guess within the time budget
 }
 
 // oldTopic is a recorded roadmap topic (origin 'roadmap'; suggested topics are never touched by re-import).
@@ -100,8 +101,16 @@ func diffTopics(kept []roadmap.Topic, old []oldTopic) *Diff {
 			d.Gone = append(d.Gone, DiffItem{Key: o.Key, Title: o.Title})
 		}
 	}
+	if len(d.New)*len(gone) > guessMaxPairs {
+		d.GuessSkipped = len(gone) > 0
+		return d
+	}
+	goneRunes := make([][]rune, len(gone))
+	for i, o := range gone {
+		goneRunes[i] = capRunes(o.TitleNorm)
+	}
 	for i := range d.New {
-		d.New[i].Guess = guess(roadmap.Normalize(d.New[i].Title), gone)
+		d.New[i].Guess = guess(capRunes(roadmap.Normalize(d.New[i].Title)), gone, goneRunes)
 	}
 	return d
 }
@@ -109,11 +118,27 @@ func diffTopics(kept []roadmap.Topic, old []oldTopic) *Diff {
 // guessMin is the similarity a disappeared title needs to be offered as "probably the same topic".
 const guessMin = 0.6
 
+// Guess bounds (CR-17): beyond guessMaxPairs the preview shows a note instead of guesses.
+const (
+	guessMaxPairs = 250_000
+	guessMaxRunes = 200
+)
+
+func capRunes(s string) []rune {
+	r := []rune(s)
+	return r[:min(len(r), guessMaxRunes)]
+}
+
 // guess returns the most similar gone title. A renamed group keeps title_norm equal (similarity 1).
-func guess(norm string, gone []oldTopic) string {
+func guess(norm []rune, gone []oldTopic, goneRunes [][]rune) string {
 	best, bestSim := "", guessMin
-	for _, o := range gone {
-		if s := similarity(norm, o.TitleNorm); s >= bestSim {
+	for i, o := range gone {
+		// Distance >= length gap, so similarity <= shorter/longer: skip pairs that cannot win.
+		lo, hi := min(len(norm), len(goneRunes[i])), max(len(norm), len(goneRunes[i]))
+		if hi > 0 && float64(lo)/float64(hi) < bestSim {
+			continue
+		}
+		if s := similarity(norm, goneRunes[i]); s >= bestSim {
 			best, bestSim = o.Title, s
 		}
 	}
@@ -121,8 +146,7 @@ func guess(norm string, gone []oldTopic) string {
 }
 
 // similarity is 1 - Levenshtein distance / longer length, over runes.
-func similarity(a, b string) float64 {
-	ra, rb := []rune(a), []rune(b)
+func similarity(ra, rb []rune) float64 {
 	n := max(len(ra), len(rb))
 	if n == 0 {
 		return 1

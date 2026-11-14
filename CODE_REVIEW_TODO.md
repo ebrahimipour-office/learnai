@@ -254,7 +254,7 @@ There are **no P0 tasks**.
   - [x] The benchmark improves by ≥ 10×.
 - **Depends on:** none.
 
-### - [ ] CR-17 — Bound and cache the re-import diff guesses
+### - [x] CR-17 — Bound and cache the re-import diff guesses
 - **Problem:** fuzzy matching runs Levenshtein over every new × gone pair on each preview render; 3 k × 3 k takes ~20 s.
 - **Affected files:** `internal/services/roadmaps/diff.go:103-147`; `internal/httpserver/handlers_roadmaps.go:357`; `import_drafts.diff` column (exists, unused).
 - **Expected outcome:** a diff render finishes in under 1 s for large inputs.
@@ -265,7 +265,7 @@ There are **no P0 tasks**.
   - Cache the computed diff in `import_drafts.diff`, keyed by draft content + rule + checked items.
 - **Required regression tests:** `diffTopics` with 3000 × 3000 → under 1 s; the existing diff tests stay green.
 - **Acceptance criteria:**
-  - [ ] Guess quality is unchanged on the existing fixtures.
+  - [x] Guess quality is unchanged on the existing fixtures.
 - **Depends on:** none.
 
 ### - [ ] CR-18 — Rebuild must survive copied topic folders
