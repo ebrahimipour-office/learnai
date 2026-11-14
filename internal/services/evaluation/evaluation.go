@@ -171,6 +171,7 @@ func (s *Service) run(ctx context.Context, j jobs.Job, mode string) error {
 
 	// Same fingerprint ⇒ a retry may reuse the failed job's done steps (TDD §6.4).
 	var fp bytes.Buffer
+	fp.WriteString(s.Adapter.Name() + "\x00") // CR-31: another tool's staged results are never reused
 	fp.WriteString(ai.ModelFor(s.Adapter, s.Model) + "\x00")
 	for _, b := range [][]byte{sh.in.Skill, sh.in.Agents, sh.in.Profile, sh.exercisesMD, rubricB, sh.source} {
 		fp.WriteString(fsx.HashBytes(b) + "\x00")

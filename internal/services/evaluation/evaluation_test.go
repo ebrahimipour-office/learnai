@@ -30,9 +30,17 @@ type adapter struct {
 	task, question        map[string]string
 	source                map[string]string // inputs/source.md per exercise; absent = not sent
 	inFlight, maxInFlight int
+	name                  string // "" = "test"
 }
 
-func (a *adapter) Name() string                                   { return "test" }
+func (a *adapter) Name() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.name != "" {
+		return a.name
+	}
+	return "test"
+}
 func (a *adapter) Probe(context.Context) (ai.Capabilities, error) { return ai.Capabilities{}, nil }
 func (a *adapter) Run(ctx context.Context, req ai.Request, _ chan<- ai.Event) (*ai.Response, error) {
 	task, err := os.ReadFile(filepath.Join(req.WorkDir, "inputs", "task.json"))
@@ -306,6 +314,29 @@ func TestEvaluateRetryDiscardsCheckpointsWhenInputsChange(t *testing.T) {
 	}
 	if c := e.calls(); c["q01"] != 2 {
 		t.Errorf("calls = %v, want q01 re-evaluated after its answer changed", c)
+	}
+}
+
+// CR-31: after a switch to another tool with the same model, a retry re-runs every step.
+func TestEvaluateRetryDiscardsCheckpointsWhenAdapterChanges(t *testing.T) {
+	e := setup(t, 1)
+	e.ad.fail["q02"] = true
+	id := e.enqueue("full")
+	if st, _ := e.wait(id); st != "failed" {
+		t.Fatalf("status %s", st)
+	}
+	e.ad.mu.Lock()
+	e.ad.fail["q02"], e.ad.name = false, "other"
+	e.ad.mu.Unlock()
+	retry, err := e.runner.Retry(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := e.wait(retry); st != "succeeded" {
+		t.Fatalf("retry status %s", st)
+	}
+	if c := e.calls(); c["q01"] != 2 || c["q02"] != 2 {
+		t.Errorf("calls = %v, want every exercise re-evaluated under the new adapter", c)
 	}
 }
 

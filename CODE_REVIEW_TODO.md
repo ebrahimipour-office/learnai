@@ -411,14 +411,14 @@ There are **no P0 tasks**.
   - [x] No config option is left without a consumer (grep).
 - **Depends on:** none.
 
-### - [ ] CR-31 — Include the adapter name in the evaluation retry fingerprint
+### - [x] CR-31 — Include the adapter name in the evaluation retry fingerprint
 - **Problem:** after switching between tools with the same (empty) model, a retry reuses another tool's staged results.
 - **Affected files:** `internal/services/evaluation/evaluation.go:158-166`.
 - **Expected outcome:** a different adapter means a different fingerprint, so no reuse.
 - **Suggested implementation:** `fp.WriteString(s.Adapter.Name() + "\x00")`.
 - **Required regression tests:** fail under fake adapter "a", switch to "b", retry → every step re-runs.
 - **Acceptance criteria:**
-  - [ ] Test passes.
+  - [x] Test passes.
 - **Depends on:** consider together with CR-42.
 
 ### - [ ] CR-32 — Check staged evaluation outputs against the current pick
