@@ -74,19 +74,45 @@ func (a *Adapter) lookPath() (string, error) {
 }
 
 // Probe reports version, structured-output support and whether the account can run models.
+// A sub-command that outlives its deadline fails the whole probe with ErrTimeout (or ErrCanceled),
+// so a slow tool is never reported as "not authenticated".
 func (a *Adapter) Probe(ctx context.Context) (ai.Capabilities, error) {
-	var caps ai.Capabilities
 	bin, err := a.lookPath()
 	if err != nil {
-		return caps, err
+		return ai.Capabilities{}, err
 	}
+	var stop error // first deadline/cancel hit by any sub-command
 	out := func(args ...string) (string, error) {
 		c, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
-		b, err := exec.CommandContext(c, bin, args...).CombinedOutput()
-		return string(b), err
+		var b bytes.Buffer
+		cmd := exec.CommandContext(c, bin, args...)
+		cmd.Stdout, cmd.Stderr = &b, &b
+		cmd.WaitDelay = probeWaitDelay // a helper holding the pipe cannot stretch Wait past the deadline
+		g, err := procgroup.Start(cmd) // the deadline kills the whole tree
+		if err == nil {
+			err = cmd.Wait()
+			g.Close()
+		}
+		if cerr := c.Err(); cerr != nil {
+			kind := ai.ErrTimeout
+			if errors.Is(cerr, context.Canceled) {
+				kind = ai.ErrCanceled
+			}
+			err = fmt.Errorf("%w: probe %s: %v", kind, args[0], cerr)
+			stop = cmp.Or(stop, err)
+		}
+		return b.String(), err
 	}
+	caps, err := a.probe(out)
+	return caps, cmp.Or(stop, err)
+}
 
+// probeWaitDelay bounds how long a probe sub-command's Wait lingers after its deadline or exit.
+var probeWaitDelay = 2 * time.Second
+
+func (a *Adapter) probe(out func(...string) (string, error)) (ai.Capabilities, error) {
+	var caps ai.Capabilities
 	v, err := out("--version")
 	if err != nil {
 		return caps, fmt.Errorf("%w: --version: %v", ai.ErrToolFailed, err)

@@ -198,7 +198,7 @@ There are **no P0 tasks**.
   - [x] The residual Codex risk is documented.
 - **Depends on:** none.
 
-### - [ ] CR-12 — Bound `Probe` subprocesses and classify probe timeouts correctly
+### - [x] CR-12 — Bound `Probe` subprocesses and classify probe timeouts correctly
 - **Problem:** `Probe` uses `CombinedOutput` without `WaitDelay` or a process group, so it can exceed its deadline. The settings handler holds `probeMu` during the probe. Timeouts are reported as "not authenticated".
 - **Affected files:** `internal/ai/antigravity/adapter.go:70-110`; `internal/httpserver/handlers_settings.go:62-73`.
 - **Expected outcome:** `Probe` returns within deadline + `WaitDelay`; a timeout gives `ErrTimeout` with a clear message; `/settings` never blocks for longer than one probe.
@@ -594,7 +594,7 @@ There are **no P0 tasks**.
   - [ ] Manual check.
 - **Depends on:** none.
 
-### - [ ] CR-48 — Add CORP and remove the side effect from `GET /settings`
+### - [x] CR-48 — Add CORP and remove the side effect from `GET /settings`
 - **Problem:** without `Cross-Origin-Resource-Policy`, cross-site pages can embed `/files/{id}`; a cross-site `GET /settings` spawns the AI probe.
 - **Affected files:** `internal/httpserver/middleware.go:57-62`; `internal/httpserver/handlers_settings.go:62-95`.
 - **Expected outcome:** cross-origin subresource loads are blocked; the probe runs only on an explicit POST (or same-origin navigation).

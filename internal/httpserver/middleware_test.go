@@ -101,6 +101,20 @@ func TestSecurityMiddleware(t *testing.T) {
 		}
 	})
 
+	t.Run("CORP header and cross-site subresource GET rejected (CR-48)", func(t *testing.T) {
+		for dest, want := range map[string]int{"image": http.StatusForbidden, "script": http.StatusForbidden, "document": http.StatusOK} {
+			req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8787/files/1", nil)
+			req.Host = "127.0.0.1:8787"
+			req.Header.Set("Sec-Fetch-Site", "cross-site")
+			req.Header.Set("Sec-Fetch-Dest", dest)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			if rec.Code != want || rec.Header().Get("Cross-Origin-Resource-Policy") != "same-origin" {
+				t.Errorf("dest %s: code %d CORP %q", dest, rec.Code, rec.Header().Get("Cross-Origin-Resource-Policy"))
+			}
+		}
+	})
+
 	t.Run("Body limit applies before CSRF form parsing", func(t *testing.T) {
 		// Valid token in a form body larger than the 64KB default must not reach the handler.
 		body := "csrf_token=" + sm.CSRFToken() + "&pad=" + strings.Repeat("a", 128*1024)

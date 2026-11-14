@@ -37,7 +37,15 @@ func fakeAgy(sc string, args []string) int {
 	if len(args) > 0 {
 		switch args[0] {
 		case "--version":
+			if sc == "orphan" { // leave a child holding stdout, like `sleep 3 &`
+				c := exec.Command(os.Args[0], "sleep")
+				c.Env, c.Stdout = append(os.Environ(), "FAKE_AGY=sleep"), out
+				_ = c.Start()
+			}
 			fmt.Fprintln(out, "1.4.12")
+			return 0
+		case "sleep":
+			time.Sleep(3 * time.Second)
 			return 0
 		case "--help":
 			fmt.Fprintln(errw, "  --json-schema  ...\n  --output-format  (text, json, stream-json)")
@@ -313,6 +321,22 @@ func TestProbe(t *testing.T) {
 	caps, err = a.Probe(context.Background())
 	if err != nil || caps.Authenticated || len(caps.Notes) == 0 || !strings.Contains(caps.Notes[0], "Eligibility") {
 		t.Fatalf("ineligible caps = %+v err=%v", caps, err)
+	}
+}
+
+// CR-12: a probe sub-command whose helper keeps stdout open must not outlive the deadline,
+// and the timeout must not read as "not authenticated".
+func TestProbeTimeout(t *testing.T) {
+	a, _ := newRun(t, "orphan", nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := a.Probe(ctx)
+	if d := time.Since(start); d >= 3*time.Second {
+		t.Fatalf("Probe took %v", d)
+	}
+	if !errors.Is(err, ai.ErrTimeout) || ai.Code(err) != "timeout" {
+		t.Fatalf("err = %v, want ErrTimeout", err)
 	}
 }
 

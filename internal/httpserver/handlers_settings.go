@@ -59,19 +59,25 @@ func ProbeAdapter(ctx context.Context, s Settings) Doctor {
 	return d
 }
 
-// doctor returns the cached Probe result, running it first when there is none or rerun is set.
-// Probe runs agy several times (up to ~90s), so it is not repeated on every page view.
-func (a *app) doctor(ctx context.Context, rerun bool) Doctor {
+// doctor returns the cached Probe result; nil until "run doctor" was pressed. GET /settings
+// never probes (CR-48): a cross-site navigation must not spawn the AI tool.
+func (a *app) doctor() *Doctor {
 	a.probeMu.Lock()
 	defer a.probeMu.Unlock()
-	if a.lastProbe == nil || rerun {
-		d := ProbeAdapter(ctx, a.settings)
-		if ctx.Err() != nil { // client went away mid-probe; don't cache a canceled result
-			return d
-		}
-		a.lastProbe = &d
+	return a.lastProbe
+}
+
+// probe runs Probe (agy several times, up to ~90s) without holding probeMu, so page views never
+// wait behind it, then caches the result.
+// shortcut: two concurrent reruns both probe (last write wins); add singleflight if that ever matters.
+func (a *app) probe(ctx context.Context) {
+	d := ProbeAdapter(ctx, a.settings)
+	if ctx.Err() != nil { // client went away mid-probe; don't cache a canceled result
+		return
 	}
-	return *a.lastProbe
+	a.probeMu.Lock()
+	a.lastProbe = &d
+	a.probeMu.Unlock()
 }
 
 func (a *app) privacyAck(ctx context.Context) (string, error) {
@@ -107,8 +113,7 @@ func (a *app) renderSettings(w http.ResponseWriter, r *http.Request, status int,
 		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
 		return
 	}
-	d := a.doctor(r.Context(), false)
-	a.render(w, status, "settings", "layout", &pageData{Title: "تنظیمات", Error: msg, Doctor: &d,
+	a.render(w, status, "settings", "layout", &pageData{Title: "تنظیمات", Error: msg, Doctor: a.doctor(),
 		Model: ai.ModelFor(a.settings.Adapter, a.settings.Model), Adapter: a.settings.Adapter.Name(), SkipPermissions: a.settings.SkipPermissions,
 		Adapters: a.adapterNames(), PrivacyAck: ack, Privacy: PrivacyNotice, SkillUpdates: ups})
 }
@@ -179,7 +184,7 @@ func (a *app) upgradeSkill(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) rerunDoctor(w http.ResponseWriter, r *http.Request) {
-	a.doctor(r.Context(), true)
+	a.probe(r.Context())
 	http.Redirect(w, r, "/settings", http.StatusSeeOther)
 }
 

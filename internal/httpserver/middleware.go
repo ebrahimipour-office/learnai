@@ -62,6 +62,13 @@ func (sm *SecurityManager) SecurityMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("Referrer-Policy", "same-origin")
 		w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
 		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Cross-Origin-Resource-Policy", "same-origin") // CR-48: no cross-site <img>/<script> of /files/{id}
+
+		// Cross-site reads: only top-level navigations (a link to the hub) are allowed (CR-48).
+		if r.Header.Get("Sec-Fetch-Site") == "cross-site" && r.Header.Get("Sec-Fetch-Dest") != "document" {
+			http.Error(w, "Forbidden: Cross-site request rejected", http.StatusForbidden)
+			return
+		}
 
 		// 3. Enforce request body limits (MaxUpload for roadmap drafts, 64KB default).
 		// Must run before the CSRF check: r.FormValue reads the body.

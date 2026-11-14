@@ -60,10 +60,12 @@
   {{with .Err}}<pre>{{.}}</pre>{{end}}{{range .Caps.Notes}}<pre>{{.}}</pre>{{end}}
 </details>{{end}}
 <p class="note">آخرین بررسی: <bdi>{{.At.Format "2006-01-02 15:04:05"}}</bdi></p>
+{{else}}
+<p class="note">ابزار هوش مصنوعی هنوز بررسی نشده است؛ برای بررسی، دکمه زیر را بزنید.</p>
 {{end}}
 <form method="post" action="/settings/doctor">
   <input type="hidden" name="csrf_token" value="{{.CSRF}}">
-  <button type="submit">بررسی دوباره</button>
+  <button type="submit">{{if .Doctor}}بررسی دوباره{{else}}بررسی ابزار{{end}}</button>
 </form>
 </section>
 {{end}}

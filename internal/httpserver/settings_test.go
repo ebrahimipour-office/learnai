@@ -33,7 +33,17 @@ func (e *env) settingsPage(rerun bool) string {
 
 func TestSettingsDoctor(t *testing.T) {
 	e := newEnv(t)
-	if b := e.settingsPage(false); !strings.Contains(b, "آماده است") || !strings.Contains(b, "fake") {
+	// CR-48: viewing the page (here a cross-site navigation) never runs Probe.
+	e.ad.ProbeErr = fmt.Errorf("%w: agy", ai.ErrBinaryNotFound)
+	req := httptest.NewRequest(http.MethodGet, "/settings", nil)
+	req.Header.Set("Sec-Fetch-Site", "cross-site")
+	req.Header.Set("Sec-Fetch-Dest", "document")
+	if rec := e.do(req); rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), "آماده است") ||
+		strings.Contains(html.UnescapeString(rec.Body.String()), ai.Message("adapter_missing")) || !strings.Contains(rec.Body.String(), "هنوز بررسی نشده") {
+		t.Fatalf("GET /settings probed or hid the run button: %d\n%s", rec.Code, rec.Body.String())
+	}
+	e.ad.ProbeErr = nil
+	if b := e.settingsPage(true); !strings.Contains(b, "آماده است") || !strings.Contains(b, "fake") {
 		t.Fatalf("ready probe not shown:\n%s", b)
 	}
 
