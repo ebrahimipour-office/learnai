@@ -390,14 +390,14 @@ There are **no P0 tasks**.
   - [x] Tests pass.
 - **Depends on:** none.
 
-### - [ ] CR-29 — Narrow the error-classification input
+### - [x] CR-29 — Narrow the error-classification input
 - **Problem:** pattern matching scans the whole stderr, so generic words produce wrong `rate_limited`/`auth_required` codes.
 - **Affected files:** `internal/ai/antigravity/stream.go:63-88`; `adapter.go:296-308`.
 - **Expected outcome:** classification uses `res.Error` first, then only the last lines of stderr.
 - **Suggested implementation:** run `classify(res.Error)`; if that is empty, `classify(lastLines(stderr, 20))`.
 - **Required regression tests:** stderr with an early "quota project" debug line followed by a crash → `tool_error`; a real "rate limit" final line → `rate_limited`.
 - **Acceptance criteria:**
-  - [ ] Existing classification tests stay green.
+  - [x] Existing classification tests stay green.
 - **Depends on:** CR-27.
 
 ### - [ ] CR-30 — Align AI output schemas with downstream limits; enforce `max_lesson_bytes`

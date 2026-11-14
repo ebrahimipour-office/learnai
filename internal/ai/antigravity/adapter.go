@@ -415,7 +415,31 @@ func (a *Adapter) outcome(ctx, runCtx context.Context, req ai.Request, res *resu
 			text = "status " + res.Status
 		}
 	}
-	return classify(a.cfg.Patterns, text)
+	// CR-29: res.Error decides first; stderr only through its last lines, so an early
+	// debug line mentioning "quota" or "unauthorized" cannot mislabel a crash.
+	if res != nil && res.Error != "" {
+		if err := classify(a.cfg.Patterns, res.Error); !errors.Is(err, ai.ErrToolFailed) {
+			return err
+		}
+	}
+	if err := classify(a.cfg.Patterns, lastLines(stderr, 20)); !errors.Is(err, ai.ErrToolFailed) {
+		return err
+	}
+	return fmt.Errorf("%w: %s", ai.ErrToolFailed, firstLine(text))
+}
+
+// lastLines returns at most the final n lines of s.
+func lastLines(s string, n int) string {
+	s = strings.TrimSpace(s)
+	end := len(s)
+	for ; n > 0; n-- {
+		i := strings.LastIndexByte(s[:end], '\n')
+		if i < 0 {
+			return s
+		}
+		end = i
+	}
+	return s[end+1:]
 }
 
 // jobLog writes prompt/events/response/stderr/meta under .app/logs/jobs/<id>/<run>/.

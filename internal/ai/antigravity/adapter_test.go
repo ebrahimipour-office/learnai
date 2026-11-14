@@ -103,6 +103,19 @@ func fakeAgy(sc string, args []string) int {
 		return 2
 	case "silent_exit":
 		return 0
+	case "early_quota_crash": // CR-29: a debug line far above the crash must not pick the code
+		fmt.Fprintln(errw, "debug: using quota project my-proj")
+		for i := range 25 {
+			fmt.Fprintf(errw, "debug: step %d\n", i)
+		}
+		fmt.Fprintln(errw, "panic: runtime error")
+		return 2
+	case "late_rate_limit":
+		for i := range 25 {
+			fmt.Fprintf(errw, "debug: step %d\n", i)
+		}
+		fmt.Fprintln(errw, "error: rate limit exceeded")
+		return 1
 	case "linger", "linger_setsid": // valid result, then a helper keeps stdout open after exit 0
 		fmt.Fprintln(out, success(`"response":"done","structured_output":{"lesson_markdown":"# x"}`))
 		if err := holdStdout(sc == "linger_setsid"); err != nil {
@@ -219,11 +232,13 @@ func TestRunResponseJSONFallback(t *testing.T) {
 
 func TestRunErrors(t *testing.T) {
 	for sc, want := range map[string]error{
-		"ineligible":    ai.ErrAuthRequired,
-		"rate_limited":  ai.ErrRateLimited,
-		"crash":         ai.ErrToolFailed,
-		"silent_exit":   ai.ErrToolFailed,
-		"no_structured": ai.ErrInvalidOutput,
+		"ineligible":        ai.ErrAuthRequired,
+		"rate_limited":      ai.ErrRateLimited,
+		"crash":             ai.ErrToolFailed,
+		"silent_exit":       ai.ErrToolFailed,
+		"early_quota_crash": ai.ErrToolFailed,
+		"late_rate_limit":   ai.ErrRateLimited,
+		"no_structured":     ai.ErrInvalidOutput,
 	} {
 		t.Run(sc, func(t *testing.T) {
 			a, req := newRun(t, sc, nil)
