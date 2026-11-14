@@ -13,7 +13,7 @@ import (
 func decode(t *testing.T, dec decoder, lines ...string) (*result, []string) {
 	t.Helper()
 	events := make(chan ai.Event, len(lines))
-	res, _ := readStream(context.Background(), strings.NewReader(strings.Join(lines, "\n")), events, nil, dec)
+	res, _, _ := readStream(context.Background(), strings.NewReader(strings.Join(lines, "\n")), events, nil, dec)
 	close(events)
 	var kinds []string
 	for e := range events {

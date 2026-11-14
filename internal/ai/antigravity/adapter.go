@@ -209,8 +209,8 @@ func (a *Adapter) Run(ctx context.Context, req ai.Request, events chan<- ai.Even
 	cmd := exec.CommandContext(runCtx, bin, args...)
 	cmd.Dir = req.WorkDir
 	cmd.WaitDelay = waitDelay
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
+	stderr := &tailBuffer{max: maxStderr}
+	cmd.Stderr = stderr
 	// Own pipe, not StdoutPipe: Wait must return when the leader exits even if a helper still holds stdout.
 	stdout, stdoutW, err := os.Pipe()
 	if err != nil {
@@ -228,10 +228,11 @@ func (a *Adapter) Run(ctx context.Context, req ai.Request, events chan<- ai.Even
 	}
 	var res *result
 	var rawRes []byte
+	var tooLong bool
 	read := make(chan struct{})
 	go func() {
 		defer close(read)
-		res, rawRes = readStream(runCtx, stdout, events, log, dec)
+		res, rawRes, tooLong = readStream(runCtx, stdout, events, log, dec)
 	}()
 	waitErr := cmd.Wait()
 	group.Close() // kills helpers left in the group, so the reader normally sees EOF at once
@@ -250,6 +251,9 @@ func (a *Adapter) Run(ctx context.Context, req ai.Request, events chan<- ai.Even
 		resp.Text, resp.ConversationID, resp.Usage = res.Response, res.ConversationID, res.Usage
 	}
 	err = a.outcome(ctx, runCtx, req, res, waitErr, stderr.String(), dur)
+	if tooLong && (err == nil || errors.Is(err, ai.ErrToolFailed)) {
+		err = fmt.Errorf("%w: stdout line over %d bytes", ai.ErrInvalidOutput, maxLine)
+	}
 	if err == nil {
 		resp.Structured, err = res.structured()
 	}
@@ -311,11 +315,39 @@ func (d *agyDecoder) final() (*result, []byte) { return d.res, d.raw }
 // waitDelay bounds how long Run keeps reading stdout after the CLI itself has exited.
 var waitDelay = 5 * time.Second
 
+// Memory caps for CLI output (CR-27): stderr keeps only its tail; a longer stdout line is invalid output.
+var (
+	maxStderr = 64 << 10
+	maxLine   = 16 << 20
+)
+
+// tailBuffer is an io.Writer that keeps only the last max bytes written.
+type tailBuffer struct {
+	max int
+	b   []byte
+}
+
+func (t *tailBuffer) Write(p []byte) (int, error) {
+	n := len(p)
+	if len(p) > t.max {
+		p = p[len(p)-t.max:]
+	}
+	t.b = append(t.b, p...)
+	if len(t.b) > 2*t.max { // trim in batches so each byte is copied O(1) times
+		t.b = append(t.b[:0], t.b[len(t.b)-t.max:]...)
+	}
+	return n, nil
+}
+
+func (t *tailBuffer) String() string { return string(t.b[max(0, len(t.b)-t.max):]) }
+
 // readStream consumes the CLI's stdout, forwarding progress and keeping the final result.
-func readStream(ctx context.Context, r io.Reader, events chan<- ai.Event, log *jobLog, dec decoder) (*result, []byte) {
+// Lines over maxLine are skipped (still drained so the CLI never blocks) and reported via tooLong.
+func readStream(ctx context.Context, r io.Reader, events chan<- ai.Event, log *jobLog, dec decoder) (res *result, raw []byte, tooLong bool) {
 	br := bufio.NewReader(r)
 	for {
-		line, err := br.ReadBytes('\n')
+		line, over, err := readLine(br)
+		tooLong = tooLong || over
 		if t := bytes.TrimSpace(line); len(t) > 0 {
 			log.event(t)
 			if ev := dec.line(t); ev != "" && events != nil {
@@ -326,7 +358,26 @@ func readStream(ctx context.Context, r io.Reader, events chan<- ai.Event, log *j
 			}
 		}
 		if err != nil {
-			return dec.final()
+			res, raw = dec.final()
+			return res, raw, tooLong
+		}
+	}
+}
+
+// readLine reads up to and including '\n'; a line over maxLine is discarded and returned as nil, true.
+func readLine(br *bufio.Reader) ([]byte, bool, error) {
+	var line []byte
+	over := false
+	for {
+		frag, err := br.ReadSlice('\n')
+		if !over && len(line)+len(frag) > maxLine {
+			over, line = true, nil
+		}
+		if !over {
+			line = append(line, frag...)
+		}
+		if err != bufio.ErrBufferFull {
+			return line, over, err
 		}
 	}
 }

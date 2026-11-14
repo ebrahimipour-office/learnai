@@ -1,6 +1,7 @@
 package antigravity
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -115,6 +117,16 @@ func fakeAgy(sc string, args []string) int {
 		time.Sleep(30 * time.Second)
 	case "slow":
 		time.Sleep(30 * time.Second)
+	case "huge_stderr": // CR-27: 100 MB of stderr, then a valid result
+		chunk := bytes.Repeat([]byte("x"), 1<<20)
+		for range 100 {
+			errw.Write(chunk)
+		}
+		fmt.Fprintln(errw, "stderr-tail-marker")
+		fmt.Fprintln(out, success(`"response":"done","structured_output":{"lesson_markdown":"# x"}`))
+	case "long_line": // CR-27: one stdout line over the cap, then a valid result
+		fmt.Fprintln(out, `{"event":"step_update","pad":"`+strings.Repeat("y", 4096)+`"}`)
+		fmt.Fprintln(out, success(`"response":"done","structured_output":{"lesson_markdown":"# x"}`))
 	}
 	return 0
 }
@@ -470,5 +482,39 @@ func TestRunDoneContextStartsNothing(t *testing.T) {
 	}
 	if ents, _ := os.ReadDir(base); len(ents) != 0 {
 		t.Fatalf("log dir created: %v", ents)
+	}
+}
+
+// CR-27: 100 MB of stderr must not be buffered; only the tail is kept.
+func TestRunBoundsStderr(t *testing.T) {
+	a, req := newRun(t, "huge_stderr", nil)
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	if _, err := a.Run(context.Background(), req, nil); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	runtime.ReadMemStats(&after)
+	if d := after.TotalAlloc - before.TotalAlloc; d > 32<<20 {
+		t.Fatalf("allocated %d MB for 100 MB of stderr", d>>20)
+	}
+}
+
+func TestTailBufferKeepsTail(t *testing.T) {
+	tb := &tailBuffer{max: 8}
+	for _, w := range []string{"abc", "defghij", "klmnopqrstuvwxyz", "12"} {
+		tb.Write([]byte(w))
+	}
+	if got := tb.String(); got != "uvwxyz12" {
+		t.Fatalf("tail = %q", got)
+	}
+}
+
+// CR-27: a stdout line over the cap is invalid output, not unbounded memory.
+func TestRunOverlongLineIsInvalidOutput(t *testing.T) {
+	defer func(n int) { maxLine = n }(maxLine)
+	maxLine = 1024
+	a, req := newRun(t, "long_line", nil)
+	if _, err := a.Run(context.Background(), req, nil); !errors.Is(err, ai.ErrInvalidOutput) || ai.Code(err) != "invalid_output" {
+		t.Fatalf("got %v", err)
 	}
 }

@@ -370,14 +370,14 @@ There are **no P0 tasks**.
   - [x] Tests pass.
 - **Depends on:** none.
 
-### - [ ] CR-27 — Bound stderr and NDJSON line buffers
+### - [x] CR-27 — Bound stderr and NDJSON line buffers
 - **Problem:** stderr is an unbounded `bytes.Buffer`; `ReadBytes('\n')` has no line limit.
 - **Affected files:** `internal/ai/antigravity/adapter.go:179,262-264`; `internal/ai/antigravity/stream.go:81`.
 - **Expected outcome:** memory stays bounded for any CLI output.
 - **Suggested implementation:** a tail ring buffer for stderr (64 KB); a per-line cap of 16 MB → `invalid_output`.
 - **Required regression tests:** a fake CLI writes 100 MB to stderr → bounded allocation (`testing.AllocsPerRun` or a measurement); an over-long line → `invalid_output`.
 - **Acceptance criteria:**
-  - [ ] Tests pass.
+  - [x] Tests pass.
 - **Depends on:** CR-02 (the same reader code changes).
 
 ### - [ ] CR-28 — Truncate strings on rune boundaries
