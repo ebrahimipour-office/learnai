@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
 	"time"
 
 	"learninghub/internal/ai"
@@ -104,7 +103,7 @@ func runDoctor(args []string) {
 		root.Close()
 	}
 	adapter := newAdapter(cfg, nil, cfg.Adapter.Kind)
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, cancel := signal.NotifyContext(context.Background(), shutdownSignals...)
 	defer cancel()
 	d := httpserver.ProbeAdapter(ctx, httpserver.Settings{Adapter: adapter, Model: cfg.Adapter.Model})
 	ok := writeErr == "" && d.Ready()
@@ -278,8 +277,8 @@ func runServe(args []string) error {
 		"listen", cfg.Listen,
 	)
 
-	// Setup graceful shutdown on SIGINT/SIGTERM
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	// Graceful shutdown on SIGINT/SIGTERM (and SIGHUP on Unix)
+	ctx, cancel := signal.NotifyContext(context.Background(), shutdownSignals...)
 	defer cancel()
 
 	// Initialize database

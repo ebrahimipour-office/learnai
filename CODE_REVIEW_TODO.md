@@ -330,14 +330,14 @@ There are **no P0 tasks**.
   - [ ] Existing procgroup tests stay green.
 - **Depends on:** coordinate with CR-02.
 
-### - [ ] CR-23 — Handle SIGHUP in `serve` and `doctor`
+### - [x] CR-23 — Handle SIGHUP in `serve` and `doctor`
 - **Problem:** closing the terminal kills the hub without cancellation; AI children in their own group keep running.
 - **Affected files:** `cmd/hub/main.go:100,266` (plus a Unix-only file for the signal list).
 - **Expected outcome:** SIGHUP triggers the same graceful shutdown as SIGTERM.
 - **Suggested implementation:** a `shutdownSignals` var with `os.Interrupt, syscall.SIGTERM, syscall.SIGHUP` on Unix and without SIGHUP on Windows; optionally `SysProcAttr.Pdeathsig = SIGKILL` on Linux.
 - **Required regression tests:** subprocess test: start `hub serve` with a slow fake job, send SIGHUP → process exits, job is `failed/interrupted`, the child process is gone.
 - **Acceptance criteria:**
-  - [ ] Test passes on Linux.
+  - [x] Test passes on Linux.
 - **Depends on:** CR-44 (testable exit path).
 
 ### - [ ] CR-24 — Do not ignore Windows Job Object attach errors
