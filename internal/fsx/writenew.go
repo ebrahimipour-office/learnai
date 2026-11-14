@@ -108,12 +108,9 @@ func isLinkUnsupported(err error) bool {
 	}
 	var errno syscall.Errno
 	if errors.As(err, &errno) {
-		switch errno {
-		case syscall.ENOSYS, syscall.EPERM:
-			return true
-		case 0x32 /* ERROR_NOT_SUPPORTED */, 0x1 /* ERROR_INVALID_FUNCTION */:
-			return true
-		}
+		// Not a switch: on Linux EPERM == 1 collides with the Windows code below.
+		return errno == syscall.ENOSYS || errno == syscall.EPERM ||
+			errno == 0x32 /* ERROR_NOT_SUPPORTED */ || errno == 0x1 /* ERROR_INVALID_FUNCTION */
 	}
 	return false
 }
