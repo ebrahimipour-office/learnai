@@ -481,14 +481,14 @@ There are **no P0 tasks**.
   - [x] Test passes under `-race`.
 - **Depends on:** none.
 
-### - [ ] CR-38 — Retry the final job-status write
+### - [x] CR-38 — Retry the final job-status write
 - **Problem:** if the final `UPDATE` fails, the job stays `running`; after a restart it becomes `failed` even if its commit succeeded.
 - **Affected files:** `internal/jobs/runner.go:318-325`.
 - **Expected outcome:** the final status always lands, or the failure is visible.
 - **Suggested implementation:** 5 retries with backoff on the `WithoutCancel` ctx; if all fail, keep an in-memory override that `Get` returns.
 - **Required regression tests:** an injected writer failing twice → status recorded.
 - **Acceptance criteria:**
-  - [ ] Test passes.
+  - [x] Test passes.
 - **Depends on:** none.
 
 ### - [ ] CR-39 — Lock `hub migrate`; refuse databases newer than the binary

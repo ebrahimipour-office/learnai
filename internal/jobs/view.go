@@ -48,6 +48,13 @@ func (r *Runner) scanInfo(ctx context.Context, where string, args ...any) (*Info
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
+	if err == nil && i.Status == string(domain.JobStatusRunning) {
+		r.mu.Lock()
+		if f, ok := r.finals[i.ID]; ok { // CR-38: the result is known but could not be written
+			i.Status, i.ErrorCode, i.ErrorMessage, i.FinishedAt = f.Status, f.ErrorCode, f.ErrorMessage, f.FinishedAt
+		}
+		r.mu.Unlock()
+	}
 	return &i, err
 }
 

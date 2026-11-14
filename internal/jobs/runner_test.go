@@ -296,3 +296,56 @@ func TestRunRetriesRecover(t *testing.T) {
 		}
 	}
 }
+
+// CR-38: the final status write is retried; if it never lands, Get still reports the real result.
+func TestFinalWriteIsRetried(t *testing.T) {
+	r, db := newRunner(t)
+	r.Register(domain.JobKindLesson, func(context.Context, jobs.Job) error { return nil })
+	var calls atomic.Int32
+	r.SetFinalWriteFault(func() error {
+		if calls.Add(1) <= 2 {
+			return errors.New("database is locked")
+		}
+		return nil
+	})
+	id := enqueue(t, r, "topic:1")
+	start(t, r)
+	if got := waitStatus(t, db, id, domain.JobStatusSucceeded); !got.finished {
+		t.Errorf("got %+v", got)
+	}
+	if n := calls.Load(); n != 3 {
+		t.Errorf("write attempts = %d, want 3", n)
+	}
+}
+
+func TestFinalWriteFailureIsVisible(t *testing.T) {
+	r, db := newRunner(t)
+	r.Register(domain.JobKindLesson, func(context.Context, jobs.Job) error { return errors.New("disk full") })
+	var calls atomic.Int32
+	r.SetFinalWriteFault(func() error { calls.Add(1); return errors.New("database is locked") })
+	id := enqueue(t, r, "topic:1")
+	start(t, r)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		i, err := r.Get(context.Background(), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i.Status == string(domain.JobStatusFailed) {
+			if i.ErrorMessage != "disk full" || i.FinishedAt == "" || i.Active() {
+				t.Errorf("got %+v", i)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("Get still reports %s", i.Status)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if n := calls.Load(); n != 5 {
+		t.Errorf("write attempts = %d, want 5", n)
+	}
+	if got := get(t, db, id); got.status != string(domain.JobStatusRunning) {
+		t.Errorf("row: got %+v", got)
+	}
+}

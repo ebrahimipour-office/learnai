@@ -74,6 +74,8 @@ func (e *BusyError) Error() string {
 }
 func (e *BusyError) Unwrap() error { return domain.ErrScopeBusy }
 
+const finalWriteAttempts = 5
+
 type Runner struct {
 	db       *store.DB
 	max      int
@@ -82,6 +84,9 @@ type Runner struct {
 
 	mu      sync.Mutex
 	running map[int64]context.CancelFunc
+	finals  map[int64]Info // results whose final DB write failed (CR-38); overlaid by Get/Latest
+
+	finalWriteFault func() error // test hook: a non-nil error fails one final-write attempt
 
 	Poll      time.Duration // dispatcher fallback tick (TDD §6.5: 2s)
 	Heartbeat time.Duration // heartbeat_at update interval (TDD §6.5: 5s)
@@ -94,8 +99,9 @@ type Runner struct {
 func New(db *store.DB, maxConcurrent int) *Runner {
 	return &Runner{
 		db: db, max: max(maxConcurrent, 1), handlers: map[domain.JobKind]Handler{}, wake: make(chan struct{}, 1),
-		running: map[int64]context.CancelFunc{},
-		Poll:    2 * time.Second, Heartbeat: 5 * time.Second,
+		running: map[int64]context.CancelFunc{}, finals: map[int64]Info{},
+		finalWriteFault: func() error { return nil },
+		Poll:            2 * time.Second, Heartbeat: 5 * time.Second,
 	}
 }
 
@@ -361,12 +367,32 @@ func (r *Runner) execute(ctx context.Context, j Job) {
 	}
 	// The final write must land even when ctx is already cancelled by shutdown.
 	// A succeeded job's commit landed; its journal is no longer needed (CR-03).
-	_, werr := r.db.Writer().ExecContext(context.WithoutCancel(ctx), `UPDATE jobs SET status = ?1, error_code = ?2,
-		error_message = ?3, finished_at = `+nowSQL+`,
-		commit_journal = CASE WHEN ?1 = 'succeeded' THEN NULL ELSE commit_journal END WHERE id = ?4`,
-		status, nullStr(code), nullStr(msg), j.ID)
+	// CR-38: retried, because a job left 'running' would become failed/interrupted on the next start
+	// even though its commit landed.
+	wctx := context.WithoutCancel(ctx)
+	var werr error
+	for attempt := 0; attempt < finalWriteAttempts; attempt++ {
+		if attempt > 0 {
+			time.Sleep(100 * time.Millisecond << (attempt - 1))
+		}
+		if werr = r.finalWriteFault(); werr == nil {
+			_, werr = r.db.Writer().ExecContext(wctx, `UPDATE jobs SET status = ?1, error_code = ?2,
+				error_message = ?3, finished_at = `+nowSQL+`,
+				commit_journal = CASE WHEN ?1 = 'succeeded' THEN NULL ELSE commit_journal END WHERE id = ?4`,
+				status, nullStr(code), nullStr(msg), j.ID)
+		}
+		if werr == nil {
+			break
+		}
+		slog.Error("Recording job result failed", "job", j.ID, "attempt", attempt+1, "error", werr)
+	}
 	if werr != nil {
-		slog.Error("Recording job result failed", "job", j.ID, "error", werr)
+		// shortcut: the row stays 'running' (scope busy) until restart, where Recover marks it interrupted;
+		// upgrade to a background re-write if this ever shows up in practice.
+		r.mu.Lock()
+		r.finals[j.ID] = Info{Status: string(status), ErrorCode: code, ErrorMessage: msg,
+			FinishedAt: time.Now().UTC().Format(time.RFC3339Nano)}
+		r.mu.Unlock()
 	}
 	slog.Info("Job finished", "job", j.ID, "status", status, "error_code", code)
 }
