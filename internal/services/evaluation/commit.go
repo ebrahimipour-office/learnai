@@ -105,6 +105,10 @@ func (s *Service) commit(ctx context.Context, j jobs.Job, mode string, set setIn
 			if err := json.Unmarshal(out.Evaluation, &ev); err != nil {
 				return err
 			}
+			// CR-32: a staged output for another exercise or other answer bytes must not be scored.
+			if out.ExerciseID != me.ID || out.AnswerSHA256 != pk.SHA {
+				return fmt.Errorf("%w: staged evaluation of %s does not match the current answer", domain.ErrInvalidState, me.ID)
+			}
 			skillVersion = out.SkillVersion
 			md, item, flags := Report(ReportInput{Weight: me.Weight, Question: exercises.Section(sh.exercisesMD, me.ID), Answer: pk.Body,
 				TemplateNormSHA: x.TemplateNormSHA,

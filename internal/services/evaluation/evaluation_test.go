@@ -459,6 +459,54 @@ func TestEvaluateNewAttemptKeepsHistory(t *testing.T) {
 }
 
 // A name collision rejects the commit: nothing is overwritten and no attempt row is recorded.
+// CR-32: a staged output whose answer hash differs from the current pick fails the commit.
+func TestEvaluateCommitRejectsTamperedStagedOutput(t *testing.T) {
+	e := setup(t, 1)
+	e.ad.fail["q02"] = true
+	id := e.enqueue("full")
+	if st, _ := e.wait(id); st != "failed" {
+		t.Fatalf("status %s, want failed", st)
+	}
+	e.ad.mu.Lock()
+	e.ad.fail["q02"] = false
+	e.ad.mu.Unlock()
+	retry, err := e.runner.Retry(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Tamper with every copy of q01's staged output (the retry inherits it).
+	for _, j := range []int64{id, retry} {
+		p := filepath.Join(e.dir, evaluation.OutputRel(j, "q01"))
+		b, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		var out map[string]json.RawMessage
+		if err := json.Unmarshal(b, &out); err != nil {
+			t.Fatal(err)
+		}
+		out["answer_sha256"] = json.RawMessage(`"deadbeef"`)
+		b, _ = json.Marshal(out)
+		if err := os.WriteFile(p, b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if st, code := e.wait(retry); st != "failed" {
+		t.Fatalf("retry status %s (%s), want failed", st, code)
+	}
+	if c := e.calls(); c["q01"] != 1 {
+		t.Fatalf("q01 calls = %d, want 1 (the tampered checkpoint must be the one committed)", c["q01"])
+	}
+	if _, err := os.Stat(filepath.Join(e.dir, evaluation.AttemptRel("02-http", 1, 1))); err == nil {
+		t.Error("attempt directory written despite the mismatch")
+	}
+	var n int
+	e.db.Writer().QueryRow(`SELECT COUNT(*) FROM attempts`).Scan(&n)
+	if n != 0 {
+		t.Errorf("%d attempts recorded", n)
+	}
+}
+
 func TestEvaluateCommitCollisionNeverOverwrites(t *testing.T) {
 	e := setup(t, 1)
 	dir := filepath.Join(e.dir, evaluation.AttemptRel("02-http", 1, 1))

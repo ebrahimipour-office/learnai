@@ -421,14 +421,14 @@ There are **no P0 tasks**.
   - [x] Test passes.
 - **Depends on:** consider together with CR-42.
 
-### - [ ] CR-32 — Check staged evaluation outputs against the current pick
+### - [x] CR-32 — Check staged evaluation outputs against the current pick
 - **Problem:** the commit ignores `out.ExerciseID` and `out.AnswerSHA256`.
 - **Affected files:** `internal/services/evaluation/commit.go:96-111`.
 - **Expected outcome:** a mismatch fails the commit with `ErrInvalidState`.
 - **Suggested implementation:** a two-line guard before use.
 - **Required regression tests:** tamper with a staged output's SHA → commit fails and no files are written.
 - **Acceptance criteria:**
-  - [ ] Test passes.
+  - [x] Test passes.
 - **Depends on:** none.
 
 ### - [ ] CR-33 — Undo on panic in commits; recover panics in evaluation step goroutines
