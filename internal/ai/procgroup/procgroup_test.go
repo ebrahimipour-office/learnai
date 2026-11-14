@@ -20,6 +20,8 @@ func TestMain(m *testing.M) {
 		fmt.Println("ready")
 		time.Sleep(time.Hour)
 		os.Exit(0)
+	case "exit":
+		os.Exit(0)
 	case "parent", "parent-exit":
 		gc := exec.Command(os.Args[0])
 		gc.Env = append(os.Environ(), "PROCGROUP_ROLE=grandchild")

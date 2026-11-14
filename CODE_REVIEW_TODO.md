@@ -320,7 +320,7 @@ There are **no P0 tasks**.
 
 ## P3 — Low
 
-### - [ ] CR-22 — Fix process-group kill timers (Unix)
+### - [x] CR-22 — Fix process-group kill timers (Unix)
 - **Problem:** `Kill` arms a SIGKILL timer that is never stopped (risk of killing a reused pgid). `release()` sends SIGKILL immediately, so grandchildren get no grace period.
 - **Affected files:** `internal/ai/procgroup/procgroup_unix.go:26-46`; `procgroup_test.go`.
 - **Expected outcome:** SIGTERM, a single grace timer, then SIGKILL; nothing is signalled after the group is known to be gone.
