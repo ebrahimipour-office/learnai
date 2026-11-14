@@ -3,6 +3,7 @@ package topics
 import (
 	"bytes"
 	"errors"
+	"io"
 	"io/fs"
 
 	"learninghub/internal/domain"
@@ -37,20 +38,21 @@ func SelectForEvaluation(root *fsx.Root, list []Exercise, mode string, maxBytes 
 	}
 	sel := &Selection{}
 	for _, x := range list {
-		info, err := root.Stat(x.AnswerRel)
+		f, err := root.Open(x.AnswerRel)
 		if errors.Is(err, fs.ErrNotExist) {
 			continue // missing
 		}
 		if err != nil {
 			return nil, err
 		}
-		if info.Size() > maxBytes {
-			sel.Review = append(sel.Review, x)
-			continue
-		}
-		b, err := root.ReadFile(x.AnswerRel)
+		b, over, err := readCapped(f, maxBytes)
+		f.Close()
 		if err != nil {
 			return nil, err
+		}
+		if over {
+			sel.Review = append(sel.Review, x)
+			continue
 		}
 		sha := fsx.HashBytes(b)
 		switch x.AnswerStatus(sha) {
@@ -61,7 +63,7 @@ func SelectForEvaluation(root *fsx.Root, list []Exercise, mode string, maxBytes 
 				continue // unchanged since its last evaluation; carried over (I3)
 			}
 		}
-		if int64(len(b)) > maxBytes || bytes.IndexByte(b, 0) >= 0 {
+		if bytes.IndexByte(b, 0) >= 0 {
 			sel.Review = append(sel.Review, x)
 			continue
 		}
@@ -71,4 +73,10 @@ func SelectForEvaluation(root *fsx.Root, list []Exercise, mode string, maxBytes 
 		return sel, domain.ErrNothingToEvaluate
 	}
 	return sel, nil
+}
+
+// readCapped reads at most max+1 bytes, so a file that grows after any size check cannot exhaust memory.
+func readCapped(r io.Reader, max int64) (b []byte, over bool, err error) {
+	b, err = io.ReadAll(io.LimitReader(r, max+1))
+	return b, int64(len(b)) > max, err
 }

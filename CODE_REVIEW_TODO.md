@@ -451,14 +451,14 @@ There are **no P0 tasks**.
   - [x] Tests pass.
 - **Depends on:** CR-07.
 
-### - [ ] CR-35 — Bound answer-file reads
+### - [x] CR-35 — Bound answer-file reads
 - **Problem:** after a `Stat` check, the whole file is read into memory.
 - **Affected files:** `internal/services/topics/select.go:40-66`.
 - **Expected outcome:** at most `max_answer_bytes + 1` bytes are read.
 - **Suggested implementation:** open, then `io.ReadAll(io.LimitReader(f, max+1))`.
 - **Required regression tests:** a file larger than the cap → `Review`, with allocation bounded (an injected reader).
 - **Acceptance criteria:**
-  - [ ] Test passes.
+  - [x] Test passes.
 - **Depends on:** CR-09 (same selection data).
 
 ### - [ ] CR-36 — Make the daily backup atomic
