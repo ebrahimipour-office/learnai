@@ -494,3 +494,22 @@ func TestRoot_EnsureRealDir_Symlink(t *testing.T) {
 		t.Errorf("EnsureRealDir through file expected error, got nil")
 	}
 }
+
+func TestWritesSyncParentDir(t *testing.T) {
+	root, err := fsx.OpenRoot(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	var got []string
+	defer fsx.SetSyncDirSpyForTest(func(dir string) { got = append(got, dir) })()
+	if err := root.WriteNew("a/new.txt", []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := root.WriteAtomic("b/atomic.txt", []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0] != "a" || got[1] != "b" {
+		t.Fatalf("synced dirs = %v, want [a b]", got)
+	}
+}

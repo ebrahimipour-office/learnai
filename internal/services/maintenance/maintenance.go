@@ -1,5 +1,6 @@
 // Package maintenance removes expired internal scratch files and backs up app.db (T6.5, TDD §8).
-// It only ever touches .app/work, .app/staging, .app/logs/jobs and .app/backup; the learner's files are never read or changed.
+// It only ever touches .app/work, .app/staging, .app/logs/jobs, .app/backup and the app's own stale
+// temp files (CR-34); the learner's files are never read or changed.
 package maintenance
 
 import (
@@ -11,6 +12,7 @@ import (
 	"io/fs"
 	"path"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -47,10 +49,34 @@ func (s *Service) Run(ctx context.Context, now time.Time) (*Result, error) {
 			return res, err
 		}
 	}
+	if err := s.sweepTmp(now, res); err != nil {
+		return res, err
+	}
 	if err := s.backup(ctx, now, res); err != nil {
 		return res, err
 	}
 	return res, nil
+}
+
+// tmpFile matches only the names fsx.WriteNew (.<base>.tmp-<hex>) and fsx.WriteAtomic (.tmp-<base>-<hex>) create.
+var tmpFile = regexp.MustCompile(`^\.(tmp-.+-|.+\.tmp-)[0-9a-f]{16}$`)
+
+// sweepTmp removes temp files a crash left behind; an hour is far longer than any write takes (CR-34).
+func (s *Service) sweepTmp(now time.Time, res *Result) error {
+	cutoff := now.Add(-time.Hour)
+	return fs.WalkDir(s.Root.FS(), ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || !d.Type().IsRegular() || !tmpFile.MatchString(d.Name()) {
+			return nil // unreadable, symlink, directory or not ours
+		}
+		if info, err := d.Info(); err != nil || info.ModTime().After(cutoff) {
+			return nil
+		}
+		if err := s.Root.Remove(p); err != nil {
+			return fmt.Errorf("removing stale temp file %s: %w", p, err)
+		}
+		res.Removed = append(res.Removed, p)
+		return nil
+	})
 }
 
 // clean removes <dir>/<job id> unless its job is queued/running, or finished within the retention

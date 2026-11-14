@@ -115,9 +115,22 @@ func isLinkUnsupported(err error) bool {
 	return false
 }
 
+// syncDirSpy, when set by a test, sees every directory fsync request (CR-34).
+var syncDirSpy func(dir string)
+
+// SetSyncDirSpyForTest registers a spy called with each directory that is fsynced (CR-34).
+func SetSyncDirSpyForTest(spy func(dir string)) (cleanup func()) {
+	syncDirSpy = spy
+	return func() { syncDirSpy = nil }
+}
+
+// syncDir makes a create/rename in dir durable. Best effort: Windows cannot fsync a directory.
 func syncDir(raw *os.Root, dir string) {
 	if dir == "" || dir == "/" {
 		dir = "."
+	}
+	if syncDirSpy != nil {
+		syncDirSpy(dir)
 	}
 	f, err := raw.Open(dir)
 	if err != nil {

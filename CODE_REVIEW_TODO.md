@@ -441,14 +441,14 @@ There are **no P0 tasks**.
   - [x] Tests pass under `-race`.
 - **Depends on:** CR-03 (the journal covers crashes that undo cannot).
 
-### - [ ] CR-34 — Fsync directories after create or rename; sweep stale temp files
+### - [x] CR-34 — Fsync directories after create or rename; sweep stale temp files
 - **Problem:** directory entries are not fsynced; `.tmp-*` leftovers from `WriteAtomic` are never removed.
 - **Affected files:** `internal/fsx/writenew.go:43,91-107`; `internal/services/maintenance/maintenance.go`.
 - **Expected outcome:** durable create and rename on Unix; no tmp files older than 1 h.
 - **Suggested implementation:** a `syncDir(rel)` helper (no-op on Windows), called after `WriteNew`, `WriteAtomic` and `Link`; maintenance walks the known lesson and topic directories for `.tmp-*` older than 1 h.
 - **Required regression tests:** a directory-sync spy is called; maintenance removes an old tmp file and keeps a fresh one.
 - **Acceptance criteria:**
-  - [ ] Tests pass.
+  - [x] Tests pass.
 - **Depends on:** CR-07.
 
 ### - [ ] CR-35 — Bound answer-file reads

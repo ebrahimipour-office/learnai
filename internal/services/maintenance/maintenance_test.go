@@ -201,3 +201,51 @@ func TestMaintenance_SkipsSymlinkedEntries(t *testing.T) {
 		t.Fatalf("topics/01-http/answer.go content modified: %s", string(b))
 	}
 }
+
+func TestRunSweepsStaleTempFiles(t *testing.T) {
+	base := t.TempDir()
+	db, err := store.Open(filepath.Join(base, "app.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	root, err := fsx.OpenRoot(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	now := time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)
+	dir := filepath.Join(base, "topics", "go")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// name -> age; want removed?
+	files := map[string]struct {
+		age  time.Duration
+		gone bool
+	}{
+		".lesson.md.tmp-0123456789abcdef": {2 * time.Hour, true},     // WriteNew leftover
+		".tmp-lesson.md-0123456789abcdef": {2 * time.Hour, true},     // WriteAtomic leftover
+		".answer.md.tmp-fedcba9876543210": {10 * time.Minute, false}, // may still be in flight
+		".tmp-notes":                      {2 * time.Hour, false},    // the learner's, not ours
+		"lesson.md":                       {2 * time.Hour, false},
+	}
+	for name, f := range files {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(p, now.Add(-f.age), now.Add(-f.age)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := (&maintenance.Service{DB: db, Root: root, LogRetention: time.Hour}).Run(context.Background(), now); err != nil {
+		t.Fatal(err)
+	}
+	for name, f := range files {
+		_, err := os.Stat(filepath.Join(dir, name))
+		if gone := os.IsNotExist(err); gone != f.gone {
+			t.Errorf("%s: removed = %v, want %v", name, gone, f.gone)
+		}
+	}
+}
