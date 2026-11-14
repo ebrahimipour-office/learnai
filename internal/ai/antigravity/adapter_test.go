@@ -448,3 +448,27 @@ func TestOpenLogUniqueDirsForParallelRuns(t *testing.T) {
 		t.Fatalf("expected step in log dir names, got %q and %q", l1.dir, l2.dir)
 	}
 }
+
+// CR-26: a cancelled or expired ctx fails fast: no process, no log directory.
+func TestRunDoneContextStartsNothing(t *testing.T) {
+	base := t.TempDir()
+	logs, err := fsx.OpenRoot(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer logs.Close()
+	a, req := newRun(t, "ok", logs)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := a.Run(ctx, req, nil); !errors.Is(err, ai.ErrCanceled) {
+		t.Fatalf("cancelled: got %v", err)
+	}
+	ctx, cancel = context.WithTimeout(context.Background(), -time.Second)
+	defer cancel()
+	if _, err := a.Run(ctx, req, nil); !errors.Is(err, ai.ErrTimeout) {
+		t.Fatalf("expired: got %v", err)
+	}
+	if ents, _ := os.ReadDir(base); len(ents) != 0 {
+		t.Fatalf("log dir created: %v", ents)
+	}
+}

@@ -51,3 +51,16 @@ func TestWatchValidNotesEveryRejection(t *testing.T) {
 		t.Fatalf("both attempts must be noted, got %q", a.notes)
 	}
 }
+
+// CR-26: a cancel after the first invalid output must not start a second run.
+func TestWatchValidNoRetryAfterCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	a := &noter{}
+	_, err := ai.WatchValid(ctx, a, ai.Request{}, nil, func(json.RawMessage) error {
+		cancel()
+		return fmt.Errorf("%w: bad", ai.ErrInvalidOutput)
+	})
+	if !errors.Is(err, ai.ErrCanceled) || a.calls != 1 {
+		t.Fatalf("want ErrCanceled after 1 call, got %v after %d", err, a.calls)
+	}
+}

@@ -24,6 +24,9 @@ func WatchValid(ctx context.Context, a Adapter, req Request, events chan<- Event
 	if !errors.Is(err, ErrInvalidOutput) {
 		return resp, err
 	}
+	if cerr := CtxErr(ctx); cerr != nil { // CR-26: a cancel after the first run must not start a second
+		return resp, cerr
+	}
 	note := err.Error()
 	if len(note) > maxRetryNote {
 		note = note[:maxRetryNote] + "…"

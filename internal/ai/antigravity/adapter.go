@@ -153,6 +153,9 @@ func lastLine(s string) string {
 // Run executes one prompt. The returned Response may be non-nil alongside an error
 // (it then carries Duration/RawLogDir/Text for diagnostics).
 func (a *Adapter) Run(ctx context.Context, req ai.Request, events chan<- ai.Event) (*ai.Response, error) {
+	if err := ai.CtxErr(ctx); err != nil { // CR-26: no process and no log dir once cancelled
+		return nil, err
+	}
 	if !filepath.IsAbs(req.WorkDir) {
 		return nil, fmt.Errorf("antigravity: WorkDir must be absolute: %q", req.WorkDir)
 	}
@@ -333,11 +336,8 @@ func (a *Adapter) outcome(ctx, runCtx context.Context, req ai.Request, res *resu
 	if waitErr == nil && res != nil && res.Status == "SUCCESS" {
 		return nil
 	}
-	if err := ctx.Err(); err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			return fmt.Errorf("%w: %v", ai.ErrTimeout, err)
-		}
-		return fmt.Errorf("%w: %v", ai.ErrCanceled, err)
+	if err := ai.CtxErr(ctx); err != nil {
+		return err
 	}
 	if runCtx.Err() != nil {
 		return fmt.Errorf("%w: killed after %s", ai.ErrTimeout, req.Timeout+a.cfg.KillGrace)

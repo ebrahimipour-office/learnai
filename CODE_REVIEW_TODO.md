@@ -360,14 +360,14 @@ There are **no P0 tasks**.
   - [x] Test passes.
 - **Depends on:** none.
 
-### - [ ] CR-26 — Respect cancellation before starting and before retrying
+### - [x] CR-26 — Respect cancellation before starting and before retrying
 - **Problem:** `Run(cancelledCtx)` returns `ErrToolFailed`; `WatchValid` starts a second attempt after a cancel.
 - **Affected files:** `internal/ai/antigravity/adapter.go:126-191`; `internal/ai/retry.go:34`.
 - **Expected outcome:** `ErrCanceled`/`ErrTimeout` with no process and no log directory.
 - **Suggested implementation:** an early `if err := ctx.Err(); err != nil { return nil, mapCtxErr(err) }` in `Run` and before the retry.
 - **Required regression tests:** `Run(cancelled)` → `errors.Is(err, ai.ErrCanceled)`; `WatchValid` with a cancel after the first invalid output → exactly 1 adapter call.
 - **Acceptance criteria:**
-  - [ ] Tests pass.
+  - [x] Tests pass.
 - **Depends on:** none.
 
 ### - [ ] CR-27 — Bound stderr and NDJSON line buffers

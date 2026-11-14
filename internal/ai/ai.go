@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -95,6 +96,18 @@ var (
 	ErrSourceTooLarge = errors.New("ai: chapter source too large")
 	ErrSourceMissing  = errors.New("ai: chapter source missing")
 )
+
+// CtxErr maps a done ctx to ErrTimeout (deadline) or ErrCanceled; nil while ctx is live.
+func CtxErr(ctx context.Context) error {
+	switch err := ctx.Err(); {
+	case err == nil:
+		return nil
+	case errors.Is(err, context.DeadlineExceeded):
+		return fmt.Errorf("%w: %v", ErrTimeout, err)
+	default:
+		return fmt.Errorf("%w: %v", ErrCanceled, err)
+	}
+}
 
 // Code maps an adapter error to jobs.error_code (TDD §6.1 table); "" for nil.
 func Code(err error) string {
