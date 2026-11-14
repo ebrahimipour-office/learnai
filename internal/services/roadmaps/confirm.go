@@ -141,6 +141,9 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 		for {
 			rel = fmt.Sprintf("roadmaps/%s/rev-%03d.md", slug, revNo)
 			b, err := s.root.ReadFile(rel)
+			if err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return fmt.Errorf("reading %s: %w", rel, err) // e.g. ENOTDIR: retrying the next rev_no would loop forever
+			}
 			if errors.Is(err, fs.ErrNotExist) {
 				if !s.root.Exists(ChoiceRel(rel)) {
 					break
