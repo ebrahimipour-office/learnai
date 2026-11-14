@@ -295,14 +295,14 @@ There are **no P0 tasks**.
 - **Depends on:** CR-06 (numbering helper reused by rebuild), CR-18.
 - **Done (2026-11-10, R5):** per-revision `roadmaps/<slug>/rev-NNN.choice.json` (rule + excluded keys) instead of one `rule.json`, because the rule can change on re-import. `TestRebuildKeepsSelectionRule` (level rule with an exclusion, then a chapters re-import); legacy case in `TestRebuildFromFiles`. Not done: per-folder fallback roadmap for unmatched topics (still the first roadmap); `tree` + `parent_id` left to T8.3.
 
-### - [ ] CR-20 — Surface htmx errors and recover from a stale CSRF token
+### - [x] CR-20 — Surface htmx errors and recover from a stale CSRF token
 - **Problem:** responses not in 2xx/409/413/422 are neither swapped nor shown. After a server restart every htmx POST silently returns 403.
 - **Affected files:** `internal/ui/static/app.js`; `internal/ui/templates/layout.html:6` (add an alert container); optionally `internal/httpserver/middleware.go` (send a distinguishable 403 body or header, e.g. `HX-Trigger: csrf-stale`).
 - **Expected outcome:** the user always sees feedback; a stale token leads to an automatic reload.
 - **Suggested implementation:** in `app.js`, `document.body.addEventListener("htmx:responseError", …)` and `"htmx:sendError"`: on a 403 CSRF failure, `location.reload()`; otherwise write a Persian message with `textContent` into `<div id="flash" role="alert">`.
 - **Required regression tests:** template test: the layout contains `#flash` and `app.js` registers both listeners. Browser or acceptance test: an htmx POST with a wrong token reloads the page or shows the alert.
 - **Acceptance criteria:**
-  - [ ] Manual check: restart the server with a tab open, click an action → page reloads and the action works.
+  - [x] Manual check (Playwright, stale token simulated): restart the server with a tab open, click an action → page reloads and the action works.
 - **Depends on:** none.
 
 ### - [x] CR-21 — Upgrade `golang.org/x/net` and run govulncheck

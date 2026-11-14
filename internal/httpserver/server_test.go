@@ -175,6 +175,17 @@ func TestSecurityMiddlewareIsWired(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "htmx") {
 		t.Errorf("local htmx: want 200, got %d", rec.Code)
 	}
+	// CR-20: htmx errors land in #flash; a stale CSRF token reloads the page.
+	rec = e.do(httptest.NewRequest(http.MethodGet, "/topics", nil))
+	if !strings.Contains(rec.Body.String(), `<div id="flash" class="error" role="alert" hidden>`) {
+		t.Error("layout lacks the #flash alert container")
+	}
+	rec = e.do(httptest.NewRequest(http.MethodGet, "/static/app.js", nil))
+	for _, want := range []string{`"htmx:responseError"`, `"htmx:sendError"`, `"X-CSRF-Stale"`, "location.reload()"} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Errorf("app.js missing %s", want)
+		}
+	}
 	// T7.9: the Persian font is embedded locally (CSP forbids remote fonts) and app.css points at it.
 	rec = e.do(httptest.NewRequest(http.MethodGet, "/static/app.css", nil))
 	if !strings.Contains(rec.Body.String(), "url(fonts/vazirmatn-arabic.woff2)") {

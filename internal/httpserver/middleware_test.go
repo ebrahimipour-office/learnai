@@ -56,6 +56,9 @@ func TestSecurityMiddleware(t *testing.T) {
 		if rec.Code != http.StatusForbidden {
 			t.Errorf("Expected 403 Forbidden for POST without CSRF token, got %d", rec.Code)
 		}
+		if rec.Header().Get("X-CSRF-Stale") != "1" {
+			t.Error("CSRF 403 must carry X-CSRF-Stale so app.js can reload (CR-20)")
+		}
 	})
 
 	t.Run("Rejects POST with invalid Origin", func(t *testing.T) {

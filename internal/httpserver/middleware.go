@@ -125,6 +125,7 @@ func (sm *SecurityManager) SecurityMiddleware(next http.Handler) http.Handler {
 			}
 
 			if !sm.validateCSRF(submittedToken) {
+				w.Header().Set("X-CSRF-Stale", "1") // app.js reloads to pick up the new token (CR-20)
 				http.Error(w, "Forbidden: Invalid or missing CSRF token", http.StatusForbidden)
 				return
 			}

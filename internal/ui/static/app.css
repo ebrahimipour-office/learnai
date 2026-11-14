@@ -56,7 +56,7 @@ main > section > h2:first-child, #topic-results > section > h2:first-child, .ai-
 .note { font-size: .92em; }
 .count strong { color: var(--fg); }
 .error { color: var(--danger); }
-p.error { background: var(--danger-soft); border-inline-start: 3px solid currentColor; padding: .5rem .75rem; }
+p.error, #flash { background: var(--danger-soft); border-inline-start: 3px solid currentColor; padding: .5rem .75rem; }
 .empty { text-align: center; padding: 2.5rem 1rem; }
 main > .empty { border: 1px dashed var(--line); }
 .score { color: var(--mark); font-weight: 800; font-variant-numeric: tabular-nums; }
