@@ -400,15 +400,15 @@ There are **no P0 tasks**.
   - [x] Existing classification tests stay green.
 - **Depends on:** CR-27.
 
-### - [ ] CR-30 — Align AI output schemas with downstream limits; enforce `max_lesson_bytes`
+### - [x] CR-30 — Align AI output schemas with downstream limits; enforce `max_lesson_bytes`
 - **Problem:** AI schemas lack the length and count limits of `manifest`/`rubric`, which wastes retries; `limits.max_lesson_bytes` is never used.
 - **Affected files:** `internal/schema/ai-*.schema.json`; `internal/schema/rubric.schema.json`; `internal/schema/manifest.schema.json`; `internal/services/lessons/lessons.go` (`Validate`); `cmd/hub/main.go` (pass the limit).
 - **Expected outcome:** anything the AI schema accepts, `Build` accepts; oversized lessons are rejected.
 - **Suggested implementation:** copy the `maxLength`/`maxItems`/`minLength` limits; add a `MaxBytes` field to `lessons.Service` and check it in `Validate`.
 - **Required regression tests:** a schema-consistency test comparing limits field by field; a lesson over the cap → `invalid_output`.
 - **Acceptance criteria:**
-  - [ ] Tests pass.
-  - [ ] No config option is left without a consumer (grep).
+  - [x] Tests pass.
+  - [x] No config option is left without a consumer (grep).
 - **Depends on:** none.
 
 ### - [ ] CR-31 — Include the adapter name in the evaluation retry fingerprint

@@ -387,6 +387,34 @@ func TestExternalKnowledgeMirroredInRubric(t *testing.T) {
 	}
 }
 
+// CR-30: five AI out-of-scope topics plus five other external topics must not overflow the
+// rubric's cap of 5; the mirrored external topics win.
+func TestOutOfScopeMergeStaysUnderCap(t *testing.T) {
+	e := setup(t)
+	ex := exercise("TLS client", "tls", ".go", 100)
+	var ext, oos []map[string]string
+	for _, s := range []string{"v", "w", "x", "y", "z"} {
+		ext = append(ext, map[string]string{"topic": s, "note": "n"})
+	}
+	for _, s := range []string{"a", "b", "c", "d", "e"} {
+		oos = append(oos, map[string]string{"topic": s, "handling": "do_not_penalize"})
+	}
+	ex["external_knowledge"] = ext
+	ex["rubric"].(map[string]any)["out_of_scope_knowledge"] = oos
+	if st, code := e.run(2, output(ex, exercise("B", "b", ".go", 100), exercise("C", "c", ".go", 100)), `{}`); st != "succeeded" {
+		t.Fatalf("status %s (%s)", st, code)
+	}
+	var r schema.Rubric
+	_ = json.Unmarshal(e.read("topics/02-http/.internal/rubric-v1.json"), &r)
+	var got []string
+	for _, o := range r.Exercises[0].OutOfScopeKnowledge {
+		got = append(got, o.Topic)
+	}
+	if strings.Join(got, ",") != "v,w,x,y,z" {
+		t.Errorf("out_of_scope_knowledge = %v", got)
+	}
+}
+
 // B5: criterion ids are the app's (c1..cN), like qNN; a real agy reply with "crit-1-…" ids must
 // be accepted on the first try instead of costing a retry.
 func TestBuildAssignsCriterionIDs(t *testing.T) {

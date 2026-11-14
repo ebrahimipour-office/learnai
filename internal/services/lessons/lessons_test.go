@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"learninghub/internal/ai"
 	"learninghub/internal/ai/fake"
 	"learninghub/internal/ai/prompt"
 	"learninghub/internal/domain"
@@ -473,5 +474,16 @@ func TestTreeExcerpt(t *testing.T) {
 	}
 	if got, want := e.excerptFor(3), "زیربخشِ: Intro\n\n# Routing\n"; got != want {
 		t.Errorf("child excerpt = %q, want %q", got, want)
+	}
+}
+
+// CR-30: limits.max_lesson_bytes caps the rendered lesson.
+func TestValidateMaxBytes(t *testing.T) {
+	out := output(strings.Repeat("درس ", 100))
+	if _, err := lessons.Validate(out, 100); ai.Code(err) != "invalid_output" {
+		t.Fatalf("over cap: got %v", err)
+	}
+	if _, err := lessons.Validate(out, 0); err != nil {
+		t.Fatalf("no cap: %v", err)
 	}
 }

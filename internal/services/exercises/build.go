@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"slices"
 	"strings"
 
 	"learninghub/internal/ai"
@@ -71,6 +72,9 @@ type Set struct {
 }
 
 const maxWeight = 1000
+
+// maxOutOfScope is rubric.schema.json out_of_scope_knowledge.maxItems.
+const maxOutOfScope = 5
 
 // Build turns the AI output into the on-disk forms and checks them all (TDD §5.1, §5.2).
 // Every failure wraps ai.ErrInvalidOutput so the caller retries once with the message.
@@ -205,6 +209,7 @@ func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
 // outOfScope adds a do_not_penalize entry for every external topic the AI left out of the rubric (R3.2, R8.3),
 // so a forgotten mirror costs no retry; the crosscheck still guards every other path.
 func outOfScope(oos []schema.OutOfScopeKnowledge, ext []schema.ExternalKnowledge) []schema.OutOfScopeKnowledge {
+	oos = slices.Clone(oos) // never write into the AI output's backing array
 	have := map[string]bool{}
 	for _, o := range oos {
 		have[strings.ToLower(o.Topic)] = true
@@ -213,6 +218,16 @@ func outOfScope(oos []schema.OutOfScopeKnowledge, ext []schema.ExternalKnowledge
 		if !have[strings.ToLower(e.Topic)] {
 			have[strings.ToLower(e.Topic)] = true
 			oos = append(oos, schema.OutOfScopeKnowledge{Topic: e.Topic, Handling: "do_not_penalize"})
+		}
+	}
+	// CR-30: the merge may exceed the rubric's cap; drop the AI's own extras, never a mirrored external topic.
+	mirrored := map[string]bool{}
+	for _, e := range ext {
+		mirrored[strings.ToLower(e.Topic)] = true
+	}
+	for i := len(oos) - 1; i >= 0 && len(oos) > maxOutOfScope; i-- {
+		if !mirrored[strings.ToLower(oos[i].Topic)] {
+			oos = append(oos[:i], oos[i+1:]...)
 		}
 	}
 	return oos

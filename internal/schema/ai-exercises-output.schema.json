@@ -23,7 +23,7 @@
           "rubric"
         ],
         "properties": {
-          "title": { "type": "string", "minLength": 1 },
+          "title": { "type": "string", "minLength": 1, "maxLength": 200 },
           "type": { "enum": ["coding", "conceptual", "code_analysis", "problem_solving"] },
           "difficulty": { "enum": ["easy", "medium", "hard"] },
           "weight": { "type": "number", "exclusiveMinimum": 0 },
@@ -34,20 +34,21 @@
             "required": ["slug", "ext", "language"],
             "properties": {
               "slug": { "type": "string" },
-              "ext": { "type": "string" },
-              "language": { "type": "string" },
+              "ext": { "type": "string", "pattern": "^\\.?[A-Za-z0-9]{1,8}$" },
+              "language": { "type": "string", "maxLength": 20 },
               "starter": { "type": "string", "maxLength": 1000 }
             }
           },
           "external_knowledge": {
             "type": "array",
+            "maxItems": 5,
             "items": {
               "type": "object",
               "additionalProperties": false,
               "required": ["topic", "note"],
               "properties": {
-                "topic": { "type": "string" },
-                "note": { "type": "string" }
+                "topic": { "type": "string", "maxLength": 120 },
+                "note": { "type": "string", "maxLength": 400 }
               }
             }
           },
@@ -62,20 +63,21 @@
                 "required": ["format", "content"],
                 "properties": {
                   "format": { "enum": ["code", "text"] },
-                  "language": { "type": "string" },
-                  "content": { "type": "string" }
+                  "language": { "type": "string", "maxLength": 20 },
+                  "content": { "type": "string", "minLength": 1, "maxLength": 20000 }
                 }
               },
               "criteria": {
                 "type": "array",
                 "minItems": 1,
+                "maxItems": 10,
                 "items": {
                   "type": "object",
                   "additionalProperties": false,
                   "required": ["description", "max_points", "category"],
                   "properties": {
                     "id": { "type": "string" },
-                    "description": { "type": "string" },
+                    "description": { "type": "string", "minLength": 1, "maxLength": 600 },
                     "max_points": { "type": "integer", "minimum": 1, "maximum": 100 },
                     "category": {
                       "enum": [
@@ -91,6 +93,7 @@
               },
               "common_errors": {
                 "type": "array",
+                "maxItems": 10,
                 "items": {
                   "type": "object",
                   "additionalProperties": false,
@@ -99,23 +102,24 @@
                     "type": {
                       "enum": ["conceptual", "logical", "technical", "style", "omission"]
                     },
-                    "description": { "type": "string" }
+                    "description": { "type": "string", "maxLength": 400 }
                   }
                 }
               },
               "out_of_scope_knowledge": {
                 "type": "array",
+                "maxItems": 5,
                 "items": {
                   "type": "object",
                   "additionalProperties": false,
                   "required": ["topic", "handling"],
                   "properties": {
-                    "topic": { "type": "string" },
+                    "topic": { "type": "string", "maxLength": 120 },
                     "handling": { "const": "do_not_penalize" }
                   }
                 }
               },
-              "grading_notes": { "type": "string" }
+              "grading_notes": { "type": "string", "maxLength": 1200 }
             }
           }
         }

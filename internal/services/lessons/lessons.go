@@ -39,6 +39,7 @@ type Service struct {
 	Timeout   time.Duration // config jobs.timeout_lesson
 	Stall     time.Duration // config jobs.stall_timeout
 	MaxSource int64         // config limits.max_source_bytes
+	MaxBytes  int64         // config limits.max_lesson_bytes; 0 = no cap
 }
 
 // Output is the AI's structured answer (ai-lesson-output.schema.json).
@@ -114,7 +115,7 @@ func (s *Service) Handle(ctx context.Context, j jobs.Job) error {
 	var out Output
 	resp, err := ai.WatchValid(ctx, s.Adapter, req, nil, func(raw json.RawMessage) (err error) {
 		s.phase(ctx, j.ID, "validate")
-		out, err = Validate(raw)
+		out, err = Validate(raw, s.MaxBytes)
 		return err
 	})
 	if resp != nil {
@@ -255,7 +256,8 @@ func excerpt(t topic) string {
 }
 
 // Validate checks the AI output against its schema and drops blank keywords/suggestions.
-func Validate(raw json.RawMessage) (Output, error) {
+// A rendered lesson over maxBytes (> 0) is invalid output (CR-30).
+func Validate(raw json.RawMessage, maxBytes int64) (Output, error) {
 	var out Output
 	if err := schema.ValidateAILessonOutput(raw); err != nil {
 		return out, fmt.Errorf("%w: %v", ai.ErrInvalidOutput, err)
@@ -281,6 +283,9 @@ func Validate(raw json.RawMessage) (Output, error) {
 		}
 	}
 	out.Suggestions = sg
+	if n := int64(len(Render(out))); maxBytes > 0 && n > maxBytes {
+		return out, fmt.Errorf("%w: lesson is %d bytes, over the %d-byte limit", ai.ErrInvalidOutput, n, maxBytes)
+	}
 	return out, nil
 }
 
