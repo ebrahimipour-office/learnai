@@ -383,6 +383,18 @@ func (e *env) restart() {
 	}
 }
 
+// CR-33: a panic inside the commit transaction is undone in-process; no restart needed.
+func TestPanicInTxLeavesNoFiles(t *testing.T) {
+	e := setup(t)
+	lessons.SetInCommitTx(t, func() { panic("boom") })
+	if st, _ := e.run(output("# lost lesson", "a"), `{}`); st != "failed" {
+		t.Fatalf("status %s, want failed", st)
+	}
+	if e.root.Exists(lessonRel) {
+		t.Error("orphan lesson.md left behind")
+	}
+}
+
 func TestCrashBeforeTxFirstLesson(t *testing.T) {
 	e := setup(t)
 	e.crash(output("# lost lesson", "a"), `{}`)

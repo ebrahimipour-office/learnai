@@ -220,6 +220,11 @@ func (s *Service) run(ctx context.Context, j jobs.Job, mode string) error {
 		}
 		wg.Go(func() {
 			defer func() { <-sem }()
+			defer func() { // CR-33: a panicking step fails the job, not the server
+				if p := recover(); p != nil {
+					once.Do(func() { first = fmt.Errorf("step %s panic: %v", pk.ExID, p) })
+				}
+			}()
 			if err := s.step(ctx, j, sh, pk); err != nil {
 				once.Do(func() { first = err })
 			}

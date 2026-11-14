@@ -431,14 +431,14 @@ There are **no P0 tasks**.
   - [x] Test passes.
 - **Depends on:** none.
 
-### - [ ] CR-33 — Undo on panic in commits; recover panics in evaluation step goroutines
+### - [x] CR-33 — Undo on panic in commits; recover panics in evaluation step goroutines
 - **Problem:** undo runs only on a returned error; a panic in a `wg.Go` step crashes the server.
 - **Affected files:** `internal/services/lessons/lessons.go:330-332`; `internal/services/exercises/exercises.go:261-347`; `internal/services/evaluation/commit.go:166-231`; `internal/services/evaluation/evaluation.go:205-210`.
 - **Expected outcome:** a panic leaves no orphan files and fails only the job.
 - **Suggested implementation:** a `committed` flag plus `defer func(){ if !committed { undo() } }()`; inside `wg.Go`, `defer func(){ if p := recover(); p != nil { once.Do(func(){ first = fmt.Errorf("panic: %v", p) }) } }()`.
 - **Required regression tests:** inject a panic into a step → job `failed`, server alive; inject a panic into the tx closure → no files remain.
 - **Acceptance criteria:**
-  - [ ] Tests pass under `-race`.
+  - [x] Tests pass under `-race`.
 - **Depends on:** CR-03 (the journal covers crashes that undo cannot).
 
 ### - [ ] CR-34 — Fsync directories after create or rename; sweep stale temp files

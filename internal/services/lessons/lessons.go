@@ -365,15 +365,21 @@ func (s *Service) commit(ctx context.Context, j jobs.Job, skill ai.SkillRef, t t
 	}
 
 	beforeCommitTx()
-	if err := s.record(ctx, j, skill, t, cur, hist, prev, md, out); err != nil {
-		undo()
-		return err
-	}
-	return nil
+	// CR-33: a panic inside the transaction must not leave orphan files either.
+	committed := false
+	defer func() {
+		if !committed {
+			undo()
+		}
+	}()
+	err := s.record(ctx, j, skill, t, cur, hist, prev, md, out)
+	committed = err == nil
+	return err
 }
 
 func (s *Service) record(ctx context.Context, j jobs.Job, skill ai.SkillRef, t topic, cur current, hist string, prev, md []byte, out Output) error {
 	return s.DB.WithTx(ctx, func(tx *sql.Tx) error {
+		inCommitTx()
 		sha, size := fsx.HashBytes(md), len(md)
 		fileID := cur.FileID
 		if cur.ID == 0 {
@@ -437,3 +443,6 @@ func (s *Service) record(ctx context.Context, j jobs.Job, skill ai.SkillRef, t t
 
 // beforeCommitTx runs between the file writes and the DB transaction; tests replace it to simulate a crash (CR-03).
 var beforeCommitTx = func() {}
+
+// inCommitTx runs first inside the commit transaction; tests replace it to inject a panic (CR-33).
+var inCommitTx = func() {}

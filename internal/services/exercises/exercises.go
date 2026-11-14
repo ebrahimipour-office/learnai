@@ -259,7 +259,15 @@ func (s *Service) commit(ctx context.Context, j jobs.Job, t topic, curID int64, 
 	}
 
 	beforeCommitTx()
+	// CR-33: a panic inside the transaction must not leave orphan files either.
+	committed := false
+	defer func() {
+		if !committed {
+			undo()
+		}
+	}()
 	err := s.DB.WithTx(ctx, func(tx *sql.Tx) error {
+		inCommitTx()
 		ids := make([]int64, len(files))
 		for i, f := range files {
 			immutable := 0
@@ -343,11 +351,12 @@ func (s *Service) commit(ctx context.Context, j jobs.Job, t topic, curID int64, 
 		_, err = tx.ExecContext(ctx, `UPDATE jobs SET result_ref = ? WHERE id = ?`, string(ref), j.ID)
 		return err
 	})
-	if err != nil {
-		undo()
-	}
+	committed = err == nil
 	return err
 }
 
 // beforeCommitTx runs between the file writes and the DB transaction; tests replace it to simulate a crash (CR-03).
 var beforeCommitTx = func() {}
+
+// inCommitTx runs first inside the commit transaction; tests replace it to inject a panic (CR-33).
+var inCommitTx = func() {}

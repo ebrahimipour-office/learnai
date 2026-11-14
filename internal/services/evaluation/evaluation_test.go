@@ -26,6 +26,7 @@ type adapter struct {
 	mu                    sync.Mutex
 	calls                 map[string]int
 	fail                  map[string]bool
+	panics                map[string]bool
 	award                 map[string]int // awarded points for c1; default 7
 	task, question        map[string]string
 	source                map[string]string // inputs/source.md per exercise; absent = not sent
@@ -61,7 +62,7 @@ func (a *adapter) Run(ctx context.Context, req ai.Request, _ chan<- ai.Event) (*
 	}
 	a.inFlight++
 	a.maxInFlight = max(a.maxInFlight, a.inFlight)
-	fail := a.fail[t.ExerciseID]
+	fail, boom := a.fail[t.ExerciseID], a.panics[t.ExerciseID]
 	award := 7
 	if v, ok := a.award[t.ExerciseID]; ok {
 		award = v
@@ -71,6 +72,9 @@ func (a *adapter) Run(ctx context.Context, req ai.Request, _ chan<- ai.Event) (*
 	a.mu.Lock()
 	a.inFlight--
 	a.mu.Unlock()
+	if boom {
+		panic("scripted panic")
+	}
 	if fail {
 		return nil, fmt.Errorf("%w: scripted", ai.ErrToolFailed)
 	}
@@ -680,6 +684,33 @@ func TestCrashBeforeTxRecovers(t *testing.T) {
 	e.db.Writer().QueryRow(`SELECT COUNT(*) FROM attempts WHERE set_id = 1 AND attempt_no = 1`).Scan(&n)
 	if n != 1 {
 		t.Error("next job did not record attempt 1")
+	}
+}
+
+// CR-33: a panic inside the commit transaction is undone in-process; no restart needed.
+func TestPanicInTxLeavesNoFiles(t *testing.T) {
+	e := setup(t, 1)
+	evaluation.SetInCommitTx(t, func() { panic("boom") })
+	if st, _ := e.wait(e.enqueue("full")); st != "failed" {
+		t.Fatalf("status %s, want failed", st)
+	}
+	for _, f := range []string{"result.json", "summary.md", "q01-report.md"} {
+		if e.root.Exists(evaluation.AttemptRel("02-http", 1, 1) + "/" + f) {
+			t.Errorf("orphan %s left behind", f)
+		}
+	}
+}
+
+// CR-33: a panic in one step goroutine fails the job; the other steps finish and the process lives.
+func TestStepPanicFailsOnlyTheJob(t *testing.T) {
+	e := setup(t, 2)
+	e.ad.panics = map[string]bool{"q02": true}
+	id := e.enqueue("full")
+	if st, _ := e.wait(id); st != "failed" {
+		t.Fatalf("status %s, want failed", st)
+	}
+	if s := e.steps(id); s["exercise:q01"] != "done" {
+		t.Errorf("steps = %v, want q01 done", s)
 	}
 }
 
