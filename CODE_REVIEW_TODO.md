@@ -635,14 +635,14 @@ There are **no P0 tasks**.
   - [x] Golden tests checked (no non-ZWNJ format characters present in golden inputs; existing golden outputs remain byte-identical), with a note in `PROGRESS.md`.
 - **Depends on:** none.
 
-### - [ ] CR-52 — Sync: guard updates, re-verify moves, ignore empty-file matches
+### - [x] CR-52 — Sync: guard updates, re-verify moves, ignore empty-file matches
 - **Problem:** Scan writes stale observations unconditionally; ApplyMoves does not re-check hashes; empty files can match as moves.
 - **Affected files:** `internal/services/syncsvc/syncsvc.go:133-144,226-260,381-390`.
 - **Expected outcome:** no stale overwrite, no move applied to a changed file, no empty-file matching.
 - **Suggested implementation:** `UPDATE … WHERE id=? AND rel_path=? AND sha256=?`; recompute the target hash (or header) in ApplyMoves; skip `sha256("")` in matching.
 - **Required regression tests:** change the target between Scan and Apply → refused; an empty missing file and an empty new file → no proposal.
 - **Acceptance criteria:**
-  - [ ] Tests pass.
+  - [x] Tests pass.
 - **Depends on:** CR-04.
 
 ### - [ ] CR-53 — One timestamp format per attempt

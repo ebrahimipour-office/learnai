@@ -30,6 +30,9 @@ const (
 // hubRe reads the answer-template header written by fsx.GenerateAnswerTemplate.
 var hubRe = regexp.MustCompile(`@hub:topic=([^,\s]+),set=v(\d+),ex=([A-Za-z0-9_.-]+)`)
 
+// emptySHA is the SHA-256 hash of an empty byte slice. Empty files are never matched as moves.
+var emptySHA = fsx.HashString("")
+
 // Item is a registered file in a finding.
 type Item struct {
 	FileID  int64  `json:"file_id"`
@@ -41,8 +44,10 @@ type Item struct {
 // Move is a missing registered file found at another path.
 type Move struct {
 	Item
-	To string `json:"to"`
-	By string `json:"by"` // "hash" | "header"
+	To      string `json:"to"`
+	By      string `json:"by"` // "hash" | "header"
+	SHA     string `json:"sha,omitempty"`
+	FileSHA string `json:"file_sha,omitempty"`
 }
 
 // Report is sync_runs.report.
@@ -75,6 +80,9 @@ type row struct {
 }
 
 // Scan checks every registered file and every file under topics/, records observations and the report.
+// beforeCommitTx runs between disk observation and the DB transaction; tests replace it to simulate concurrent DB changes (CR-52).
+var beforeCommitTx = func() {}
+
 func (s *Service) Scan(ctx context.Context) (*Run, error) {
 	started := time.Now().UTC().Format(time.RFC3339Nano)
 	rows, err := s.rows(ctx)
@@ -90,7 +98,11 @@ func (s *Service) Scan(ctx context.Context) (*Run, error) {
 		sha   string
 		mtime int64
 	}
-	seen := map[int64]obs{}
+	type observed struct {
+		r   row
+		obs obs
+	}
+	var seen []observed
 	rep := Report{Missing: []Item{}, Moved: []Move{}, New: []string{}, Modified: []Item{}, Skipped: []string{}}
 	var missing []row
 	for _, r := range rows {
@@ -102,7 +114,7 @@ func (s *Service) Scan(ctx context.Context) (*Run, error) {
 		if err != nil {
 			return nil, fmt.Errorf("reading %s: %w", r.RelPath, err)
 		}
-		seen[r.FileID] = obs{sha, mtime}
+		seen = append(seen, observed{r: r, obs: obs{sha, mtime}})
 		if sha != r.SHA && r.Kind != "answer" {
 			rep.Modified = append(rep.Modified, r.Item)
 		}
@@ -132,15 +144,16 @@ func (s *Service) Scan(ctx context.Context) (*Run, error) {
 		return nil, err
 	}
 	run := &Run{StartedAt: started, Report: rep}
+	beforeCommitTx()
 	err = s.DB.WithTx(ctx, func(tx *sql.Tx) error {
-		for id, o := range seen {
+		for _, o := range seen {
 			if _, err := tx.ExecContext(ctx, `UPDATE files SET observed_sha256 = ?, observed_mtime = ?, observed_at = `+nowSQL+`,
-				presence = 'present' WHERE id = ?`, o.sha, o.mtime, id); err != nil {
+				presence = 'present' WHERE id = ? AND rel_path = ? AND sha256 = ?`, o.obs.sha, o.obs.mtime, o.r.FileID, o.r.RelPath, o.r.SHA); err != nil {
 				return err
 			}
 		}
 		for _, r := range missing {
-			if _, err := tx.ExecContext(ctx, `UPDATE files SET presence = 'missing', observed_at = `+nowSQL+` WHERE id = ?`, r.FileID); err != nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE files SET presence = 'missing', observed_at = `+nowSQL+` WHERE id = ? AND rel_path = ? AND sha256 = ?`, r.FileID, r.RelPath, r.SHA); err != nil {
 				return err
 			}
 		}
@@ -223,8 +236,10 @@ func (s *Service) match(ctx context.Context, missing []row, candidates []string)
 	}
 	byHash := map[string][]int{} // sha → indexes into missing
 	for i, r := range missing {
-		byHash[r.SHA] = append(byHash[r.SHA], i)
-		if r.Observed != "" && r.Observed != r.SHA {
+		if r.SHA != "" && r.SHA != emptySHA {
+			byHash[r.SHA] = append(byHash[r.SHA], i)
+		}
+		if r.Observed != "" && r.Observed != r.SHA && r.Observed != emptySHA {
 			byHash[r.Observed] = append(byHash[r.Observed], i)
 		}
 	}
@@ -240,15 +255,23 @@ func (s *Service) match(ctx context.Context, missing []row, candidates []string)
 			return nil, nil, fmt.Errorf("hashing %s: %w", p, err)
 		}
 		cands[ci] = cand{p, sha}
-		if idx := byHash[sha]; len(idx) == 1 {
-			hashHits[idx[0]] = append(hashHits[idx[0]], ci)
+		if sha != "" && sha != emptySHA {
+			if idx := byHash[sha]; len(idx) == 1 {
+				hashHits[idx[0]] = append(hashHits[idx[0]], ci)
+			}
 		}
 	}
 	taken := map[int]bool{}   // candidate index
 	matched := map[int]bool{} // missing index
 	for mi, cis := range hashHits {
 		if len(cis) == 1 {
-			moves = append(moves, Move{Item: missing[mi].Item, To: cands[cis[0]].path, By: "hash"})
+			moves = append(moves, Move{
+				Item:    missing[mi].Item,
+				To:      cands[cis[0]].path,
+				By:      "hash",
+				SHA:     cands[cis[0]].sha,
+				FileSHA: missing[mi].SHA,
+			})
 			taken[cis[0]], matched[mi] = true, true
 		}
 	}
@@ -270,7 +293,12 @@ func (s *Service) match(ctx context.Context, missing []row, candidates []string)
 	}
 	for mi, cis := range headerHits {
 		if len(cis) == 1 {
-			moves = append(moves, Move{Item: missing[mi].Item, To: cands[cis[0]].path, By: "header"})
+			moves = append(moves, Move{
+				Item:    missing[mi].Item,
+				To:      cands[cis[0]].path,
+				By:      "header",
+				FileSHA: missing[mi].SHA,
+			})
 			taken[cis[0]] = true
 		}
 	}
@@ -383,6 +411,7 @@ func (s *Service) ApplyMoves(ctx context.Context, runID int64, fileIDs []int64) 
 	type obs struct {
 		sha   string
 		mtime int64
+		dbSHA string
 	}
 	seen := make([]obs, len(chosen))
 	for i, m := range chosen {
@@ -393,7 +422,41 @@ func (s *Service) ApplyMoves(ctx context.Context, runID int64, fileIDs []int64) 
 		if err != nil {
 			return nil, fmt.Errorf("%w: %s: %v", ErrStale, m.To, err)
 		}
-		seen[i] = obs{sha, mtime}
+		var dbSHA string
+		switch m.By {
+		case "hash":
+			if m.SHA != "" && sha != m.SHA {
+				return nil, fmt.Errorf("%w: %s content changed", ErrStale, m.To)
+			}
+			var dbObs string
+			err := s.DB.Writer().QueryRowContext(ctx, `SELECT sha256, COALESCE(observed_sha256, '') FROM files WHERE id = ?`, m.FileID).Scan(&dbSHA, &dbObs)
+			if err != nil {
+				return nil, fmt.Errorf("%w: file %d: %v", ErrStale, m.FileID, err)
+			}
+			if m.FileSHA != "" && dbSHA != m.FileSHA {
+				return nil, fmt.Errorf("%w: file %d changed in the database", ErrStale, m.FileID)
+			}
+			if sha != dbSHA && (dbObs == "" || sha != dbObs) {
+				return nil, fmt.Errorf("%w: %s content changed", ErrStale, m.To)
+			}
+		case "header":
+			id, err := s.headerFile(ctx, m.To)
+			if err != nil {
+				return nil, fmt.Errorf("%w: %s: %v", ErrStale, m.To, err)
+			}
+			if id != m.FileID {
+				return nil, fmt.Errorf("%w: %s header changed", ErrStale, m.To)
+			}
+			if err := s.DB.Writer().QueryRowContext(ctx, `SELECT sha256 FROM files WHERE id = ?`, m.FileID).Scan(&dbSHA); err != nil {
+				return nil, fmt.Errorf("%w: file %d: %v", ErrStale, m.FileID, err)
+			}
+			if m.FileSHA != "" && dbSHA != m.FileSHA {
+				return nil, fmt.Errorf("%w: file %d changed in the database", ErrStale, m.FileID)
+			}
+		default:
+			return nil, fmt.Errorf("%w: unknown move kind %s", domain.ErrInvalidState, m.By)
+		}
+		seen[i] = obs{sha: sha, mtime: mtime, dbSHA: dbSHA}
 	}
 	applied, err := json.Marshal(chosen)
 	if err != nil {
@@ -401,9 +464,13 @@ func (s *Service) ApplyMoves(ctx context.Context, runID int64, fileIDs []int64) 
 	}
 	err = s.DB.WithTx(ctx, func(tx *sql.Tx) error {
 		for i, m := range chosen {
+			expectedSHA := seen[i].dbSHA
+			if m.FileSHA != "" {
+				expectedSHA = m.FileSHA
+			}
 			res, err := tx.ExecContext(ctx, `UPDATE files SET rel_path = ?, presence = 'present', observed_sha256 = ?, observed_mtime = ?,
-				observed_at = `+nowSQL+` WHERE id = ? AND rel_path = ? AND NOT EXISTS (SELECT 1 FROM files WHERE rel_path = ?)`,
-				m.To, seen[i].sha, seen[i].mtime, m.FileID, m.RelPath, m.To)
+				observed_at = `+nowSQL+` WHERE id = ? AND rel_path = ? AND sha256 = ? AND NOT EXISTS (SELECT 1 FROM files WHERE rel_path = ?)`,
+				m.To, seen[i].sha, seen[i].mtime, m.FileID, m.RelPath, expectedSHA, m.To)
 			if err != nil {
 				return err
 			}

@@ -360,3 +360,132 @@ func TestSyncRecomputesStatus(t *testing.T) {
 		t.Errorf("after apply: status = %s, want evaluated", got)
 	}
 }
+
+// CR-52: change the target between Scan and Apply → refused (both for hash match and header match).
+func TestCR52_ChangeTargetBetweenScanAndApplyRefused(t *testing.T) {
+	t.Run("hash match target changed", func(t *testing.T) {
+		e := setup(t)
+		ctx := context.Background()
+		e.move(rubricRel, "topics/01-http/r.json")
+		run, err := e.svc.Scan(ctx)
+		if err != nil || len(run.Report.Moved) != 1 || run.Report.Moved[0].By != "hash" {
+			t.Fatalf("scan: %v %+v", err, run)
+		}
+		// Target content is modified between Scan and ApplyMoves
+		e.write("topics/01-http/r.json", `{"tampered":true}`)
+		if _, err := e.svc.ApplyMoves(ctx, run.ID, []int64{2}); !errors.Is(err, syncsvc.ErrStale) {
+			t.Errorf("err = %v, want ErrStale", err)
+		}
+		var rel string
+		e.db.Writer().QueryRow(`SELECT rel_path FROM files WHERE id = 2`).Scan(&rel)
+		if rel != rubricRel {
+			t.Errorf("rel_path changed to %s, want original %s", rel, rubricRel)
+		}
+	})
+
+	t.Run("header match target header corrupted", func(t *testing.T) {
+		e := setup(t)
+		ctx := context.Background()
+		// Write modified content (with header) to an unregistered path so hash doesn't match template
+		headerContent := string(fsx.GenerateAnswerTemplate("http-key", 1, "q01", "One", ".go", "")) + "\n// my solution code\n"
+		e.write("topics/01-http/answers/q01_moved.go", headerContent)
+		// Delete original answer file so it is missing
+		os.Remove(filepath.Join(e.base, filepath.FromSlash(ans1Rel)))
+		run, err := e.svc.Scan(ctx)
+		if err != nil || len(run.Report.Moved) != 1 || run.Report.Moved[0].By != "header" {
+			t.Fatalf("scan: %v %+v", err, run)
+		}
+		// Target file header is corrupted or stripped between Scan and ApplyMoves
+		e.write("topics/01-http/answers/q01_moved.go", "package main\n// no hub header here\n")
+		if _, err := e.svc.ApplyMoves(ctx, run.ID, []int64{3}); !errors.Is(err, syncsvc.ErrStale) {
+			t.Errorf("err = %v, want ErrStale", err)
+		}
+		var rel string
+		e.db.Writer().QueryRow(`SELECT rel_path FROM files WHERE id = 3`).Scan(&rel)
+		if rel != ans1Rel {
+			t.Errorf("rel_path changed to %s, want original %s", rel, ans1Rel)
+		}
+	})
+}
+
+// CR-52: an empty missing file and an empty new file → no proposal.
+func TestCR52_EmptyFilesProduceNoMoveProposal(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	// Register an empty file that is missing on disk
+	emptySHA := fsx.HashString("")
+	e.exec(`INSERT INTO files (id, topic_id, kind, rel_path, sha256, size_bytes) VALUES (99, 1, 'lesson', 'topics/01-http/empty_missing.md', ?, 0)`, emptySHA)
+	// Create an empty unregistered new file on disk
+	e.write("topics/01-http/empty_new.md", "")
+
+	run, err := e.svc.Scan(ctx)
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	for _, m := range run.Report.Moved {
+		if m.FileID == 99 || m.To == "topics/01-http/empty_new.md" {
+			t.Fatalf("empty file matched as move: %+v", m)
+		}
+	}
+	missingFound := false
+	for _, item := range run.Report.Missing {
+		if item.FileID == 99 {
+			missingFound = true
+			break
+		}
+	}
+	if !missingFound {
+		t.Errorf("expected file 99 in missing report, got: %+v", run.Report.Missing)
+	}
+	newFound := false
+	for _, p := range run.Report.New {
+		if p == "topics/01-http/empty_new.md" {
+			newFound = true
+			break
+		}
+	}
+	if !newFound {
+		t.Errorf("expected empty_new.md in new report, got: %+v", run.Report.New)
+	}
+}
+
+// CR-52: Scan guards updates with WHERE id=? AND rel_path=? AND sha256=? so stale observations
+// do not overwrite records changed concurrently in the database.
+func TestCR52_ScanGuardsAgainstConcurrentDBUpdate(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	newSHA := fsx.HashString("# HTTP Updated Concurrently\n")
+	// Hook executes after disk observation but before WithTx
+	syncsvc.SetBeforeCommitTx(t, func() {
+		e.exec(`UPDATE files SET sha256 = ?, observed_sha256 = ? WHERE id = 1`, newSHA, newSHA)
+	})
+
+	run, err := e.svc.Scan(ctx)
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	_ = run
+
+	// The row in files should NOT have been overwritten with the stale sha/mtime
+	var dbSHA, dbObs string
+	e.db.Writer().QueryRow(`SELECT sha256, observed_sha256 FROM files WHERE id = 1`).Scan(&dbSHA, &dbObs)
+	if dbSHA != newSHA || dbObs != newSHA {
+		t.Errorf("row was overwritten: sha=%s obs=%s, want %s", dbSHA, dbObs, newSHA)
+	}
+}
+
+// CR-52: ApplyMoves re-verifies against DB row and refuses move if file was concurrently changed in DB.
+func TestCR52_ApplyMovesRefusesConcurrentlyChangedDBRow(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	e.move(rubricRel, "topics/01-http/r.json")
+	run, err := e.svc.Scan(ctx)
+	if err != nil || len(run.Report.Moved) != 1 {
+		t.Fatalf("scan: %v %+v", err, run)
+	}
+	// Concurrently change the file's sha256 in the database before user applies move
+	e.exec(`UPDATE files SET sha256 = 'different_sha' WHERE id = 2`)
+	if _, err := e.svc.ApplyMoves(ctx, run.ID, []int64{2}); !errors.Is(err, syncsvc.ErrStale) {
+		t.Errorf("err = %v, want ErrStale", err)
+	}
+}
