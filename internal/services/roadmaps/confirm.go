@@ -177,6 +177,10 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 			if g.Parent >= 0 {
 				parent = groupID[g.Parent]
 			}
+			if g.LegacyKey != "" && g.LegacyKey != g.StableKey {
+				_, _ = tx.ExecContext(ctx, `UPDATE groups SET stable_key = ? WHERE roadmap_id = ? AND stable_key = ?`,
+					g.StableKey, roadmapID, g.LegacyKey)
+			}
 			var gid int64
 			err := tx.QueryRowContext(ctx,
 				`INSERT INTO groups (roadmap_id, parent_id, stable_key, title, level, ord) VALUES (?, ?, ?, ?, ?, ?)
@@ -221,11 +225,14 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 				parent = sql.NullInt64{Int64: ids[t.Parent], Valid: true}
 			}
 			o, ok := oldByKey[t.StableKey]
+			if !ok && t.LegacyKey != "" && t.LegacyKey != t.StableKey {
+				o, ok = oldByKey[t.LegacyKey]
+			}
 			if ok {
 				_, err := tx.ExecContext(ctx,
-					`UPDATE topics SET group_id = ?, parent_id = ?, title = ?, title_norm = ?, outline = ?, ord = ?, state = 'active',
+					`UPDATE topics SET group_id = ?, parent_id = ?, stable_key = ?, title = ?, title_norm = ?, outline = ?, ord = ?, state = 'active',
 					   source_rev_id = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`,
-					group, parent, t.Title, roadmap.Normalize(t.Title), outline, float64(i+1), revID, o.ID)
+					group, parent, t.StableKey, t.Title, roadmap.Normalize(t.Title), outline, float64(i+1), revID, o.ID)
 				if err != nil {
 					return fmt.Errorf("updating topic %q: %w", t.Title, err)
 				}

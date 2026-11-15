@@ -92,7 +92,7 @@ func Parse(src []byte) *Node {
 		switch b := n.(type) {
 		case *ast.Heading:
 			title := inlineText(b, lines.src)
-			if title == "" {
+			if title == "" || Normalize(title) == "" {
 				continue
 			}
 			line := lineOf(b, lines.starts)
@@ -155,7 +155,7 @@ func listItems(l *ast.List, depth int, src []byte, lines []int) []*Node {
 				kids = append(kids, listItems(b, depth+1, src, lines)...)
 			}
 		}
-		if title == "" {
+		if title == "" || Normalize(title) == "" {
 			out = append(out, kids...)
 			continue
 		}

@@ -342,6 +342,94 @@ func TestConfirmIdempotentWithLeftoverFiles(t *testing.T) {
 	}
 }
 
+// CR-51: re-importing an existing roadmap whose titles contain RLM matches the legacy key and archives nothing.
+func TestReimportWithRLMArchivesNothing(t *testing.T) {
+	base := t.TempDir()
+	s, db, _ := newServiceIn(t, base)
+	ctx := context.Background()
+
+	// Title contains RLM (\u200f).
+	src := "# Go Roadmap\n## فاز اول\n### Go\u200fLang\nمحتوا\n"
+	id, err := s.CreateDraft(ctx, "go.md", []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := s.Draft(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sel, err := d.Preview(d.Choice)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sel.Topics) != 1 {
+		t.Fatalf("expected 1 topic, got %d", len(sel.Topics))
+	}
+	topic := sel.Topics[0]
+	if topic.LegacyKey == topic.StableKey {
+		t.Fatalf("expected LegacyKey != StableKey for title with RLM, got %q", topic.StableKey)
+	}
+
+	rid, _, err := s.Confirm(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate an existing database created before CR-51: topics.stable_key has LegacyKey.
+	if _, err := db.Writer().Exec(`UPDATE topics SET stable_key = ? WHERE roadmap_id = ?`, topic.LegacyKey, rid); err != nil {
+		t.Fatal(err)
+	}
+
+	// Re-import the exact same roadmap file.
+	reimportID, err := s.CreateReimport(ctx, rid, "go.md", []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reimportDraft, err := s.Draft(ctx, reimportID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	diff, err := s.Diff(ctx, reimportDraft)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(diff.Gone) != 0 {
+		t.Errorf("diff.Gone = %v, want empty", diff.Gone)
+	}
+	if len(diff.New) != 0 {
+		t.Errorf("diff.New = %v, want empty", diff.New)
+	}
+	if diff.Same != 1 {
+		t.Errorf("diff.Same = %d, want 1", diff.Same)
+	}
+
+	if _, n, err := s.Confirm(ctx, reimportID); err != nil || n != 1 {
+		t.Fatalf("confirm re-import failed: n=%d err=%v", n, err)
+	}
+
+	// Verify nothing was archived.
+	var archivedCount int
+	if err := db.Writer().QueryRow(`SELECT COUNT(*) FROM topics WHERE roadmap_id = ? AND state = 'archived'`, rid).Scan(&archivedCount); err != nil {
+		t.Fatal(err)
+	}
+	if archivedCount != 0 {
+		t.Fatalf("archived %d topics, want 0", archivedCount)
+	}
+
+	var activeCount int
+	var updatedKey string
+	if err := db.Writer().QueryRow(`SELECT COUNT(*), stable_key FROM topics WHERE roadmap_id = ? AND state = 'active'`, rid).Scan(&activeCount, &updatedKey); err != nil {
+		t.Fatal(err)
+	}
+	if activeCount != 1 {
+		t.Errorf("active topics = %d, want 1", activeCount)
+	}
+	if updatedKey != topic.StableKey {
+		t.Errorf("updated stable_key = %q, want migrated key %q", updatedKey, topic.StableKey)
+	}
+}
+
 // CR-16: BenchmarkConfirm benchmarks confirming a roadmap containing multiple topics with source ranges.
 func BenchmarkConfirm(b *testing.B) {
 	const count = 50

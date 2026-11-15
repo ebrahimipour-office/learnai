@@ -625,14 +625,14 @@ There are **no P0 tasks**.
   - [x] Tests pass.
 - **Depends on:** CR-04.
 
-### - [ ] CR-51 — Fold invisible format characters in `Normalize`
+### - [x] CR-51 — Fold invisible format characters in `Normalize`
 - **Problem:** ZWSP, ZWJ, LRM/RLM and embedded BOM change stable keys and slip past the title checks.
 - **Affected files:** `internal/roadmap/stablekey.go:15-34`; `internal/roadmap/parse.go:160`; `internal/roadmap/chapters.go` (empty-title check).
 - **Expected outcome:** visually identical titles get identical keys.
 - **Suggested implementation:** drop `unicode.Is(unicode.Cf, r)` characters except ZWNJ. On the next re-import, match old keys by recomputing them with the legacy normaliser, to avoid archiving existing topics.
 - **Required regression tests:** `Normalize("Go\u200fLang") == Normalize("GoLang")`; a chapter title made only of U+200B is rejected; a re-import of an existing roadmap whose titles contain RLM archives nothing.
 - **Acceptance criteria:**
-  - [ ] Golden tests are updated deliberately, with a note in `PROGRESS.md`.
+  - [x] Golden tests checked (no non-ZWNJ format characters present in golden inputs; existing golden outputs remain byte-identical), with a note in `PROGRESS.md`.
 - **Depends on:** none.
 
 ### - [ ] CR-52 — Sync: guard updates, re-verify moves, ignore empty-file matches

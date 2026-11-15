@@ -44,6 +44,7 @@ func TestValidateChapters(t *testing.T) {
 		"unsorted":        {{7, 10, "y"}, {3, 6, "x"}},
 		"nested":          {{3, 4, "x"}, {5, 6, "y"}},
 		"blank title":     {{3, 6, "  "}},
+		"invisible title": {{3, 6, "\u200b"}},
 		"long title":      {{3, 6, strings.Repeat("ب", MaxChapterTitle+1)}},
 	} {
 		var ce *ChapterError

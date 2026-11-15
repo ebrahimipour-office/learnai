@@ -79,8 +79,15 @@ func diffTopics(kept []roadmap.Topic, old []oldTopic) *Diff {
 	}
 	seen := map[string]bool{}
 	for _, t := range kept {
-		seen[t.StableKey] = true
 		o, ok := byKey[t.StableKey]
+		if !ok && t.LegacyKey != "" && t.LegacyKey != t.StableKey {
+			o, ok = byKey[t.LegacyKey]
+		}
+		if ok {
+			seen[o.Key] = true
+		} else {
+			seen[t.StableKey] = true
+		}
 		switch {
 		case !ok:
 			d.New = append(d.New, DiffItem{Key: t.StableKey, Title: t.Title})

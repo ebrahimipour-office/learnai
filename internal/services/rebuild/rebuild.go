@@ -183,6 +183,15 @@ func (r *run) roadmaps() (map[string][]*candidate, error) {
 					list = append(list, c)
 				}
 				cands[t.StableKey] = list
+				if t.LegacyKey != "" && t.LegacyKey != t.StableKey {
+					listLegacy := cands[t.LegacyKey]
+					if k := len(listLegacy) - 1; k >= 0 && listLegacy[k].roadmapID == rid {
+						listLegacy[k] = c
+					} else {
+						listLegacy = append(listLegacy, c)
+					}
+					cands[t.LegacyKey] = listLegacy
+				}
 			}
 		}
 	}

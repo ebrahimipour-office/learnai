@@ -37,6 +37,32 @@ func TestNormalizeFoldsCosmeticDifferences(t *testing.T) {
 	}
 }
 
+func TestNormalizeFoldsInvisibleFormatCharacters(t *testing.T) {
+	// CR-51: ZWSP, ZWJ, LRM, RLM, and BOM should be dropped.
+	// ZWNJ is preserved as a space.
+	if got, want := Normalize("Go\u200fLang"), Normalize("GoLang"); got != want {
+		t.Fatalf("Normalize(Go\\u200fLang) = %q, want %q", got, want)
+	}
+	if got, want := Normalize("Go\u200eLang"), "golang"; got != want {
+		t.Fatalf("Normalize(Go\\u200eLang) = %q, want %q", got, want)
+	}
+	if got, want := Normalize("Go\u200bLang"), "golang"; got != want {
+		t.Fatalf("Normalize(Go\\u200bLang) = %q, want %q", got, want)
+	}
+	if got, want := Normalize("Go\u200dLang"), "golang"; got != want {
+		t.Fatalf("Normalize(Go\\u200dLang) = %q, want %q", got, want)
+	}
+	if got, want := Normalize("Go\ufeffLang"), "golang"; got != want {
+		t.Fatalf("Normalize(Go\\ufeffLang) = %q, want %q", got, want)
+	}
+	if got := Normalize("\u200b\u200f\u200e"); got != "" {
+		t.Fatalf("Normalize invisible-only = %q, want empty", got)
+	}
+	if got, want := Normalize("نوع‌پا"), "نوع پا"; got != want {
+		t.Fatalf("Normalize(نوع‌پا) = %q, want %q", got, want)
+	}
+}
+
 func TestStableKeyIgnoresCosmeticChanges(t *testing.T) {
 	g1, t1 := keysOf(t, "# فاز ۱\n## كتاب علمي\n## نوع‌ها\n# پایان\n")
 	g2, t2 := keysOf(t, "# فاز 1\n## کتاب علمی\n## نوع  ها\n# پایان\n")

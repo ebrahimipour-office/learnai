@@ -32,9 +32,11 @@ func mustSelect(t *testing.T, src string, r Rule) *Selection {
 	}
 	for i := range s.Groups {
 		s.Groups[i].StableKey = ""
+		s.Groups[i].LegacyKey = ""
 	}
 	for i := range s.Topics {
 		s.Topics[i].StableKey = ""
+		s.Topics[i].LegacyKey = ""
 	}
 	return s
 }

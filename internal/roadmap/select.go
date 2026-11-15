@@ -25,6 +25,7 @@ type Rule struct {
 // Group is a heading above a topic. Parent indexes Selection.Groups; -1 means top level.
 type Group struct {
 	StableKey string `json:"stable_key"`
+	LegacyKey string `json:"legacy_key,omitempty"`
 	Title     string `json:"title"`
 	Level     int    `json:"level"`
 	Line      int    `json:"line"`
@@ -37,6 +38,7 @@ type Group struct {
 // (topics.outline); for a RuleTree parent it lists the direct sub-topics.
 type Topic struct {
 	StableKey string `json:"stable_key"`
+	LegacyKey string `json:"legacy_key,omitempty"`
 	Title     string `json:"title"`
 	Line      int    `json:"line"`
 	EndLine   int    `json:"end_line,omitempty"` // source range Line..EndLine (§12.4); 0 = no source text (items rule)
@@ -64,9 +66,12 @@ func Select(root *Node, r Rule) (*Selection, error) {
 	}
 	s := &Selection{Groups: []Group{}, Topics: []Topic{}}
 	groupIdx := map[*Node]int{}
-	var groupPaths []string // normalized key path of each entry in s.Groups
+	var groupPaths []string       // normalized key path of each entry in s.Groups
+	var groupPathsLegacy []string // legacy key path of each entry in s.Groups
 	usedG, usedT := map[string]bool{}, map[string]bool{}
+	usedGLegacy, usedTLegacy := map[string]bool{}, map[string]bool{}
 	nextG, nextT := map[string]int{}, map[string]int{}
+	nextGLegacy, nextTLegacy := map[string]int{}, map[string]int{}
 	chapter := map[int]Chapter{} // RuleChapters: the chapter title and range replace the heading's, not its key
 	if r.Kind == RuleChapters {
 		for _, c := range r.Chapters {
@@ -80,6 +85,12 @@ func Select(root *Node, r Rule) (*Selection, error) {
 		}
 		return groupPaths[group]
 	}
+	pathLegacyOf := func(group int) string {
+		if group < 0 {
+			return ""
+		}
+		return groupPathsLegacy[group]
+	}
 
 	// group returns the index of the innermost heading in path, creating missing groups outermost first.
 	group := func(path []*Node) int {
@@ -90,8 +101,17 @@ func Select(root *Node, r Rule) (*Selection, error) {
 				i = len(s.Groups)
 				groupIdx[h] = i
 				p := childPath(pathOf(parent), h.Title, usedG, nextG)
+				pLegacy := childPathLegacy(pathLegacyOf(parent), h.Title, usedGLegacy, nextGLegacy)
 				groupPaths = append(groupPaths, p)
-				s.Groups = append(s.Groups, Group{StableKey: stableKey(p), Title: h.Title, Level: h.Level, Line: h.Line, Parent: parent})
+				groupPathsLegacy = append(groupPathsLegacy, pLegacy)
+				s.Groups = append(s.Groups, Group{
+					StableKey: stableKey(p),
+					LegacyKey: stableKey(pLegacy),
+					Title:     h.Title,
+					Level:     h.Level,
+					Line:      h.Line,
+					Parent:    parent,
+				})
 			}
 			parent = i
 		}
@@ -103,8 +123,19 @@ func Select(root *Node, r Rule) (*Selection, error) {
 		for _, c := range n.Children {
 			if isTopic(c, n) {
 				g := group(path)
-				key := stableKey(childPath(pathOf(g), c.Title, usedT, nextT))
-				t := Topic{StableKey: key, Title: c.Title, Line: c.Line, Group: g, Parent: -1, Outline: outline(c)}
+				p := childPath(pathOf(g), c.Title, usedT, nextT)
+				pLegacy := childPathLegacy(pathLegacyOf(g), c.Title, usedTLegacy, nextTLegacy)
+				key := stableKey(p)
+				legacyKey := stableKey(pLegacy)
+				t := Topic{
+					StableKey: key,
+					LegacyKey: legacyKey,
+					Title:     c.Title,
+					Line:      c.Line,
+					Group:     g,
+					Parent:    -1,
+					Outline:   outline(c),
+				}
 				if c.Kind == KindHeading {
 					t.EndLine = c.EndLine
 				}
@@ -133,7 +164,7 @@ func Select(root *Node, r Rule) (*Selection, error) {
 // introduction and no line belongs to two topics. Unselected headings above a topic become groups.
 func selectTree(root *Node, r Rule) *Selection {
 	s := &Selection{Groups: []Group{}, Topics: []Topic{}}
-	paths := deepestPaths(root)
+	paths, pathsLegacy := deepestPaths(root)
 	chapter := map[int]Chapter{}
 	for _, c := range r.Chapters {
 		c.Title = strings.TrimSpace(c.Title)
@@ -152,7 +183,14 @@ func selectTree(root *Node, r Rule) *Selection {
 			if !ok {
 				i = len(s.Groups)
 				groupIdx[h] = i
-				s.Groups = append(s.Groups, Group{StableKey: stableKey(paths[h]), Title: h.Title, Level: h.Level, Line: h.Line, Parent: parent})
+				s.Groups = append(s.Groups, Group{
+					StableKey: stableKey(paths[h]),
+					LegacyKey: stableKey(pathsLegacy[h]),
+					Title:     h.Title,
+					Level:     h.Level,
+					Line:      h.Line,
+					Parent:    parent,
+				})
 			}
 			parent = i
 		}
@@ -170,7 +208,15 @@ func selectTree(root *Node, r Rule) *Selection {
 				continue
 			}
 			i := len(s.Topics)
-			t := Topic{StableKey: stableKey(paths[c]), Title: c.Title, Line: c.Line, EndLine: c.EndLine, Group: group(path), Parent: parent}
+			t := Topic{
+				StableKey: stableKey(paths[c]),
+				LegacyKey: stableKey(pathsLegacy[c]),
+				Title:     c.Title,
+				Line:      c.Line,
+				EndLine:   c.EndLine,
+				Group:     group(path),
+				Parent:    parent,
+			}
 			if ch, ok := chapter[c.Line]; ok && ch.Title != "" {
 				t.Title = ch.Title
 			}
@@ -200,26 +246,32 @@ func selectTree(root *Node, r Rule) *Selection {
 // deepestPaths gives every heading the key path RuleDeepest gives it: a heading with sub-headings
 // is a group, a leaf is a topic, and each keeps its own duplicate-title counter. So a leaf has the
 // same stable key under RuleTree as under RuleDeepest.
-func deepestPaths(root *Node) map[*Node]string {
+func deepestPaths(root *Node) (map[*Node]string, map[*Node]string) {
 	paths := map[*Node]string{}
+	pathsLegacy := map[*Node]string{}
 	usedG, usedT := map[string]bool{}, map[string]bool{}
+	usedGLegacy, usedTLegacy := map[string]bool{}, map[string]bool{}
 	nextG, nextT := map[string]int{}, map[string]int{}
-	var walk func(n *Node, parent string)
-	walk = func(n *Node, parent string) {
+	nextGLegacy, nextTLegacy := map[string]int{}, map[string]int{}
+	var walk func(n *Node, parent, parentLegacy string)
+	walk = func(n *Node, parent, parentLegacy string) {
 		for _, c := range n.Children {
 			if c.Kind != KindHeading {
 				continue
 			}
 			used, next := usedT, nextT
+			usedLegacy, nextLegacy := usedTLegacy, nextTLegacy
 			if hasHeadingChild(c) {
 				used, next = usedG, nextG
+				usedLegacy, nextLegacy = usedGLegacy, nextGLegacy
 			}
 			paths[c] = childPath(parent, c.Title, used, next)
-			walk(c, paths[c])
+			pathsLegacy[c] = childPathLegacy(parentLegacy, c.Title, usedLegacy, nextLegacy)
+			walk(c, paths[c], pathsLegacy[c])
 		}
 	}
-	walk(root, "")
-	return paths
+	walk(root, "", "")
+	return paths, pathsLegacy
 }
 
 // Title returns the text of the first H1 (always a root child), or "" when there is none.

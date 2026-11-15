@@ -6,6 +6,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -82,6 +83,30 @@ func TestKeepsZWNJ(t *testing.T) {
 	root := Parse([]byte("# نوع‌ها\n"))
 	if got := root.Children[0].Title; got != "نوع‌ها" {
 		t.Errorf("ZWNJ lost: %q", got)
+	}
+}
+
+func TestInvisibleOnlyHeadingAndItemsIgnored(t *testing.T) {
+	// Headings or list items containing only invisible format characters (e.g. U+200B)
+	// must be ignored or their children promoted.
+	src := "# Real Title\n## \u200b\n- \u200b\n  - sub item\n- visible item\n"
+	root := Parse([]byte(src))
+	if len(root.Children) != 1 {
+		t.Fatalf("root children = %d, want 1", len(root.Children))
+	}
+	h1 := root.Children[0]
+	if h1.Title != "Real Title" {
+		t.Errorf("h1 title = %q, want 'Real Title'", h1.Title)
+	}
+	// The invisible heading `## \u200b` should be dropped.
+	// The invisible list item `- \u200b` should be dropped and `sub item` promoted.
+	var titles []string
+	for _, c := range h1.Children {
+		titles = append(titles, c.Title)
+	}
+	want := []string{"sub item", "visible item"}
+	if !reflect.DeepEqual(titles, want) {
+		t.Errorf("children titles = %v, want %v", titles, want)
 	}
 }
 

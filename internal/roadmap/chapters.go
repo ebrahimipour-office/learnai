@@ -68,7 +68,7 @@ func ValidateChapters(tree *Node, lines int, chs []Chapter, nested bool) error {
 			return fail("فصل %d با فصل قبلی هم‌پوشانی دارد یا ترتیب فصل‌ها به‌هم خورده است.", n)
 		}
 		switch {
-		case title == "":
+		case title == "" || Normalize(title) == "":
 			return fail("فصل %d: عنوان خالی است.", n)
 		case utf8.RuneCountInString(title) > MaxChapterTitle:
 			return fail("فصل %d: عنوان بیش از %d نویسه است.", n, MaxChapterTitle)
