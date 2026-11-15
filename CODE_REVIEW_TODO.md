@@ -605,14 +605,14 @@ There are **no P0 tasks**.
   - [ ] The settings page still shows the cached result.
 - **Depends on:** do together with CR-12.
 
-### - [ ] CR-49 — Ignore `?tab=` on `/topics/{id}`
+### - [x] CR-49 — Ignore `?tab=` on `/topics/{id}`
 - **Problem:** a manual `?tab=` renders a tab without its data.
 - **Affected files:** `internal/httpserver/handlers_panel.go:59`.
 - **Expected outcome:** `showTopic` always renders the lesson tab.
 - **Suggested implementation:** pass `""` instead of `tabOf(r)`.
 - **Required regression tests:** `GET /topics/1?tab=reports` → lesson tab content.
 - **Acceptance criteria:**
-  - [ ] Test passes.
+  - [x] Test passes.
 - **Depends on:** none.
 
 ### - [ ] CR-50 — Rebuild validates `report_file` and warns instead of aborting

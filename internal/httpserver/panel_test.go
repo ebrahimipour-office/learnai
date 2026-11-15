@@ -247,3 +247,40 @@ func TestTabShowsOwnJobKind(t *testing.T) {
 		t.Error("exercises tab must show its running job card")
 	}
 }
+
+// CR-49: showTopic ignores ?tab= and always renders the lesson tab content.
+func TestTopicIgnoresTabQueryParam(t *testing.T) {
+	e := newEnv(t)
+	e.seedTopics()
+
+	e.ad.Output = lessonOutput("متن درس تستی")
+	rec := e.post("/topics/1/jobs/lesson", nil, true)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("enqueue lesson: %d", rec.Code)
+	}
+	id, _ := e.lastJob()
+	e.pollUntilDone(id)
+
+	for _, path := range []string{"/topics/1?tab=reports", "/topics/1/lesson?tab=reports", "/topics/1?tab=exercises", "/topics/1?tab=suggestions"} {
+		res := e.get(path)
+		if res.Code != http.StatusOK {
+			t.Fatalf("%s: want 200, got %d", path, res.Code)
+		}
+		body := res.Body.String()
+		if !strings.Contains(body, "متن درس تستی") {
+			t.Errorf("%s: expected lesson content in body", path)
+		}
+		if !strings.Contains(body, `<section class="lesson">`) {
+			t.Errorf("%s: expected lesson section in body", path)
+		}
+		if strings.Contains(body, `<section class="set">`) {
+			t.Errorf("%s: must not render set section", path)
+		}
+		if !strings.Contains(body, `<a href="/topics/1/lesson" aria-current="page">درس</a>`) {
+			t.Errorf("%s: expected lesson link to have aria-current=\"page\"", path)
+		}
+		if strings.Contains(body, `<a href="/topics/1/reports" aria-current="page">`) {
+			t.Errorf("%s: reports link must not have aria-current=\"page\"", path)
+		}
+	}
+}

@@ -56,7 +56,7 @@ func (a *app) showTopic(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	d, err := a.panelData(r, id, tabOf(r), nil)
+	d, err := a.panelData(r, id, "", nil)
 	if errors.Is(err, domain.ErrNotFound) {
 		http.NotFound(w, r)
 		return
