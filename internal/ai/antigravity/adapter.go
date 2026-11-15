@@ -70,6 +70,9 @@ func (a *Adapter) lookPath() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("%w: %s", ai.ErrBinaryNotFound, a.cfg.Binary)
 	}
+	if fsx.IsBatchShim(bin) {
+		return "", fmt.Errorf("%w: %s (Windows batch shims .cmd/.bat are not supported due to cmd.exe argument parsing limitations; use the native .exe or point binary to 'node <entry>.js')", ai.ErrBatchShimUnsupported, bin)
+	}
 	return bin, nil
 }
 

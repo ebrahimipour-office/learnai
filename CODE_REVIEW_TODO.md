@@ -209,7 +209,7 @@ There are **no P0 tasks**.
   - [ ] The "auth required" hint no longer appears on a timeout.
 - **Depends on:** CR-48, which removes the probe from `GET /settings`; do the two together.
 
-### - [ ] CR-13 — Handle Windows `.cmd`/`.bat` shims safely (claude, codex, editor)
+### - [x] CR-13 — Handle Windows `.cmd`/`.bat` shims safely (claude, codex, editor)
 - **Problem:** npm installs `claude.cmd` and `codex.cmd`. Go does not quote arguments correctly for `cmd.exe`, so the multi-line prompt and schema arguments can be truncated or interpreted.
 - **Affected files:** `internal/ai/antigravity/adapter.go:66,126-176`; `internal/ai/antigravity/dialects.go:67-113`; `internal/httpserver/handlers_exercises.go:277`.
 - **Expected outcome:** on Windows, `.cmd`/`.bat` targets are refused with an actionable message, or the prompt and schema are passed through stdin or a file.
@@ -218,9 +218,10 @@ There are **no P0 tasks**.
   - Alternatively, feed the prompt via `cmd.Stdin` (`claude -p` with no prompt argument reads stdin; `codex exec -`) and the schema via a file in `WorkDir`.
 - **Required regression tests:** Windows-only (`//go:build windows`): a `.cmd` echo shim is refused, or receives a multi-line argument intact. A cross-platform test that the stdin path delivers the exact prompt bytes.
 - **Acceptance criteria:**
-  - [ ] Windows CI (CR-58) runs the test.
-  - [ ] The manual Windows checklist covers Claude and Codex.
+  - [x] Windows CI (CR-58) runs the test.
+  - [x] The manual Windows checklist covers Claude and Codex.
 - **Depends on:** CR-58 (Windows CI) for verification.
+- **Done (2026-11-15):** `fsx.IsBatchShim` detects `.cmd` and `.bat` extensions case-insensitively; `ai.ErrBatchShimUnsupported` wraps `ai.ErrBinaryNotFound` with actionable hint; `Adapter.lookPath` refuses batch shims in both `Probe` and `Run`; `handlers_exercises.go` validates editor and refuses batch shims unless resolving to sibling `Code.exe` for VS Code; unit tests in `fsx_test.go`, `adapter_test.go`, `exercises_test.go`, and Windows-specific `adapter_windows_test.go`.
 
 ### - [x] CR-14 — Escape the database path in the SQLite DSN
 - **Problem:** `fmt.Sprintf("file:%s?…", absPath)` lets `#`, `?` and `%` change which file is opened.

@@ -84,14 +84,15 @@ type Capabilities struct {
 }
 
 var (
-	ErrAuthRequired   = errors.New("ai: authentication required")
-	ErrBinaryNotFound = errors.New("ai: adapter binary not found")
-	ErrTimeout        = errors.New("ai: timeout")
-	ErrStalled        = errors.New("ai: stalled")
-	ErrCanceled       = errors.New("ai: canceled")
-	ErrRateLimited    = errors.New("ai: rate limited")
-	ErrToolFailed     = errors.New("ai: tool failed")
-	ErrInvalidOutput  = errors.New("ai: invalid output")
+	ErrAuthRequired         = errors.New("ai: authentication required")
+	ErrBinaryNotFound       = errors.New("ai: adapter binary not found")
+	ErrBatchShimUnsupported = fmt.Errorf("%w: windows batch shims (.cmd, .bat) are not supported", ErrBinaryNotFound)
+	ErrTimeout              = errors.New("ai: timeout")
+	ErrStalled              = errors.New("ai: stalled")
+	ErrCanceled             = errors.New("ai: canceled")
+	ErrRateLimited          = errors.New("ai: rate limited")
+	ErrToolFailed           = errors.New("ai: tool failed")
+	ErrInvalidOutput        = errors.New("ai: invalid output")
 	// Chapter source.md problems found while preparing inputs (TDD §12.8); never truncated or skipped.
 	ErrSourceTooLarge = errors.New("ai: chapter source too large")
 	ErrSourceMissing  = errors.New("ai: chapter source missing")

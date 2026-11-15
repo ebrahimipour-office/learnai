@@ -412,3 +412,56 @@ func TestOpenFile(t *testing.T) {
 		t.Errorf("no editor configured: want 404, got %d", rec.Code)
 	}
 }
+
+// CR-13: .cmd/.bat shims are refused as editor unless resolved to a native executable (like VS Code).
+func TestOpenFileBatchShim(t *testing.T) {
+	// 1. A standalone .cmd editor is refused with 400 Bad Request
+	shim := filepath.Join(t.TempDir(), "notepad.cmd")
+	if err := os.WriteFile(shim, []byte("@echo off\r\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	e := newEnv(t, func(s *httpserver.Settings) { s.Editor = shim })
+	e.exerciseSet()
+	id, _ := e.answerID("q01")
+	rec := e.post("/files/"+id+"/open", nil, false)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("batch shim editor: want 400, got %d %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "پشتیبانی نمی‌شود") {
+		t.Fatalf("expected Persian explanation in response: %s", rec.Body.String())
+	}
+
+	// 2. A code.cmd shim with sibling Code.exe in parent directory resolves to Code.exe
+	if runtime.GOOS != "windows" {
+		// On non-windows, we create a script named Code.exe that writes argv
+		vsDir := t.TempDir()
+		binDir := filepath.Join(vsDir, "bin")
+		if err := os.MkdirAll(binDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		codeCmd := filepath.Join(binDir, "code.cmd")
+		if err := os.WriteFile(codeCmd, []byte("@echo off\r\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		out := filepath.Join(vsDir, "argv")
+		codeExe := filepath.Join(vsDir, "Code.exe")
+		if err := os.WriteFile(codeExe, []byte("#!/bin/sh\nprintf '%s|' \"$@\" > "+out+"\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		e2 := newEnv(t, func(s *httpserver.Settings) { s.Editor = codeCmd })
+		e2.exerciseSet()
+		id2, abs2 := e2.answerID("q01")
+		rec2 := e2.post("/files/"+id2+"/open", nil, false)
+		if rec2.Code != http.StatusNoContent {
+			t.Fatalf("code.cmd resolved: want 204, got %d %s", rec2.Code, rec2.Body.String())
+		}
+		var got []byte
+		for i := 0; i < 100 && len(got) == 0; i++ {
+			time.Sleep(20 * time.Millisecond)
+			got, _ = os.ReadFile(out)
+		}
+		if string(got) != abs2+"|" {
+			t.Fatalf("editor argv = %q, want %q", got, abs2+"|")
+		}
+	}
+}

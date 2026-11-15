@@ -533,3 +533,48 @@ func TestRunOverlongLineIsInvalidOutput(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+// CR-13: Windows batch shims (.cmd and .bat) are refused because cmd.exe truncates
+// multi-line prompts and cannot quote JSON schemas safely.
+func TestBatchShimRefused(t *testing.T) {
+	for _, ext := range []string{".cmd", ".bat", ".CMD", ".BAT"} {
+		t.Run(ext, func(t *testing.T) {
+			shim := filepath.Join(t.TempDir(), "claude"+ext)
+			if err := os.WriteFile(shim, []byte("@echo off\r\necho hi\r\n"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			a := New(Config{Kind: KindClaude, Binary: shim})
+
+			bin, err := a.lookPath()
+			if err == nil {
+				t.Fatalf("lookPath(%s): want error, got %q", shim, bin)
+			}
+			if !errors.Is(err, ai.ErrBatchShimUnsupported) {
+				t.Fatalf("want ErrBatchShimUnsupported, got: %v", err)
+			}
+			if !errors.Is(err, ai.ErrBinaryNotFound) {
+				t.Fatalf("want ErrBinaryNotFound, got: %v", err)
+			}
+			if code := ai.Code(err); code != "adapter_missing" {
+				t.Fatalf("ai.Code: want adapter_missing, got %q", code)
+			}
+			if !strings.Contains(err.Error(), "Windows batch shims .cmd/.bat are not supported") {
+				t.Fatalf("missing hint in error: %v", err)
+			}
+
+			// Probe must fail with ErrBatchShimUnsupported
+			if _, err := a.Probe(context.Background()); !errors.Is(err, ai.ErrBatchShimUnsupported) {
+				t.Fatalf("Probe: want ErrBatchShimUnsupported, got %v", err)
+			}
+
+			// Run must fail with ErrBatchShimUnsupported
+			req := ai.Request{
+				Prompt:  "test prompt",
+				WorkDir: t.TempDir(),
+			}
+			if _, err := a.Run(context.Background(), req, nil); !errors.Is(err, ai.ErrBatchShimUnsupported) {
+				t.Fatalf("Run: want ErrBatchShimUnsupported, got %v", err)
+			}
+		})
+	}
+}

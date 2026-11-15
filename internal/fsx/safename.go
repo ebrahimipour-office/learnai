@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"path/filepath"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -196,4 +197,12 @@ func ValidateExtension(ext string, allowed []string) error {
 	}
 
 	return nil
+}
+
+// IsBatchShim reports whether a file path has a Windows batch extension (.cmd or .bat),
+// case-insensitively. Batch files invoked via cmd.exe cannot safely escape arguments
+// containing newlines, double quotes or shell metacharacters (CR-13).
+func IsBatchShim(p string) bool {
+	ext := strings.ToLower(filepath.Ext(p))
+	return ext == ".cmd" || ext == ".bat"
 }

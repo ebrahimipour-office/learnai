@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"strings"
 
 	"learninghub/internal/domain"
+	"learninghub/internal/fsx"
 	"learninghub/internal/jobs"
 	"learninghub/internal/render"
 	"learninghub/internal/services/topics"
@@ -274,14 +276,43 @@ func (a *app) openFile(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "فایل روی دیسک پیدا نشد.", http.StatusNotFound)
 		return
 	}
-	cmd := exec.Command(a.settings.Editor, filepath.Join(a.root.BaseDir(), filepath.FromSlash(f.RelPath)))
+	editorBin, err := exec.LookPath(a.settings.Editor)
+	if err != nil {
+		slog.Error("resolving editor", "editor", a.settings.Editor, "error", err)
+		http.Error(w, "ویرایشگر پیکربندی‌شده پیدا نشد.", http.StatusInternalServerError)
+		return
+	}
+	if fsx.IsBatchShim(editorBin) {
+		if exe := resolveVSCodeExe(editorBin); exe != "" {
+			editorBin = exe
+		} else {
+			slog.Error("refusing batch shim editor", "editor", editorBin)
+			http.Error(w, "اجرای فایل‌های دسته‌ای (.cmd/.bat) به عنوان ویرایشگر در ویندوز پشتیبانی نمی‌شود؛ لطفاً مسیر فایل اصلی .exe را تنظیم کنید.", http.StatusBadRequest)
+			return
+		}
+	}
+	cmd := exec.Command(editorBin, filepath.Join(a.root.BaseDir(), filepath.FromSlash(f.RelPath)))
 	if err := cmd.Start(); err != nil {
-		slog.Error("starting editor", "editor", a.settings.Editor, "error", err)
+		slog.Error("starting editor", "editor", editorBin, "error", err)
 		http.Error(w, "اجرای ویرایشگر پیکربندی‌شده ناموفق بود.", http.StatusInternalServerError)
 		return
 	}
 	go func() { _ = cmd.Wait() }() // reap the editor; it outlives the request
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func resolveVSCodeExe(bin string) string {
+	base := strings.ToLower(filepath.Base(bin))
+	if base != "code.cmd" && base != "code.bat" {
+		return ""
+	}
+	// Typically VS Code bin is <dir>/bin/code.cmd and the executable is <dir>/Code.exe
+	parent := filepath.Dir(filepath.Dir(bin))
+	candidate := filepath.Join(parent, "Code.exe")
+	if st, err := os.Stat(candidate); err == nil && !st.IsDir() {
+		return candidate
+	}
+	return ""
 }
 
 // evaluate enqueues an evaluation of the current set (R3.4); 422 when no answer would go to the AI.

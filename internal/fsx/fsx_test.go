@@ -513,3 +513,29 @@ func TestWritesSyncParentDir(t *testing.T) {
 		t.Fatalf("synced dirs = %v, want [a b]", got)
 	}
 }
+
+func TestIsBatchShim(t *testing.T) {
+	cases := []struct {
+		path string
+		want bool
+	}{
+		{"claude.cmd", true},
+		{"codex.bat", true},
+		{"CLAUDE.CMD", true},
+		{"CODEX.BAT", true},
+		{"C:\\npm\\claude.cmd", true},
+		{"/usr/local/bin/claude.bat", true},
+		{"claude.exe", false},
+		{"claude", false},
+		{"codex.sh", false},
+		{"claude.cmd.bak", false},
+		{"cmd", false},
+		{"bat", false},
+		{"", false},
+	}
+	for _, tc := range cases {
+		if got := fsx.IsBatchShim(tc.path); got != tc.want {
+			t.Errorf("IsBatchShim(%q) = %v, want %v", tc.path, got, tc.want)
+		}
+	}
+}
