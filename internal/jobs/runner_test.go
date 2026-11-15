@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"learninghub/internal/ai"
 	"learninghub/internal/domain"
 	"learninghub/internal/jobs"
 	"learninghub/internal/store"
@@ -347,5 +348,105 @@ func TestFinalWriteFailureIsVisible(t *testing.T) {
 	}
 	if got := get(t, db, id); got.status != string(domain.JobStatusRunning) {
 		t.Errorf("row: got %+v", got)
+	}
+}
+
+type fakeSwitchAdapter struct {
+	name string
+}
+
+func (a fakeSwitchAdapter) Name() string                                            { return a.name }
+func (a fakeSwitchAdapter) Probe(context.Context) (ai.Capabilities, error)          { return ai.Capabilities{}, nil }
+func (a fakeSwitchAdapter) Run(context.Context, ai.Request, chan<- ai.Event) (*ai.Response, error) {
+	return &ai.Response{Text: a.name}, nil
+}
+
+// CR-42: concurrent enqueue and switch with a barrier under -race -> the recorded adapter equals the adapter that ran.
+func TestCR42_ConcurrentEnqueueAndSwitchWithIdle(t *testing.T) {
+	sw := ai.NewSwitch("toolA", fakeSwitchAdapter{name: "toolA"}, fakeSwitchAdapter{name: "toolB"})
+
+	for i := 0; i < 20; i++ {
+		r, db := newRunner(t)
+		_ = sw.Set("toolA") // reset to initial
+
+		var mu sync.Mutex
+		var ranTool string
+
+		r.Register(domain.JobKindLesson, func(ctx context.Context, j jobs.Job) error {
+			currentName := sw.Name()
+			if _, err := db.Writer().Exec(`UPDATE jobs SET adapter = ? WHERE id = ?`, currentName, j.ID); err != nil {
+				return err
+			}
+			resp, err := sw.Run(ctx, ai.Request{}, nil)
+			if err != nil {
+				return err
+			}
+			mu.Lock()
+			ranTool = resp.Text
+			mu.Unlock()
+			return nil
+		})
+
+		start(t, r)
+
+		var jobID int64
+		var switchErr error
+		var wg sync.WaitGroup
+		barrier := make(chan struct{})
+
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			<-barrier
+			id, err := r.Enqueue(context.Background(), jobs.Job{Kind: domain.JobKindLesson, Scope: "topic:1"})
+			if err == nil {
+				atomic.StoreInt64(&jobID, id)
+			}
+		}()
+
+		go func() {
+			defer wg.Done()
+			<-barrier
+			switchErr = r.WithIdle(context.Background(), func() error {
+				return sw.Set("toolB")
+			})
+		}()
+
+		close(barrier)
+		wg.Wait()
+
+		id := atomic.LoadInt64(&jobID)
+		if id > 0 {
+			waitStatus(t, db, id, domain.JobStatusSucceeded)
+
+			var recordedAdapter string
+			err := db.Writer().QueryRow(`SELECT adapter FROM jobs WHERE id = ?`, id).Scan(&recordedAdapter)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			mu.Lock()
+			ran := ranTool
+			mu.Unlock()
+
+			if recordedAdapter != ran {
+				t.Fatalf("iteration %d: recorded adapter %q != adapter that ran %q", i, recordedAdapter, ran)
+			}
+
+			if switchErr == nil {
+				// WithIdle succeeded, meaning it executed before Enqueue
+				if recordedAdapter != "toolB" {
+					t.Fatalf("iteration %d: switch succeeded but job recorded %q", i, recordedAdapter)
+				}
+			} else {
+				// WithIdle was refused because Enqueue executed first
+				if !errors.Is(switchErr, domain.ErrScopeBusy) {
+					t.Fatalf("iteration %d: unexpected switch error: %v", i, switchErr)
+				}
+				if recordedAdapter != "toolA" {
+					t.Fatalf("iteration %d: switch was refused but job recorded %q", i, recordedAdapter)
+				}
+			}
+		}
 	}
 }

@@ -527,15 +527,15 @@ There are **no P0 tasks**.
   - [x] Docs are updated.
 - **Depends on:** CR-40.
 
-### - [ ] CR-42 — Make the adapter switch atomic with respect to jobs
+### - [x] CR-42 — Make the adapter switch atomic with respect to jobs
 - **Problem:** the check for active jobs and `Switch.Set` race with `Enqueue`.
 - **Affected files:** `internal/httpserver/handlers_settings.go:120-151`; `internal/ai/switch.go`; `internal/jobs/runner.go` (Enqueue).
 - **Expected outcome:** a job always runs with the adapter it recorded.
 - **Suggested implementation (preferred):** capture the adapter per job. At claim time, store `adapter` in `jobs` and resolve `Switch.Get(name)` inside the handler, instead of reading the global current adapter. Alternative: perform the busy check and `Set` inside the runner's enqueue serialisation (a `Runner.WithIdle(func() error)`).
 - **Required regression tests:** concurrent enqueue and switch with a barrier under `-race` → the recorded adapter equals the adapter that ran.
 - **Acceptance criteria:**
-  - [ ] Test passes.
-  - [ ] The comment in `switch.go:21` is updated.
+  - [x] Test passes.
+  - [x] The comment in `switch.go:21` is updated.
 - **Depends on:** CR-31.
 
 ### - [ ] CR-43 — `hub doctor` and settings messages follow the selected adapter; doctor writes via `fsx`

@@ -18,7 +18,7 @@ func ModelFor(a Adapter, fallback string) string {
 }
 
 // Switch delegates to one of several adapters (agy, claude, codex); the settings page picks which.
-// Jobs read Name/Model/Run at different moments, so callers must not Set while a job is active.
+// Jobs read Name/Model/Run at different moments; Runner.WithIdle ensures Set is never called while a job is active (queued or running).
 type Switch struct {
 	names    []string
 	adapters map[string]Adapter
@@ -42,6 +42,12 @@ func NewSwitch(current string, as ...Adapter) *Switch {
 
 // Names lists the selectable adapters in construction order.
 func (s *Switch) Names() []string { return s.names }
+
+// Get returns the adapter registered under name, or nil if unknown.
+func (s *Switch) Get(name string) Adapter { return s.adapters[name] }
+
+// Current returns the currently active adapter.
+func (s *Switch) Current() Adapter { return s.current() }
 
 func (s *Switch) Set(name string) error {
 	if _, ok := s.adapters[name]; !ok {

@@ -9,11 +9,15 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"learninghub/internal/ai"
 	"learninghub/internal/ai/fake"
+	"learninghub/internal/domain"
 	"learninghub/internal/httpserver"
+	"learninghub/internal/jobs"
 	"learninghub/skills"
 )
 
@@ -240,5 +244,71 @@ func TestSettingsSkillUpgrade(t *testing.T) {
 	}
 	if strings.Contains(e.settingsPage(false), "نسخه جدید مهارت") {
 		t.Error("offer still shown after upgrade")
+	}
+}
+
+// CR-42: POST /settings/adapter must be atomic with respect to Enqueue under -race.
+func TestCR42_SettingsAdapterSwitchConcurrentWithEnqueue(t *testing.T) {
+	sw := ai.NewSwitch("antigravity", named{&fake.Adapter{}, "antigravity"}, named{&fake.Adapter{}, "claude"})
+	e := newEnv(t, func(s *httpserver.Settings) { s.Adapter, s.Switch = sw, sw })
+
+	for i := 0; i < 10; i++ {
+		_ = sw.Set("antigravity")
+		var wg sync.WaitGroup
+		barrier := make(chan struct{})
+
+		var rec *httptest.ResponseRecorder
+		var jobID int64
+		var enqueueErr error
+
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			<-barrier
+			rec = e.post("/settings/adapter", url.Values{"adapter": {"claude"}}, false)
+		}()
+
+		go func() {
+			defer wg.Done()
+			<-barrier
+			jobID, enqueueErr = e.runner.Enqueue(context.Background(), jobs.Job{
+				Kind:  domain.JobKindLesson,
+				Scope: fmt.Sprintf("topic:%d", i+1),
+			})
+		}()
+
+		close(barrier)
+		wg.Wait()
+
+		if enqueueErr != nil {
+			t.Fatalf("enqueue error: %v", enqueueErr)
+		}
+
+		if rec.Code != http.StatusSeeOther && rec.Code != http.StatusConflict {
+			t.Fatalf("unexpected switch status code: %d", rec.Code)
+		}
+
+		if rec.Code == http.StatusConflict {
+			if sw.Name() != "antigravity" {
+				t.Fatalf("switch was refused but active adapter changed to %s", sw.Name())
+			}
+		} else {
+			if sw.Name() != "claude" {
+				t.Fatalf("switch succeeded but active adapter is %s", sw.Name())
+			}
+		}
+
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			var status string
+			_ = e.db.Writer().QueryRow(`SELECT status FROM jobs WHERE id = ?`, jobID).Scan(&status)
+			if status != "queued" && status != "running" {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		if _, err := e.db.Writer().Exec(`DELETE FROM jobs WHERE id = ?`, jobID); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

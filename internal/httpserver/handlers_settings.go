@@ -4,13 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"learninghub/internal/config"
 	"log/slog"
 	"net/http"
 	"slices"
 	"time"
 
 	"learninghub/internal/ai"
+	"learninghub/internal/config"
+	"learninghub/internal/domain"
 	"learninghub/internal/store"
 	"learninghub/skills"
 )
@@ -138,31 +139,51 @@ func SavedAdapter(ctx context.Context, db *store.DB, fallback string) string {
 }
 
 // selectAdapter switches the AI tool for new jobs. It is refused while any job is queued or
-// running, because a job reads the adapter's name, model and Run at different moments.
+// running (using Runner.WithIdle to serialise against Enqueue; CR-42), because a job reads
+// the adapter's name, model and Run at different moments.
 func (a *app) selectAdapter(w http.ResponseWriter, r *http.Request) {
 	name := r.FormValue("adapter")
 	if a.settings.Switch == nil || !slices.Contains(a.settings.Switch.Names(), name) {
 		a.renderSettings(w, r, http.StatusUnprocessableEntity, "ابزار هوش مصنوعی نامعتبر است.")
 		return
 	}
-	var busy int
-	if err := a.settings.DB.Writer().QueryRowContext(r.Context(),
-		`SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running')`).Scan(&busy); err != nil {
-		slog.Error("counting active jobs", "error", err)
-		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
-		return
+
+	saveAndSwitch := func() error {
+		if _, err := a.settings.DB.Writer().ExecContext(r.Context(),
+			`INSERT INTO meta (key, value) VALUES ('adapter_kind', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, name); err != nil {
+			return err
+		}
+		return a.settings.Switch.Set(name) // validated above
 	}
-	if busy > 0 {
+
+	var err error
+	if a.runner != nil {
+		err = a.runner.WithIdle(r.Context(), saveAndSwitch)
+	} else {
+		var busy int
+		if queryErr := a.settings.DB.Writer().QueryRowContext(r.Context(),
+			`SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running')`).Scan(&busy); queryErr != nil {
+			slog.Error("counting active jobs", "error", queryErr)
+			http.Error(w, "خطای داخلی", http.StatusInternalServerError)
+			return
+		}
+		if busy > 0 {
+			err = domain.ErrScopeBusy
+		} else {
+			err = saveAndSwitch()
+		}
+	}
+
+	if errors.Is(err, domain.ErrScopeBusy) {
 		a.renderSettings(w, r, http.StatusConflict, "تا پایان کارهای در حال اجرا نمی‌توان ابزار هوش مصنوعی را عوض کرد.")
 		return
 	}
-	if _, err := a.settings.DB.Writer().ExecContext(r.Context(),
-		`INSERT INTO meta (key, value) VALUES ('adapter_kind', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, name); err != nil {
+	if err != nil {
 		slog.Error("saving adapter_kind", "error", err)
 		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
 		return
 	}
-	_ = a.settings.Switch.Set(name) // validated above
+
 	a.probeMu.Lock()
 	a.lastProbe = nil // the doctor result belonged to the previous tool
 	a.probeMu.Unlock()

@@ -82,6 +82,8 @@ type Runner struct {
 	handlers map[domain.JobKind]Handler
 	wake     chan struct{}
 
+	enqueueMu sync.RWMutex // CR-42: serialises Enqueue against WithIdle
+
 	mu      sync.Mutex
 	running map[int64]context.CancelFunc
 	finals  map[int64]Info // results whose final DB write failed (CR-38); overlaid by Get/Latest
@@ -134,6 +136,24 @@ func (r *Runner) Retry(ctx context.Context, id int64) (int64, error) {
 	return r.enqueue(ctx, j, id)
 }
 
+// WithIdle runs fn only if there are no queued or running jobs, serialised against Enqueue (CR-42).
+// If any job is currently queued or running, it returns domain.ErrScopeBusy without calling fn.
+func (r *Runner) WithIdle(ctx context.Context, fn func() error) error {
+	r.enqueueMu.Lock()
+	defer r.enqueueMu.Unlock()
+
+	var busy int
+	err := r.db.Writer().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running')`).Scan(&busy)
+	if err != nil {
+		return err
+	}
+	if busy > 0 {
+		return domain.ErrScopeBusy
+	}
+	return fn()
+}
+
 func (r *Runner) enqueue(ctx context.Context, j Job, retryOf int64) (id int64, err error) {
 	if j.Scope == "" {
 		return 0, fmt.Errorf("%w: empty job scope", domain.ErrInvalidInput)
@@ -141,6 +161,9 @@ func (r *Runner) enqueue(ctx context.Context, j Job, retryOf int64) (id int64, e
 	if len(j.Params) == 0 {
 		j.Params = json.RawMessage(`{}`)
 	}
+	r.enqueueMu.RLock()
+	defer r.enqueueMu.RUnlock()
+
 	err = r.db.WithTx(ctx, func(tx *sql.Tx) error {
 		// Checked inside the immediate transaction; uq_jobs_active_scope stays the backstop (D8).
 		var active int64
