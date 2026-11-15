@@ -146,11 +146,31 @@ func runMigrate(args []string) {
 		os.Exit(1)
 	}
 
+	root, err := fsx.OpenRoot(cfg.BaseDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error opening base directory: %v\n", err)
+		os.Exit(1)
+	}
+	defer root.Close()
+
+	if err := root.MkdirAll(".app", 0o755); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	lock := flock.New(filepath.Join(cfg.BaseDir, ".app", "hub.lock"))
+	if ok, err := lock.TryLock(); err != nil || !ok {
+		fmt.Fprintln(os.Stderr, "Error: LearningHub is running; stop it before migrating.")
+		os.Exit(1)
+	}
+	defer lock.Unlock()
+
 	dbPath := filepath.Join(cfg.BaseDir, "app.db")
 	fmt.Printf("Opening database and applying migrations at: %s\n", dbPath)
 
 	db, err := store.Open(dbPath)
 	if err != nil {
+		_ = lock.Unlock()
+		root.Close()
 		fmt.Fprintf(os.Stderr, "Migration failed: %v\n", err)
 		os.Exit(1)
 	}
@@ -158,6 +178,9 @@ func runMigrate(args []string) {
 
 	version, err := db.UserVersion()
 	if err != nil {
+		db.Close()
+		_ = lock.Unlock()
+		root.Close()
 		fmt.Fprintf(os.Stderr, "Failed to read user_version: %v\n", err)
 		os.Exit(1)
 	}

@@ -491,14 +491,14 @@ There are **no P0 tasks**.
   - [x] Test passes.
 - **Depends on:** none.
 
-### - [ ] CR-39 — Lock `hub migrate`; refuse databases newer than the binary
+### - [x] CR-39 — Lock `hub migrate`; refuse databases newer than the binary
 - **Problem:** `migrate` ignores `hub.lock`; `migrateTo` treats `current > target` as up to date.
 - **Affected files:** `cmd/hub/main.go:131-160`; `internal/store/db.go:136-160`.
 - **Expected outcome:** `migrate` refuses while `serve` runs; an older binary refuses a newer schema with a clear message.
 - **Suggested implementation:** reuse the flock code from `runRebuild`; `if current > target { return fmt.Errorf("database schema v%d is newer than this hub (v%d)", …) }`.
 - **Required regression tests:** `user_version=99` → `Open` fails; `migrate` with the lock held → exit 1.
 - **Acceptance criteria:**
-  - [ ] Tests pass.
+  - [x] Tests pass.
 - **Depends on:** CR-44 (exit codes).
 
 ### - [ ] CR-40 — Tighten config validation

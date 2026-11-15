@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"learninghub/internal/store"
@@ -43,6 +44,32 @@ func TestDB_OpenAndMigrate(t *testing.T) {
 	}
 	if version2 != 5 {
 		t.Errorf("Expected user_version 5, got %d", version2)
+	}
+}
+
+// CR-39: an existing database whose user_version is newer than the binary
+// must be refused by Open so older binaries do not operate on an unknown schema.
+func TestDB_OpenRejectsNewerSchema(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "newer.db")
+
+	db, err := store.Open(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to open store: %v", err)
+	}
+	// Bump user_version to 99 to simulate a database written by a future version.
+	if _, err := db.Writer().Exec("PRAGMA user_version = 99;"); err != nil {
+		t.Fatalf("Failed to set user_version: %v", err)
+	}
+	db.Close()
+
+	// Opening again must fail because 99 > len(migrations).
+	_, err = store.Open(dbPath)
+	if err == nil {
+		t.Fatal("Open succeeded on a newer database, expected error")
+	}
+	if !strings.Contains(err.Error(), "database schema v99 is newer than this hub") {
+		t.Fatalf("unexpected error message: %v", err)
 	}
 }
 

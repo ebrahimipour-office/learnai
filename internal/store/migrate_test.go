@@ -142,3 +142,12 @@ func TestMigrate0005AddsTopicParent(t *testing.T) {
 		t.Error("parent_id must reference topics(id)")
 	}
 }
+
+// CR-39: migrateTo must refuse when current user_version > target.
+func TestMigrateRefusesNewerVersion(t *testing.T) {
+	d := openAt(t, 2)
+	mustExec(t, d.writer, `PRAGMA user_version = 99`)
+	if err := d.migrateTo(3); err == nil || !strings.Contains(err.Error(), "database schema v99 is newer than this hub (v3)") {
+		t.Fatalf("err = %v, want newer schema error", err)
+	}
+}

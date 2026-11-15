@@ -146,7 +146,10 @@ func (d *DB) migrateTo(target int) error {
 	if err := conn.QueryRowContext(ctx, "PRAGMA user_version;").Scan(&current); err != nil {
 		return fmt.Errorf("reading user_version: %w", err)
 	}
-	if current >= target {
+	if current > target {
+		return fmt.Errorf("database schema v%d is newer than this hub (v%d)", current, target)
+	}
+	if current == target {
 		return nil
 	}
 	if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys = OFF;"); err != nil {
