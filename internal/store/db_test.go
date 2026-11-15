@@ -218,3 +218,45 @@ func TestDB_EscapedPath(t *testing.T) {
 		})
 	}
 }
+
+func TestDB_OpenReadOnly(t *testing.T) {
+	tempDir := t.TempDir()
+	nonExistent := filepath.Join(tempDir, "missing.db")
+
+	// 1. Non-existent file should fail to open read-only.
+	if _, err := store.OpenReadOnly(nonExistent); err == nil {
+		t.Fatal("expected OpenReadOnly to fail on missing file, but it succeeded")
+	}
+
+	// 2. Open existing database read-write and populate.
+	dbPath := filepath.Join(tempDir, "app.db")
+	db, err := store.Open(dbPath)
+	if err != nil {
+		t.Fatalf("failed to open store: %v", err)
+	}
+	if _, err := db.Writer().Exec(`INSERT INTO meta (key, value) VALUES ('adapter_kind', 'claude')`); err != nil {
+		t.Fatalf("failed to insert meta: %v", err)
+	}
+	db.Close()
+
+	// 3. Open existing database read-only.
+	roDB, err := store.OpenReadOnly(dbPath)
+	if err != nil {
+		t.Fatalf("OpenReadOnly failed on existing db: %v", err)
+	}
+	defer roDB.Close()
+
+	// Reading should succeed.
+	var val string
+	if err := roDB.Writer().QueryRow(`SELECT value FROM meta WHERE key = 'adapter_kind'`).Scan(&val); err != nil {
+		t.Fatalf("querying read-only db failed: %v", err)
+	}
+	if val != "claude" {
+		t.Fatalf("want 'claude', got %q", val)
+	}
+
+	// Writing should fail.
+	if _, err := roDB.Writer().Exec(`INSERT INTO meta (key, value) VALUES ('test', 'val')`); err == nil {
+		t.Fatal("expected write to fail on read-only db, but it succeeded")
+	}
+}

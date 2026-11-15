@@ -15,6 +15,26 @@ import (
 	"github.com/gofrs/flock"
 )
 
+func TestMain(m *testing.M) {
+	if os.Getenv("HUB_MOCK_CLAUDE_PROBE") == "1" && len(os.Args) > 1 && !strings.HasPrefix(os.Args[1], "-test.") {
+		args := os.Args[1:]
+		if len(args) > 0 && args[0] == "--version" {
+			fmt.Println("claude-custom-probe-marker 1.2.3")
+			os.Exit(0)
+		}
+		if len(args) > 0 && args[0] == "--help" {
+			fmt.Println("--output-format stream-json --json-schema")
+			os.Exit(0)
+		}
+		if len(args) > 1 && args[0] == "auth" && args[1] == "status" {
+			fmt.Println(`{"loggedIn": true}`)
+			os.Exit(0)
+		}
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
+
 // CR-44: a fatal serve error (port already taken) must exit 1, not 0.
 func TestServeExitsNonZeroWhenPortTaken(t *testing.T) {
 	if os.Getenv("HUB_TEST_SERVE") == "1" {
@@ -219,4 +239,76 @@ func TestCR41_CLIAppliesDefaultConfigWhenConfigOmitted(t *testing.T) {
 			t.Fatalf("expected app.db to be created in baseDir %s: %v", baseDir, err)
 		}
 	})
+}
+
+// CR-43: hub doctor probes the saved adapter in the database (meta.adapter_kind)
+// and never modifies an existing .doctor_test file in base_dir.
+func TestCR43_DoctorProbesSelectedAdapterAndPreservesExistingTestFile(t *testing.T) {
+	if os.Getenv("HUB_TEST_DOCTOR_CLAUDE") == "1" {
+		os.Args = []string{"hub", "doctor", "--config", os.Getenv("HUB_TEST_CONFIG")}
+		main()
+		os.Exit(0)
+	}
+
+	dir := t.TempDir()
+	appDir := filepath.Join(dir, ".app")
+	if err := os.MkdirAll(appDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dbPath := filepath.Join(appDir, "app.db")
+	db, err := store.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Writer().Exec(`INSERT INTO meta (key, value) VALUES ('adapter_kind', 'claude')`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	// Place an existing .doctor_test file in baseDir to assert it is never overwritten or removed.
+	existingTestFile := filepath.Join(dir, ".doctor_test")
+	existingContent := "CR43_DO_NOT_OVERWRITE_THIS_FILE"
+	if err := os.WriteFile(existingTestFile, []byte(existingContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := filepath.Join(dir, "config.toml")
+	selfBin, err := os.Executable()
+	if err != nil {
+		selfBin = os.Args[0]
+	}
+	body := fmt.Sprintf(`base_dir = %q
+[adapter]
+kind = "antigravity"
+[adapter.claude]
+binary = %q
+`, dir, selfBin)
+	if err := os.WriteFile(cfg, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=^TestCR43_DoctorProbesSelectedAdapterAndPreservesExistingTestFile$")
+	cmd.Env = append(os.Environ(),
+		"HUB_TEST_DOCTOR_CLAUDE=1",
+		"HUB_MOCK_CLAUDE_PROBE=1",
+		"HUB_TEST_CONFIG="+cfg,
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("expected doctor to succeed, got %v\n%s", err, out)
+	}
+
+	// 1. Verify doctor probed claude (version output contains marker from mock claude)
+	if !strings.Contains(string(out), "claude-custom-probe-marker 1.2.3") {
+		t.Fatalf("expected doctor output to probe claude and show mock marker, got:\n%s", out)
+	}
+
+	// 2. Verify existing .doctor_test was untouched
+	gotContent, err := os.ReadFile(existingTestFile)
+	if err != nil {
+		t.Fatalf("reading .doctor_test: %v", err)
+	}
+	if string(gotContent) != existingContent {
+		t.Fatalf(".doctor_test was modified: got %q, want %q", string(gotContent), existingContent)
+	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -55,9 +56,21 @@ func ProbeAdapter(ctx context.Context, s Settings) Doctor {
 	case !caps.Authenticated:
 		d.Hint = ai.Message("auth_required")
 	case model != "" && len(caps.Models) > 0 && !slices.Contains(caps.Models, model):
-		d.ModelWarn = "مدل «" + model + "» در فهرست `agy models` نیست؛ مقدار `adapter.model` را در config.toml اصلاح کنید."
+		tool, tomlKey := adapterModelInfo(s.Adapter.Name())
+		d.ModelWarn = fmt.Sprintf("مدل «%s» در فهرست `%s` نیست؛ مقدار `%s` را در config.toml اصلاح کنید.", model, tool, tomlKey)
 	}
 	return d
+}
+
+func adapterModelInfo(name string) (tool string, tomlKey string) {
+	switch name {
+	case "claude":
+		return "claude models", "adapter.claude.model"
+	case "codex":
+		return "codex models", "adapter.codex.model"
+	default:
+		return "agy models", "adapter.model"
+	}
 }
 
 // doctor returns the cached Probe result; nil until "run doctor" was pressed. GET /settings

@@ -538,7 +538,7 @@ There are **no P0 tasks**.
   - [x] The comment in `switch.go:21` is updated.
 - **Depends on:** CR-31.
 
-### - [ ] CR-43 — `hub doctor` and settings messages follow the selected adapter; doctor writes via `fsx`
+### - [x] CR-43 — `hub doctor` and settings messages follow the selected adapter; doctor writes via `fsx`
 - **Problem:** doctor probes `cfg.Adapter.Kind`/`cfg.Adapter.Model`, not the saved selection; the model warning hard-codes `agy`; the `.doctor_test` file is written with `os.WriteFile` and can overwrite a user file.
 - **Affected files:** `cmd/hub/main.go:80-129`; `internal/httpserver/handlers_settings.go:50-56`.
 - **Expected outcome:** doctor reports on the tool the UI will use, with correct wording, and never overwrites files.
@@ -549,8 +549,8 @@ There are **no P0 tasks**.
   - [x] Use `fsx.WriteNew` with a random name, then remove it. (done in R10; adapter-selection parts still open)
 - **Required regression tests:** `meta.adapter_kind='claude'` → doctor probes `claude`; a message test for each adapter; an existing `.doctor_test` is not modified.
 - **Acceptance criteria:**
-  - [ ] Tests pass.
-  - [ ] `PROGRESS.md:210` caveat removed.
+  - [x] Tests pass.
+  - [x] `PROGRESS.md:210` caveat removed.
 - **Depends on:** none.
 
 ### - [x] CR-44 — Non-zero exit status on fatal `serve` errors

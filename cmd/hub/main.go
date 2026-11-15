@@ -102,10 +102,18 @@ func runDoctor(args []string) {
 		}
 		root.Close()
 	}
-	adapter := newAdapter(cfg, nil, cfg.Adapter.Kind)
 	ctx, cancel := signal.NotifyContext(context.Background(), shutdownSignals...)
 	defer cancel()
-	d := httpserver.ProbeAdapter(ctx, httpserver.Settings{Adapter: adapter, Model: cfg.Adapter.Model})
+
+	kind := cfg.Adapter.Kind
+	dbPath := filepath.Join(cfg.BaseDir, ".app", "app.db")
+	if db, err := store.OpenReadOnly(dbPath); err == nil {
+		kind = httpserver.SavedAdapter(ctx, db, cfg.Adapter.Kind)
+		db.Close()
+	}
+
+	adapter := newAdapter(cfg, nil, kind)
+	d := httpserver.ProbeAdapter(ctx, httpserver.Settings{Adapter: adapter, Model: adapter.Model()})
 	ok := writeErr == "" && d.Ready()
 
 	if *asJSON {

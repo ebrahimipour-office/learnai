@@ -312,3 +312,80 @@ func TestCR42_SettingsAdapterSwitchConcurrentWithEnqueue(t *testing.T) {
 		}
 	}
 }
+
+type stubAdapterCR43 struct {
+	name  string
+	model string
+	caps  ai.Capabilities
+}
+
+func (s *stubAdapterCR43) Name() string                                   { return s.name }
+func (s *stubAdapterCR43) Model() string                                  { return s.model }
+func (s *stubAdapterCR43) Probe(context.Context) (ai.Capabilities, error) { return s.caps, nil }
+func (s *stubAdapterCR43) Run(context.Context, ai.Request, chan<- ai.Event) (*ai.Response, error) {
+	return nil, nil
+}
+
+// CR-43: ProbeAdapter must format the model warning using the adapter's own CLI and TOML section.
+func TestCR43_ProbeAdapterModelWarningMessages(t *testing.T) {
+	tests := []struct {
+		adapterName string
+		model       string
+		models      []string
+		wantWarning string
+		wantTomlKey string
+	}{
+		{
+			adapterName: "antigravity",
+			model:       "unlisted-gemini",
+			models:      []string{"gemini-2.5-flash"},
+			wantWarning: "agy models",
+			wantTomlKey: "adapter.model",
+		},
+		{
+			adapterName: "claude",
+			model:       "unlisted-claude",
+			models:      []string{"claude-3-5-sonnet"},
+			wantWarning: "claude models",
+			wantTomlKey: "adapter.claude.model",
+		},
+		{
+			adapterName: "codex",
+			model:       "unlisted-codex",
+			models:      []string{"o3-mini"},
+			wantWarning: "codex models",
+			wantTomlKey: "adapter.codex.model",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.adapterName, func(t *testing.T) {
+			ad := &stubAdapterCR43{
+				name:  tc.adapterName,
+				model: tc.model,
+				caps:  ai.Capabilities{Authenticated: true, Models: tc.models},
+			}
+			d := httpserver.ProbeAdapter(context.Background(), httpserver.Settings{Adapter: ad, Model: tc.model})
+			if !strings.Contains(d.ModelWarn, tc.wantWarning) {
+				t.Errorf("%s: want warning containing %q, got %q", tc.adapterName, tc.wantWarning, d.ModelWarn)
+			}
+			if !strings.Contains(d.ModelWarn, tc.wantTomlKey) {
+				t.Errorf("%s: want toml key %q, got %q", tc.adapterName, tc.wantTomlKey, d.ModelWarn)
+			}
+			if !strings.Contains(d.ModelWarn, tc.model) {
+				t.Errorf("%s: want model %q in warning, got %q", tc.adapterName, tc.model, d.ModelWarn)
+			}
+
+			// When model is in the listed models, no warning should be returned.
+			adListed := &stubAdapterCR43{
+				name:  tc.adapterName,
+				model: tc.models[0],
+				caps:  ai.Capabilities{Authenticated: true, Models: tc.models},
+			}
+			dListed := httpserver.ProbeAdapter(context.Background(), httpserver.Settings{Adapter: adListed, Model: tc.models[0]})
+			if dListed.ModelWarn != "" {
+				t.Errorf("%s: expected empty ModelWarn for listed model, got %q", tc.adapterName, dListed.ModelWarn)
+			}
+		})
+	}
+}

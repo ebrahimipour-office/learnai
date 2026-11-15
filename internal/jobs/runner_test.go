@@ -355,8 +355,10 @@ type fakeSwitchAdapter struct {
 	name string
 }
 
-func (a fakeSwitchAdapter) Name() string                                            { return a.name }
-func (a fakeSwitchAdapter) Probe(context.Context) (ai.Capabilities, error)          { return ai.Capabilities{}, nil }
+func (a fakeSwitchAdapter) Name() string { return a.name }
+func (a fakeSwitchAdapter) Probe(context.Context) (ai.Capabilities, error) {
+	return ai.Capabilities{}, nil
+}
 func (a fakeSwitchAdapter) Run(context.Context, ai.Request, chan<- ai.Event) (*ai.Response, error) {
 	return &ai.Response{Text: a.name}, nil
 }

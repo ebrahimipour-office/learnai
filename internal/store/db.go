@@ -30,6 +30,11 @@ func dsn(absPath string) string {
 	return fmt.Sprintf("file:%s?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_txlock=immediate", escaped)
 }
 
+func dsnReadOnly(absPath string) string {
+	escaped := strings.NewReplacer("%", "%25", "#", "%23", "?", "%3f").Replace(filepath.ToSlash(absPath))
+	return fmt.Sprintf("file:%s?mode=ro&_pragma=busy_timeout(5000)", escaped)
+}
+
 // Open initializes the SQLite database at dbPath, applies PRAGMAs, and runs all pending migrations.
 func Open(dbPath string) (*DB, error) {
 	absPath, err := filepath.Abs(dbPath)
@@ -71,6 +76,32 @@ func Open(dbPath string) (*DB, error) {
 	}
 
 	return s, nil
+}
+
+// OpenReadOnly opens an existing SQLite database in read-only mode (mode=ro) without applying migrations.
+func OpenReadOnly(dbPath string) (*DB, error) {
+	absPath, err := filepath.Abs(dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("resolving db path: %w", err)
+	}
+
+	db, err := sql.Open("sqlite", dsnReadOnly(absPath))
+	if err != nil {
+		return nil, fmt.Errorf("opening read-only sqlite database: %w", err)
+	}
+
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("verifying read-only db connection: %w", err)
+	}
+
+	return &DB{
+		writer: db,
+		path:   absPath,
+	}, nil
 }
 
 // Close closes the database connection.
