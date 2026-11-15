@@ -1547,7 +1547,7 @@ timeout_lesson        = "10m"
 timeout_exercises     = "10m"
 timeout_evaluate_item = "5m"
 timeout_evaluate      = "30m"             # سقف کل Job ارزیابی (۶.۵)
-timeout_analyze       = "3m"
+timeout_analyze       = "10m"
 stall_timeout         = "6m"
 
 [exercises]
@@ -1639,7 +1639,7 @@ command = ""                              # خالی = دکمه «باز کرد�
 | خروجی | اسکیمای `ai-chapter-detect-output.schema.json` (بخش ۱۲.۷). |
 | اعتبارسنجی | اسکیما ⇐ `ValidateChapters`؛ نامعتبر ⇐ یک‌بار retry با فهرست خطاها (همان `ai.WatchValid`) و سپس `invalid_output`. |
 | commit | فقط `import_drafts.ai_suggestion` = `{"rule": {"kind":"chapters", ...}, "title": "...", "reason": "...", "job_id": N}`. **هیچ فایل یا رکورد `roadmaps`/`topics` پیش از «تأیید» ساخته نمی‌شود.** دکمه «اعمال پیشنهاد» قاعده و (در ورود اول) عنوان را در `Choice`/`import_drafts.title` می‌گذارد، دقیقاً مثل اعمال پیشنهاد `roadmap_analyze`. |
-| سقف زمان | `jobs.timeout_analyze` (۳ دقیقه؛ ورودی کوچک است). |
+| سقف زمان | `jobs.timeout_analyze` (۱۰ دقیقه). |
 | بدون AI | کاربر قاعده قطعی `level` (مثلاً H2) را انتخاب می‌کند؛ بازه‌ها از `EndLine` می‌آیند (۱۲.۴). |
 
 ### ۱۲.۶. ثبت فصل‌ها، `source.md` و مهاجرت `0003_chapters.sql` (T7.5)
