@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -32,6 +33,7 @@ type adapter struct {
 	source                map[string]string // inputs/source.md per exercise; absent = not sent
 	inFlight, maxInFlight int
 	name                  string // "" = "test"
+	onRun                 func(exID string)
 }
 
 func (a *adapter) Name() string {
@@ -67,7 +69,11 @@ func (a *adapter) Run(ctx context.Context, req ai.Request, _ chan<- ai.Event) (*
 	if v, ok := a.award[t.ExerciseID]; ok {
 		award = v
 	}
+	onRun := a.onRun
 	a.mu.Unlock()
+	if onRun != nil {
+		onRun(t.ExerciseID)
+	}
 	time.Sleep(50 * time.Millisecond)
 	a.mu.Lock()
 	a.inFlight--
@@ -392,6 +398,10 @@ func TestEvaluateCommitsAttempt(t *testing.T) {
 		t.Fatal(err)
 	}
 	json.Unmarshal(b, &res)
+	tsRegex := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$`)
+	if !tsRegex.MatchString(res.StartedAt) || !tsRegex.MatchString(res.FinishedAt) {
+		t.Errorf("result.json timestamps: started %q finished %q, want regex %s", res.StartedAt, res.FinishedAt, tsRegex)
+	}
 	// q01=7 (w1), q02=7 (w2), q03 unanswered (w1): 21/4
 	if a := res.Aggregate; a.WeightedScore != 5.25 || a.AnsweredCount != 2 || !a.Partial || res.AttemptNo != 1 || res.Evaluator.SkillVersion == "" {
 		t.Errorf("result = %+v", res)
@@ -405,8 +415,11 @@ func TestEvaluateCommitsAttempt(t *testing.T) {
 	}
 	var score float64
 	var partial, mutable, items int
-	var status string
-	e.db.Writer().QueryRow(`SELECT topic_score, is_partial FROM attempts WHERE set_id = 1 AND attempt_no = 1`).Scan(&score, &partial)
+	var status, dbStarted, dbFinished string
+	e.db.Writer().QueryRow(`SELECT topic_score, is_partial, started_at, finished_at FROM attempts WHERE set_id = 1 AND attempt_no = 1`).Scan(&score, &partial, &dbStarted, &dbFinished)
+	if !tsRegex.MatchString(dbStarted) || !tsRegex.MatchString(dbFinished) {
+		t.Errorf("db timestamps: started %q finished %q, want regex %s", dbStarted, dbFinished, tsRegex)
+	}
 	e.db.Writer().QueryRow(`SELECT COUNT(*) FROM files WHERE kind IN ('report','summary','result') AND immutable = 0`).Scan(&mutable)
 	e.db.Writer().QueryRow(`SELECT COUNT(*) FROM attempt_items`).Scan(&items)
 	e.db.Writer().QueryRow(`SELECT status FROM topics WHERE id = 2`).Scan(&status)
@@ -782,4 +795,104 @@ func TestEvaluateNeedsReviewFlag(t *testing.T) {
 			t.Errorf("summary q03 row = %q, a template answer stays unanswered", line)
 		}
 	}
+}
+
+// CR-53: started_at and finished_at in result.json must both use 2006-01-02T15:04:05.000Z in UTC.
+func TestCR53_ResultTimestampsMatchOneRegex(t *testing.T) {
+	tsRegex := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$`)
+
+	t.Run("result.json and attempts timestamps match regex", func(t *testing.T) {
+		e := setup(t, 1)
+		if st, code := e.wait(e.enqueue("full")); st != "succeeded" {
+			t.Fatalf("status %s (%s)", st, code)
+		}
+		dir := evaluation.AttemptRel("02-http", 1, 1)
+		b := e.read(dir + "/result.json")
+		var res schema.Result
+		if err := json.Unmarshal(b, &res); err != nil {
+			t.Fatal(err)
+		}
+		if !tsRegex.MatchString(res.StartedAt) {
+			t.Errorf("result.json started_at = %q, want regex %s", res.StartedAt, tsRegex)
+		}
+		if !tsRegex.MatchString(res.FinishedAt) {
+			t.Errorf("result.json finished_at = %q, want regex %s", res.FinishedAt, tsRegex)
+		}
+		if _, err := time.Parse(evaluation.TimeFormat, res.StartedAt); err != nil {
+			t.Errorf("parsing started_at with TimeFormat: %v", err)
+		}
+		if _, err := time.Parse(evaluation.TimeFormat, res.FinishedAt); err != nil {
+			t.Errorf("parsing finished_at with TimeFormat: %v", err)
+		}
+
+		var dbStarted, dbFinished string
+		if err := e.db.Writer().QueryRow(`SELECT started_at, finished_at FROM attempts WHERE set_id = 1 AND attempt_no = 1`).Scan(&dbStarted, &dbFinished); err != nil {
+			t.Fatal(err)
+		}
+		if !tsRegex.MatchString(dbStarted) {
+			t.Errorf("db attempts.started_at = %q, want regex %s", dbStarted, tsRegex)
+		}
+		if !tsRegex.MatchString(dbFinished) {
+			t.Errorf("db attempts.finished_at = %q, want regex %s", dbFinished, tsRegex)
+		}
+	})
+
+	t.Run("normalizes non-fractional and empty started_at", func(t *testing.T) {
+		e := setup(t, 1)
+
+		// Case 1: started_at has standard RFC3339 without milliseconds
+		var jobID1 int64
+		e.ad.mu.Lock()
+		e.ad.onRun = func(exID string) {
+			_, _ = e.db.Writer().Exec(`UPDATE jobs SET started_at = '2026-11-15T10:00:00Z' WHERE id = ?`, jobID1)
+		}
+		e.ad.mu.Unlock()
+
+		jobID1 = e.enqueue("full")
+		if st, _ := e.wait(jobID1); st != "succeeded" {
+			t.Fatalf("job 1 status %s", st)
+		}
+
+		dir1 := evaluation.AttemptRel("02-http", 1, 1)
+		b1 := e.read(dir1 + "/result.json")
+		var r1 schema.Result
+		if err := json.Unmarshal(b1, &r1); err != nil {
+			t.Fatal(err)
+		}
+		if r1.StartedAt != "2026-11-15T10:00:00.000Z" {
+			t.Errorf("r1.StartedAt = %q, want 2026-11-15T10:00:00.000Z", r1.StartedAt)
+		}
+		if !tsRegex.MatchString(r1.FinishedAt) {
+			t.Errorf("r1.FinishedAt = %q, want regex %s", r1.FinishedAt, tsRegex)
+		}
+
+		// Case 2: started_at is empty string ("") -> falls back to now
+		var jobID2 int64
+		e.ad.mu.Lock()
+		e.ad.onRun = func(exID string) {
+			_, _ = e.db.Writer().Exec(`UPDATE jobs SET started_at = '' WHERE id = ?`, jobID2)
+		}
+		e.ad.mu.Unlock()
+
+		if err := os.WriteFile(filepath.Join(e.dir, "topics/02-http/answers/v1/q01-one.go"), []byte(tpl+"better\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		jobID2 = e.enqueue("incremental")
+		if st, _ := e.wait(jobID2); st != "succeeded" {
+			t.Fatalf("job 2 status %s", st)
+		}
+
+		dir2 := evaluation.AttemptRel("02-http", 1, 2)
+		b2 := e.read(dir2 + "/result.json")
+		var r2 schema.Result
+		if err := json.Unmarshal(b2, &r2); err != nil {
+			t.Fatal(err)
+		}
+		if !tsRegex.MatchString(r2.StartedAt) {
+			t.Errorf("r2.StartedAt = %q, want regex %s", r2.StartedAt, tsRegex)
+		}
+		if !tsRegex.MatchString(r2.FinishedAt) {
+			t.Errorf("r2.FinishedAt = %q, want regex %s", r2.FinishedAt, tsRegex)
+		}
+	})
 }

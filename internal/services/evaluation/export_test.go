@@ -1,5 +1,8 @@
 package evaluation
 
+// TimeFormat exposes timefmt for external tests.
+const TimeFormat = timefmt
+
 // SetBeforeCommitTx replaces the crash-injection hook until the test ends.
 func SetBeforeCommitTx(t interface{ Cleanup(func()) }, f func()) {
 	old := beforeCommitTx

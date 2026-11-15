@@ -645,14 +645,14 @@ There are **no P0 tasks**.
   - [x] Tests pass.
 - **Depends on:** CR-04.
 
-### - [ ] CR-53 — One timestamp format per attempt
+### - [x] CR-53 — One timestamp format per attempt
 - **Problem:** `started_at` has millisecond precision; `finished_at` uses RFC 3339 seconds.
 - **Affected files:** `internal/services/evaluation/commit.go:64-72`.
 - **Expected outcome:** both use `2006-01-02T15:04:05.000Z` in UTC.
 - **Suggested implementation:** a shared `timefmt` constant used for both values.
 - **Required regression tests:** `result.json` timestamps match one regex.
 - **Acceptance criteria:**
-  - [ ] Test passes.
+  - [x] Test passes.
 - **Depends on:** none.
 
 ### - [ ] CR-54 — Fix flaky cancel tests in `internal/jobs`

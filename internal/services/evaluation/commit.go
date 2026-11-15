@@ -18,6 +18,8 @@ import (
 	"learninghub/internal/services/topics"
 )
 
+const timefmt = "2006-01-02T15:04:05.000Z"
+
 type setInfo struct {
 	ID                     int64
 	Version, RubricVersion int
@@ -64,9 +66,11 @@ func (s *Service) commit(ctx context.Context, j jobs.Job, mode string, set setIn
 	if err := s.DB.Writer().QueryRowContext(ctx, `SELECT COALESCE(started_at, '') FROM jobs WHERE id = ?`, j.ID).Scan(&started); err != nil {
 		return err
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := time.Now().UTC().Format(timefmt)
 	if started == "" {
 		started = now
+	} else if t, err := time.Parse(time.RFC3339Nano, started); err == nil {
+		started = t.UTC().Format(timefmt)
 	}
 	dir := AttemptRel(set.TopicDir, set.Version, k)
 
