@@ -30,6 +30,7 @@ import (
 	"learninghub/internal/services/rebuild"
 	"learninghub/internal/services/roadmaps"
 	"learninghub/internal/services/topics"
+	"learninghub/internal/signals"
 	"learninghub/internal/store"
 	"learninghub/skills"
 
@@ -41,6 +42,9 @@ var (
 	Version   = "1.0.0"
 	BuildDate = "2026-10-31"
 )
+
+// shutdownSignals contains OS signals that trigger graceful process shutdown (CR-23).
+var shutdownSignals = signals.Shutdown
 
 func main() {
 	if len(os.Args) < 2 {
