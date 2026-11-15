@@ -564,14 +564,14 @@ There are **no P0 tasks**.
   - [x] `cmd/hub` has at least one test file.
 - **Depends on:** none.
 
-### - [ ] CR-45 — Full page on htmx history restore for `/topics`
+### - [x] CR-45 — Full page on htmx history restore for `/topics`
 - **Problem:** a history-cache miss returns the fragment, which replaces `<body>`.
 - **Affected files:** `internal/httpserver/handlers_topics.go:39-42` (or `internal/ui/templates/layout.html:6`).
 - **Expected outcome:** Back navigation always shows the full page.
 - **Suggested implementation:** `if r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-History-Restore-Request") != "true"`; or add `"refreshOnHistoryMiss":true` to the htmx config.
 - **Required regression tests:** request with both headers → the response contains `<header`.
 - **Acceptance criteria:**
-  - [ ] Test passes.
+  - [x] Test passes.
 - **Depends on:** none.
 
 ### - [ ] CR-46 — Draft form: do not post on text-input `change`

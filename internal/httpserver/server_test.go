@@ -488,3 +488,54 @@ func TestFaviconReturns204(t *testing.T) {
 		t.Fatalf("GET /favicon.ico status = %d, want %d", rec.Code, http.StatusNoContent)
 	}
 }
+
+func TestCR45_TopicsHistoryRestoreReturnsFullPage(t *testing.T) {
+	e := newEnv(t)
+	draftURL := e.upload("go.md", []byte("# Go\n## Basics\n### Types\n")).Header().Get("Location")
+	if rec := e.confirm(draftURL, url.Values{"csrf_token": {e.sm.CSRFToken()}, "confirm": {"1"}}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("confirm: %d", rec.Code)
+	}
+
+	// 1. Regular browser navigation returns full page with <header and <html.
+	reqPlain := httptest.NewRequest(http.MethodGet, "/topics?q=Types", nil)
+	recPlain := e.do(reqPlain)
+	if recPlain.Code != http.StatusOK {
+		t.Fatalf("plain: want 200, got %d", recPlain.Code)
+	}
+	bodyPlain := recPlain.Body.String()
+	if !strings.Contains(bodyPlain, "<header") || !strings.Contains(bodyPlain, "<html") {
+		t.Fatalf("plain: expected full page with header, got:\n%s", bodyPlain)
+	}
+
+	// 2. htmx search request returns fragment without <header and without <html.
+	reqHx := httptest.NewRequest(http.MethodGet, "/topics?q=Types", nil)
+	reqHx.Header.Set("HX-Request", "true")
+	recHx := e.do(reqHx)
+	if recHx.Code != http.StatusOK {
+		t.Fatalf("hx: want 200, got %d", recHx.Code)
+	}
+	bodyHx := recHx.Body.String()
+	if strings.Contains(bodyHx, "<header") || strings.Contains(bodyHx, "<html") {
+		t.Fatalf("hx search: expected fragment without header, got:\n%s", bodyHx)
+	}
+	if !strings.Contains(bodyHx, `<div id="topic-results">`) {
+		t.Fatalf("hx search: expected #topic-results fragment, got:\n%s", bodyHx)
+	}
+
+	// 3. htmx history restore request (with both HX-Request and HX-History-Restore-Request)
+	// MUST return full page containing <header and <html so body is not corrupted on history-cache miss.
+	reqRestore := httptest.NewRequest(http.MethodGet, "/topics?q=Types", nil)
+	reqRestore.Header.Set("HX-Request", "true")
+	reqRestore.Header.Set("HX-History-Restore-Request", "true")
+	recRestore := e.do(reqRestore)
+	if recRestore.Code != http.StatusOK {
+		t.Fatalf("restore: want 200, got %d", recRestore.Code)
+	}
+	bodyRestore := recRestore.Body.String()
+	if !strings.Contains(bodyRestore, "<header") || !strings.Contains(bodyRestore, "<html") {
+		t.Fatalf("restore: expected full page with header, got:\n%s", bodyRestore)
+	}
+	if !strings.Contains(bodyRestore, `<div id="topic-results">`) {
+		t.Fatalf("restore: expected #topic-results in full page, got:\n%s", bodyRestore)
+	}
+}

@@ -373,8 +373,10 @@ func TestCR42_ConcurrentEnqueueAndSwitchWithIdle(t *testing.T) {
 
 		var mu sync.Mutex
 		var ranTool string
+		handlerRelease := make(chan struct{})
 
 		r.Register(domain.JobKindLesson, func(ctx context.Context, j jobs.Job) error {
+			<-handlerRelease
 			currentName := sw.Name()
 			if _, err := db.Writer().Exec(`UPDATE jobs SET adapter = ? WHERE id = ?`, currentName, j.ID); err != nil {
 				return err
@@ -416,6 +418,7 @@ func TestCR42_ConcurrentEnqueueAndSwitchWithIdle(t *testing.T) {
 
 		close(barrier)
 		wg.Wait()
+		close(handlerRelease)
 
 		id := atomic.LoadInt64(&jobID)
 		if id > 0 {

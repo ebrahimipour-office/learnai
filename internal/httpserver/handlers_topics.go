@@ -37,7 +37,7 @@ func (a *app) listTopics(w http.ResponseWriter, r *http.Request) {
 	data := &pageData{Title: "موضوعات", Query: f.Query, Status: f.Status, Statuses: opts,
 		Topics: tree, Matched: matched, TopicTotal: total}
 	name := "layout"
-	if r.Header.Get("HX-Request") == "true" {
+	if r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-History-Restore-Request") != "true" {
 		name = "topic-results"
 	}
 	a.render(w, http.StatusOK, "topics", name, data)
