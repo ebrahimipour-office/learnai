@@ -239,6 +239,42 @@ func TestCR41_CLIAppliesDefaultConfigWhenConfigOmitted(t *testing.T) {
 			t.Fatalf("expected app.db to be created in baseDir %s: %v", baseDir, err)
 		}
 	})
+
+	t.Run("local config in cwd takes precedence over default config path for CLI", func(t *testing.T) {
+		appDataDir := t.TempDir()
+		appDataBaseDir := t.TempDir()
+		cfgDir := filepath.Join(appDataDir, "LearningHub")
+		if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(fmt.Sprintf("base_dir = %q\n", appDataBaseDir)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		localCwd := t.TempDir()
+		localBaseDir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(localCwd, "config.toml"), []byte(fmt.Sprintf("base_dir = %q\n", localBaseDir)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		cmd := exec.Command(os.Args[0], "-test.run=^TestCR41_CLIAppliesDefaultConfigWhenConfigOmitted$")
+		cmd.Dir = localCwd
+		cmd.Env = append(os.Environ(), "HUB_TEST_DEFAULT_CONFIG_MIGRATE=1", "APPDATA="+appDataDir)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("migrate with local config failed: %v\n%s", err, out)
+		}
+		if !strings.Contains(string(out), "user_version =") {
+			t.Fatalf("expected migrate success output, got: %s", out)
+		}
+		// Confirm app.db was created in localBaseDir from local config, NOT in appDataBaseDir
+		if _, err := os.Stat(filepath.Join(localBaseDir, "app.db")); err != nil {
+			t.Fatalf("expected app.db in localBaseDir %s: %v", localBaseDir, err)
+		}
+		if _, err := os.Stat(filepath.Join(appDataBaseDir, "app.db")); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("expected app.db NOT in appDataBaseDir: %v", err)
+		}
+	})
 }
 
 // CR-43: hub doctor probes the saved adapter in the database (meta.adapter_kind)

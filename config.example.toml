@@ -1,0 +1,81 @@
+# LearningHub Configuration File (Example)
+# Copy this file to `config.toml` and customize as needed.
+# Note: Unknown keys will be rejected by LearningHub. All durations require units (e.g., "10m", "30s").
+
+# Base directory for topics, roadmaps, and .app data.
+# When empty or omitted, defaults to the current working directory.
+# Must be an absolute path if explicitly set.
+# base_dir = "D:\\Project3\\learnai"
+
+# Loopback listen address (must strictly bind to 127.0.0.1 or [::1]).
+listen = "127.0.0.1:8787"
+
+# UI and prompt language (default: "fa").
+language = "fa"
+
+# Log retention in days (minimum 1, default 30).
+log_retention_days = 30
+
+# Daily SQLite database backups kept in .app/backup (default 7).
+backup_keep = 7
+
+# How long an unconfirmed roadmap import preview lives (default: "24h").
+draft_ttl = "24h"
+
+[adapter]
+# Initial AI adapter: "antigravity" | "claude" | "codex" (can also be switched in UI settings).
+kind = "antigravity"
+binary = "agy"
+model = "gemini-3.8-flash-medium"
+effort = "medium"        # low | medium | high | xhigh | max
+sandbox = true
+# skip_permissions passes --dangerously-skip-permissions to agy (requires sandbox = true).
+skip_permissions = true
+extra_args = []
+
+[adapter.claude]
+binary = "claude"
+model = ""              # empty uses the tool's own default
+effort = ""
+extra_args = []
+
+[adapter.codex]
+binary = "codex"
+model = ""
+effort = ""
+extra_args = []
+
+[jobs]
+# Maximum concurrent background jobs (default 1).
+max_concurrent = 1
+# Maximum parallel item evaluations (default 1).
+evaluate_parallelism = 1
+# Timeouts for background jobs (minimum "1s").
+timeout_lesson = "10m"
+timeout_exercises = "10m"
+timeout_evaluate_item = "5m"
+timeout_evaluate = "30m"
+# Timeout for roadmap chapter analysis / outline detection (default "10m", recommended "15m" for large documents).
+timeout_analyze = "15m"
+# Stall timeout when AI sends no output (default "6m"; keep below lesson/exercises timeouts).
+stall_timeout = "6m"
+
+[exercises]
+count_default = 6
+count_min = 3
+count_max = 12
+allowed_answer_exts = [
+    ".go", ".py", ".js", ".ts", ".java", ".c", ".cpp",
+    ".rs", ".sql", ".sh", ".md", ".txt", ".json", ".yaml", ".yml"
+]
+
+[limits]
+max_roadmap_bytes = 1048576  # 1 MB
+max_answer_bytes  = 204800   # 200 KB
+max_lesson_bytes  = 204800   # 200 KB
+max_source_bytes  = 204800   # 200 KB
+max_tree_topics   = 200      # maximum topic records created by one tree import
+
+[editor]
+# Optional external editor command template (e.g., "code -g {{file}}:{{line}}").
+command = ""

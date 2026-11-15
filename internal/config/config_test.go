@@ -447,4 +447,44 @@ func TestCR41_LoadDefaultConfigPathWhenConfigOmitted(t *testing.T) {
 			t.Fatalf("expected explicit BackupKeep=99 to override default, got %d", cfg.BackupKeep)
 		}
 	})
+
+	t.Run("local config in fallbackBaseDir takes precedence over default config path", func(t *testing.T) {
+		appDataDir := t.TempDir()
+		appDataCfgDir := filepath.Join(appDataDir, "LearningHub")
+		if err := os.MkdirAll(appDataCfgDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(appDataCfgDir, "config.toml"), []byte("backup_keep = 10\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		localDir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(localDir, "config.toml"), []byte("backup_keep = 77\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		t.Setenv("APPDATA", appDataDir)
+
+		cfg, err := config.Load("", localDir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.BackupKeep != 77 {
+			t.Fatalf("expected local BackupKeep=77 to take precedence, got %d", cfg.BackupKeep)
+		}
+	})
+}
+
+func TestConfigExampleIsValid(t *testing.T) {
+	examplePath := filepath.Join("..", "..", "config.example.toml")
+	if _, err := os.Stat(examplePath); err != nil {
+		t.Skipf("config.example.toml not found at %s: %v", examplePath, err)
+	}
+	cfg, err := config.Load(examplePath, t.TempDir())
+	if err != nil {
+		t.Fatalf("config.example.toml failed validation: %v", err)
+	}
+	if cfg.Jobs.TimeoutAnalyze != 15*time.Minute {
+		t.Fatalf("expected Jobs.TimeoutAnalyze=15m in example config, got %v", cfg.Jobs.TimeoutAnalyze)
+	}
 }

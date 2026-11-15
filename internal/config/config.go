@@ -161,18 +161,29 @@ func DefaultConfigPath() (string, error) {
 }
 
 // Load loads and validates configuration from a file or falls back to defaults.
-// When cfgPath is empty, it checks DefaultConfigPath(); if that default file exists,
-// it is loaded. If no default file exists, built-in defaults with fallbackBaseDir are used.
+// When cfgPath is empty, it first checks for config.toml in fallbackBaseDir (current working directory).
+// If not found, it checks DefaultConfigPath(); if that default file exists, it is loaded.
+// If no config file exists, built-in defaults with fallbackBaseDir are used.
 func Load(cfgPath string, fallbackBaseDir string) (Config, error) {
 	cfg := DefaultConfig(fallbackBaseDir)
 
 	actualPath := cfgPath
 	if actualPath == "" {
-		if defPath, err := DefaultConfigPath(); err == nil {
-			if _, statErr := os.Stat(defPath); statErr == nil {
-				actualPath = defPath
+		if fallbackBaseDir != "" {
+			localPath := filepath.Join(fallbackBaseDir, "config.toml")
+			if _, statErr := os.Stat(localPath); statErr == nil {
+				actualPath = localPath
 			} else if !errors.Is(statErr, os.ErrNotExist) {
-				return cfg, fmt.Errorf("reading default config file %s: %w", defPath, statErr)
+				return cfg, fmt.Errorf("reading local config file %s: %w", localPath, statErr)
+			}
+		}
+		if actualPath == "" {
+			if defPath, err := DefaultConfigPath(); err == nil {
+				if _, statErr := os.Stat(defPath); statErr == nil {
+					actualPath = defPath
+				} else if !errors.Is(statErr, os.ErrNotExist) {
+					return cfg, fmt.Errorf("reading default config file %s: %w", defPath, statErr)
+				}
 			}
 		}
 	}
