@@ -501,7 +501,7 @@ There are **no P0 tasks**.
   - [x] Tests pass.
 - **Depends on:** CR-44 (exit codes).
 
-### - [ ] CR-40 — Tighten config validation
+### - [x] CR-40 — Tighten config validation
 - **Problem:** integer durations are read as nanoseconds; zero or negative timeouts are accepted; `log_retention_days <= 0` purges everything; a missing `--config` file is ignored; unknown keys are ignored.
 - **Affected files:** `internal/config/config.go:55-63,143-222`; `internal/config/config_test.go`.
 - **Expected outcome:** invalid configurations fail fast with a clear message.
@@ -512,8 +512,8 @@ There are **no P0 tasks**.
   - `md, err := toml.DecodeFile(...)`; if `len(md.Undecoded()) > 0`, return an error that lists the keys.
 - **Required regression tests:** one table case per rule.
 - **Acceptance criteria:**
-  - [ ] `config` coverage ≥ 80 %.
-  - [ ] `INSTALL.md` lists the valid ranges.
+  - [x] `config` coverage ≥ 80 %.
+  - [x] `INSTALL.md` lists the valid ranges.
 - **Depends on:** none.
 
 ### - [ ] CR-41 — Resolve the default config location (code vs TDD)

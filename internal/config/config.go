@@ -18,6 +18,9 @@ var (
 	ErrForbiddenDangerousFlag = errors.New("--dangerously-skip-permissions is not allowed in extra_args; use adapter.skip_permissions")
 	ErrSkipWithoutSandbox     = errors.New("adapter.skip_permissions requires adapter.sandbox = true")
 	ErrInvalidBaseDir         = errors.New("base_dir must be an absolute path")
+	ErrInvalidDuration        = errors.New("duration must be at least 1s")
+	ErrInvalidRetention       = errors.New("log_retention_days must be at least 1")
+	ErrUnknownConfigKey       = errors.New("config file contains unknown keys")
 )
 
 type Config struct {
@@ -158,12 +161,17 @@ func Load(cfgPath string, fallbackBaseDir string) (Config, error) {
 	cfg := DefaultConfig(fallbackBaseDir)
 
 	if cfgPath != "" {
-		if _, err := os.Stat(cfgPath); err == nil {
-			if _, err := toml.DecodeFile(cfgPath, &cfg); err != nil {
-				return cfg, fmt.Errorf("decoding config file %s: %w", cfgPath, err)
+		md, err := toml.DecodeFile(cfgPath, &cfg)
+		if err != nil {
+			return cfg, fmt.Errorf("reading config file %s: %w", cfgPath, err)
+		}
+		if undecoded := md.Undecoded(); len(undecoded) > 0 {
+			keys := make([]string, len(undecoded))
+			for i, k := range undecoded {
+				keys[i] = k.String()
 			}
-		} else if !os.IsNotExist(err) {
-			return cfg, err
+			slices.Sort(keys)
+			return cfg, fmt.Errorf("%w in %s: %s", ErrUnknownConfigKey, cfgPath, strings.Join(keys, ", "))
 		}
 	}
 
@@ -211,7 +219,28 @@ func (c *Config) Validate() error {
 		c.BaseDir = abs
 	}
 
-	// 4. Validate limits
+	// 4. Validate retention and timeouts (CR-40)
+	if c.LogRetentionDays < 1 {
+		return fmt.Errorf("%w: got %d", ErrInvalidRetention, c.LogRetentionDays)
+	}
+	for _, tc := range []struct {
+		name string
+		d    time.Duration
+	}{
+		{"draft_ttl", c.DraftTTL},
+		{"jobs.timeout_lesson", c.Jobs.TimeoutLesson},
+		{"jobs.timeout_exercises", c.Jobs.TimeoutExercises},
+		{"jobs.timeout_evaluate_item", c.Jobs.TimeoutEvaluateItem},
+		{"jobs.timeout_evaluate", c.Jobs.TimeoutEvaluate},
+		{"jobs.timeout_analyze", c.Jobs.TimeoutAnalyze},
+		{"jobs.stall_timeout", c.Jobs.StallTimeout},
+	} {
+		if tc.d < time.Second {
+			return fmt.Errorf("%w: %s must be at least 1s, got %s", ErrInvalidDuration, tc.name, tc.d)
+		}
+	}
+
+	// 5. Validate limits
 	if c.Limits.MaxRoadmapBytes <= 0 {
 		c.Limits.MaxRoadmapBytes = 1048576
 	}
@@ -230,14 +259,8 @@ func (c *Config) Validate() error {
 	if c.BackupKeep < 1 {
 		c.BackupKeep = 7
 	}
-	if c.DraftTTL <= 0 {
-		c.DraftTTL = 24 * time.Hour
-	}
-	if c.Jobs.TimeoutEvaluate <= 0 {
-		c.Jobs.TimeoutEvaluate = 30 * time.Minute
-	}
 
-	// 5. Validate jobs concurrency
+	// 6. Validate jobs concurrency
 	if c.Jobs.MaxConcurrent < 1 {
 		c.Jobs.MaxConcurrent = 1
 	}
