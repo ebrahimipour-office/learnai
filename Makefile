@@ -6,12 +6,17 @@ export CGO_ENABLED = 0
 # Not ./...: the gitignored topics/ data dir can hold learners' .go answers.
 PKGS := ./cmd/... ./internal/... ./skills/...
 
-.PHONY: test vuln release clean
+.PHONY: test lint vuln release clean
 
 test:
 	test -z "$$(gofmt -l cmd internal skills)"
 	go vet $(PKGS)
 	go test $(PKGS)
+
+lint:
+	test -z "$$(gofmt -l cmd internal skills)"
+	go vet $(PKGS)
+	go run honnef.co/go/tools/cmd/staticcheck@latest $(PKGS)
 
 vuln:
 	go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 $(PKGS)

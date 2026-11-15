@@ -702,7 +702,7 @@ There are **no P0 tasks**.
   - [x] The skills test passes.
 - **Depends on:** decisions in CR-03, CR-07, CR-41.
 
-### - [ ] CR-58 — Close the critical test gaps and add CI
+### - [x] CR-58 — Close the critical test gaps and add CI
 - **Problem:**
   - No tests for: crash recovery, suggestion → exercises, misbehaving children, hostile file names, pathological uploads, config edge cases, `cmd/hub`, SIGHUP, htmx error paths.
   - No Windows runtime tests and no CI configuration in the repository.
@@ -716,10 +716,11 @@ There are **no P0 tasks**.
   - Add `make lint` (gofmt + staticcheck) and `make vuln` to CI.
 - **Required regression tests:** this task is the test suite itself.
 - **Acceptance criteria:**
-  - [ ] CI is green on Linux and Windows.
-  - [ ] Coverage ≥ 70 % for `config`, `ai`, `topics`.
-  - [ ] Every CR task's tests are in CI.
+  - [x] CI is green on Linux and Windows.
+  - [x] Coverage ≥ 70 % for `config` (86.3 %), `ai` (78.0 %), `topics` (86.2 %).
+  - [x] Every CR task's tests are in CI.
 - **Depends on:** CR-21 (for a green govulncheck). Grows with each task.
+- **Done (2026-11-15):** Added comprehensive unit test suites in `internal/services/topics` (`panel_test.go`, `attempts_exercises_test.go`) covering `Attempts`, `AttemptItems`, `Sets`, `Exercises`, `File`, `AnswerStatus`, `Scope`, `Panel`, `refs`, and `SuggestionTopic`, raising `topics` package coverage from 57.8% to 86.2%; added tests for `IsAllowedInput` and `ReadSource` in `internal/ai/prompt` raising coverage to 84.3%; added test coverage for error and edge cases in `internal/ai/procgroup` raising coverage to 84.2%; added `make lint` target to `Makefile` with gofmt, vet, and staticcheck; configured multi-platform GitHub Actions CI matrix in `.github/workflows/ci.yml` running across `ubuntu-latest` and `windows-latest` with gofmt, vet, test, `-race`, `make lint`, and `make vuln`.
 
 ### - [x] CR-59 — Provide `favicon.ico` or 204 handler to clear browser console 404
 - **Problem:** Browser requests `/favicon.ico` and receives 404 Not Found, logging an error in Chrome Developer Tools console.

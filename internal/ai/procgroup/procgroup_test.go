@@ -2,6 +2,7 @@ package procgroup
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -99,4 +100,34 @@ func TestCloseKillsOrphans(t *testing.T) {
 	}
 	g.Close()
 	waitEOF(t, r, 5*time.Second)
+}
+
+func TestStartCommandError(t *testing.T) {
+	cmd := exec.Command("nonexistent-command-xyz-12345")
+	g, err := Start(cmd)
+	if err == nil {
+		g.Close()
+		t.Fatal("expected error starting nonexistent command")
+	}
+}
+
+func TestKillNilProcess(t *testing.T) {
+	cmd := exec.Command("true")
+	g, err := newGroup(cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := g.Kill(); err != nil {
+		t.Fatalf("expected nil error when process is nil, got %v", err)
+	}
+}
+
+func TestIgnoreDone(t *testing.T) {
+	if err := ignoreDone(os.ErrProcessDone); err != nil {
+		t.Fatalf("expected nil, got %v", err)
+	}
+	customErr := errors.New("custom error")
+	if err := ignoreDone(customErr); !errors.Is(err, customErr) {
+		t.Fatalf("expected custom error, got %v", err)
+	}
 }

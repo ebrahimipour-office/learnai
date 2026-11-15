@@ -269,3 +269,59 @@ func TestCompose_RejectsSymlinkedWorkDir(t *testing.T) {
 		t.Error("topics/7/inputs was created inside user directory through symlink")
 	}
 }
+
+func TestIsAllowedInput(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		want bool
+	}{
+		{"inputs/task.json", true},
+		{"`task.json`", true},
+		{"inputs/answer.go", true},
+		{"inputs/answer<ext>", true},
+		{"inputs/answer.*", true},
+		{"inputs/answer.py", true},
+		{"inputs/source.md", true},
+		{"inputs/lesson.md", true},
+		{"inputs/rubric.json", true},
+		{"inputs/roadmap_excerpt.md", true},
+		{"inputs/outline.json", true},
+		{"inputs/question.md", true},
+		{"inputs/manifest.json", false},
+		{"inputs/unauthorized.exe", false},
+		{"../../secrets.txt", false},
+		{"something_else", false},
+	} {
+		if got := IsAllowedInput(tc.in); got != tc.want {
+			t.Errorf("IsAllowedInput(%q) = %v; want %v", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestReadSource(t *testing.T) {
+	r := realFiles(t)
+	// Missing file
+	_, err := ReadSource(r, "nonexistent/source.md", 1000)
+	if !errors.Is(err, ai.ErrSourceMissing) {
+		t.Fatalf("expected ErrSourceMissing, got %v", err)
+	}
+
+	// Existing file
+	p := "topics/01-http/source.md"
+	if err := r.WriteAtomic(p, []byte("short content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	b, err := ReadSource(r, p, 1000)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(b) != "short content" {
+		t.Fatalf("expected 'short content', got %q", string(b))
+	}
+
+	// Oversized file
+	_, err = ReadSource(r, p, 5)
+	if !errors.Is(err, ai.ErrSourceTooLarge) {
+		t.Fatalf("expected ErrSourceTooLarge, got %v", err)
+	}
+}
