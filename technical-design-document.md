@@ -93,7 +93,7 @@
 | پارس Markdown ورودی | `github.com/yuin/goldmark` (AST) | regex شکننده است؛ پارس قطعی باید روی AST باشد (R2.1) |
 | رندر Markdown | goldmark (بدون HTML خام) + `bluemonday` (لایه دوم) | خروجی AI و پاسخ کاربر نامطمئن‌اند (XSS) |
 | اعتبارسنجی JSON | `github.com/santhosh-tekuri/jsonschema/v6` (Draft 2020-12) | همان فایل‌های schema هم برای `--json-schema` به AI داده می‌شوند |
-| پیکربندی | TOML در `%APPDATA%\LearningHub\config.toml` (خارج از دایرکتوری آموزشی) | نگهداری راز و کلید خارج از پوشه آموزشی (R9) |
+| پیکربندی | TOML در `%APPDATA%\LearningHub\config.toml` (ویندوز) یا `~/.config/learninghub/config.toml` (لینوکس/یونیکس)؛ بارگذاری خودکار در صورت نبود `--config` | نگهداری راز و کلید خارج از پوشه آموزشی (R9) |
 | لاگ | `log/slog` (JSON خطی) | کتابخانه اضافه لازم نیست |
 | قفل تک‌نمونه | `github.com/gofrs/flock` | — |
 | پردازش ویندوز | `golang.org/x/sys/windows` (Job Object) | `taskkill /T` به‌عنوان راه جایگزین ضعیف‌تر |
@@ -1305,7 +1305,7 @@ Enqueue ──▶ جدول jobs (queued) ──▶ Dispatcher goroutine ──�
 
 ### ۸.۴. اعتبارنامه‌ها، لاگ و حریم خصوصی
 
-- `config.toml` در `%APPDATA%\LearningHub\` (خارج از دایرکتوری آموزشی)؛ سطح دسترسی فقط کاربر جاری. کلید API (برای Adapterهای آینده) از متغیر محیطی `HUB_API_KEY` یا همان فایل. اعتبارنامه `agy` در حافظه خود ابزار است و ما آن را نمی‌خوانیم.
+- مسیر پیش‌فرض `config.toml` در `%APPDATA%\LearningHub\config.toml` (ویندوز) یا `~/.config/learninghub/config.toml` (لینوکس و مک، خارج از دایرکتوری آموزشی) است. در صورت مشخص نشدن پرچم `--config`، برنامه به صورت خودکار وجود فایل پیش‌فرض را بررسی کرده و در صورت وجود آن را بارگذاری می‌کند (و در صورت نبود، مقادیر پیش‌فرض توکار با `base_dir` پوشه جاری اعمال می‌شود)؛ سطح دسترسی فقط کاربر جاری. کلید API (برای Adapterهای آینده) از متغیر محیطی `HUB_API_KEY` یا همان فایل. اعتبارنامه `agy` در حافظه خود ابزار است و ما آن را نمی‌خوانیم.
 - لاگ‌ها شامل Prompt و پاسخ‌های کاربر هستند ⇒ نگهداری `log_retention_days` (پیش‌فرض ۳۰)، mask رازها (الگوی `AKIA…`، `sk-…`، `Bearer …`، فایل‌های `.env`)، و عدم ثبت لاگ در پوشه‌های همگام‌شده ابری (توصیه در راهنما).
 - **اطلاع‌رسانی حریم خصوصی (R9):** هنگام اولین اجرا و در صفحه تنظیمات متن روشن: «پاسخ‌ها و محتوای آموزشی برای پردازش به سرویس هوش مصنوعی ارسال می‌شود.» تأیید کاربر ذخیره می‌شود (`meta.privacy_ack`).
 - `go vet`، `staticcheck`، `govulncheck` در `make lint` و بررسی وابستگی‌ها پیش از انتشار.
@@ -1517,7 +1517,7 @@ Enqueue ──▶ جدول jobs (queued) ──▶ Dispatcher goroutine ──�
 ### پیوست الف — نمونه `config.toml`
 
 ```toml
-# %APPDATA%\LearningHub\config.toml  (خارج از دایرکتوری آموزشی)
+# %APPDATA%\LearningHub\config.toml (ویندوز) یا ~/.config/learninghub/config.toml (لینوکس)  (خارج از دایرکتوری آموزشی)
 base_dir        = "D:\\LearningHub"
 listen          = "127.0.0.1:8787"       # هر آدرس دیگری ⇒ عدم شروع
 language        = "fa"

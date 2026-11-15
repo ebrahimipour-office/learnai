@@ -280,12 +280,170 @@ func TestDefaultConfigPath(t *testing.T) {
 
 	t.Run("without APPDATA", func(t *testing.T) {
 		os.Setenv("APPDATA", "")
+		os.Setenv("XDG_CONFIG_HOME", "")
 		p, err := config.DefaultConfigPath()
 		if err != nil {
 			t.Fatal(err)
 		}
 		if !strings.HasSuffix(p, filepath.Join(".config", "learninghub", "config.toml")) {
 			t.Fatalf("unexpected path without APPDATA: %s", p)
+		}
+	})
+
+	t.Run("with XDG_CONFIG_HOME set and APPDATA empty", func(t *testing.T) {
+		tempDir := t.TempDir()
+		os.Setenv("APPDATA", "")
+		os.Setenv("XDG_CONFIG_HOME", tempDir)
+		defer os.Setenv("XDG_CONFIG_HOME", "")
+		p, err := config.DefaultConfigPath()
+		if err != nil {
+			t.Fatal(err)
+		}
+		expected := filepath.Join(tempDir, "learninghub", "config.toml")
+		if p != expected {
+			t.Fatalf("want %s, got %s", expected, p)
+		}
+	})
+}
+
+// CR-41: when --config is empty, Load should find and apply the default config if it exists.
+func TestCR41_LoadDefaultConfigPathWhenConfigOmitted(t *testing.T) {
+	t.Run("APPDATA location applied when APPDATA is set", func(t *testing.T) {
+		appDataDir := t.TempDir()
+		cfgDir := filepath.Join(appDataDir, "LearningHub")
+		if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		tomlContent := "backup_keep = 15\ndraft_ttl = \"3h\"\n"
+		if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(tomlContent), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		t.Setenv("APPDATA", appDataDir)
+
+		cfg, err := config.Load("", t.TempDir())
+		if err != nil {
+			t.Fatalf("unexpected error loading default config: %v", err)
+		}
+		if cfg.BackupKeep != 15 {
+			t.Fatalf("expected BackupKeep=15, got %d", cfg.BackupKeep)
+		}
+		if cfg.DraftTTL != 3*time.Hour {
+			t.Fatalf("expected DraftTTL=3h, got %v", cfg.DraftTTL)
+		}
+	})
+
+	t.Run("HOME location applied when APPDATA is empty", func(t *testing.T) {
+		homeDir := t.TempDir()
+		cfgDir := filepath.Join(homeDir, ".config", "learninghub")
+		if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		tomlContent := "backup_keep = 22\n"
+		if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(tomlContent), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		t.Setenv("APPDATA", "")
+		t.Setenv("XDG_CONFIG_HOME", "")
+		t.Setenv("HOME", homeDir)
+
+		cfg, err := config.Load("", t.TempDir())
+		if err != nil {
+			t.Fatalf("unexpected error loading default config from HOME: %v", err)
+		}
+		if cfg.BackupKeep != 22 {
+			t.Fatalf("expected BackupKeep=22, got %d", cfg.BackupKeep)
+		}
+	})
+
+	t.Run("XDG_CONFIG_HOME location applied when set", func(t *testing.T) {
+		xdgDir := t.TempDir()
+		cfgDir := filepath.Join(xdgDir, "learninghub")
+		if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		tomlContent := "backup_keep = 33\n"
+		if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(tomlContent), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		t.Setenv("APPDATA", "")
+		t.Setenv("XDG_CONFIG_HOME", xdgDir)
+
+		cfg, err := config.Load("", t.TempDir())
+		if err != nil {
+			t.Fatalf("unexpected error loading default config from XDG_CONFIG_HOME: %v", err)
+		}
+		if cfg.BackupKeep != 33 {
+			t.Fatalf("expected BackupKeep=33, got %d", cfg.BackupKeep)
+		}
+	})
+
+	t.Run("defaults applied when default config does not exist", func(t *testing.T) {
+		emptyDir := t.TempDir()
+		t.Setenv("APPDATA", emptyDir)
+		t.Setenv("XDG_CONFIG_HOME", "")
+		t.Setenv("HOME", emptyDir)
+
+		fallbackDir := t.TempDir()
+		cfg, err := config.Load("", fallbackDir)
+		if err != nil {
+			t.Fatalf("unexpected error loading when default config does not exist: %v", err)
+		}
+		if cfg.BackupKeep != 7 {
+			t.Fatalf("expected default BackupKeep=7, got %d", cfg.BackupKeep)
+		}
+		if cfg.BaseDir != fallbackDir {
+			t.Fatalf("expected BaseDir=%s, got %s", fallbackDir, cfg.BaseDir)
+		}
+	})
+
+	t.Run("default config with unknown keys returns ErrUnknownConfigKey", func(t *testing.T) {
+		appDataDir := t.TempDir()
+		cfgDir := filepath.Join(appDataDir, "LearningHub")
+		if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		tomlContent := "unknown_field = 'test'\n"
+		if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(tomlContent), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		t.Setenv("APPDATA", appDataDir)
+
+		_, err := config.Load("", t.TempDir())
+		if !errors.Is(err, config.ErrUnknownConfigKey) {
+			t.Fatalf("expected ErrUnknownConfigKey, got: %v", err)
+		}
+	})
+
+	t.Run("explicit config path overrides default config", func(t *testing.T) {
+		appDataDir := t.TempDir()
+		cfgDir := filepath.Join(appDataDir, "LearningHub")
+		if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		defaultTOML := "backup_keep = 15\n"
+		if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(defaultTOML), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		explicitDir := t.TempDir()
+		explicitPath := filepath.Join(explicitDir, "custom.toml")
+		explicitTOML := "backup_keep = 99\n"
+		if err := os.WriteFile(explicitPath, []byte(explicitTOML), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		t.Setenv("APPDATA", appDataDir)
+
+		cfg, err := config.Load(explicitPath, t.TempDir())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.BackupKeep != 99 {
+			t.Fatalf("expected explicit BackupKeep=99 to override default, got %d", cfg.BackupKeep)
 		}
 	})
 }

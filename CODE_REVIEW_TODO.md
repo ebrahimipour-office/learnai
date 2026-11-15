@@ -516,15 +516,15 @@ There are **no P0 tasks**.
   - [x] `INSTALL.md` lists the valid ranges.
 - **Depends on:** none.
 
-### - [ ] CR-41 — Resolve the default config location (code vs TDD)
+### - [x] CR-41 — Resolve the default config location (code vs TDD)
 - **Problem:** `DefaultConfigPath()` is unused; the TDD says config lives in `%APPDATA%\LearningHub\config.toml`.
 - **Affected files:** `internal/config/config.go:130-141`; `cmd/hub/main.go` (Load calls); `technical-design-document.md:95,1307,1518`; `INSTALL.md`.
 - **Expected outcome:** code and docs agree.
 - **Suggested implementation:** either load `DefaultConfigPath()` when `--config` is absent and the file exists (preferred by the TDD R9 rationale), or delete the function and update the TDD.
 - **Required regression tests:** `APPDATA` (or `HOME`) pointed at a temp dir containing `config.toml` → `Load("")` applies it (if option 1 is chosen).
 - **Acceptance criteria:**
-  - [ ] The decision is recorded in `PROGRESS.md`.
-  - [ ] Docs are updated.
+  - [x] The decision is recorded in `PROGRESS.md`.
+  - [x] Docs are updated.
 - **Depends on:** CR-40.
 
 ### - [ ] CR-42 — Make the adapter switch atomic with respect to jobs

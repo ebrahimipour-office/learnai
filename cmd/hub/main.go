@@ -79,7 +79,7 @@ func runVersion() {
 // runDoctor checks the environment and the AI tool (R7.3); --json prints the same as one object.
 func runDoctor(args []string) {
 	fs := flag.NewFlagSet("doctor", flag.ExitOnError)
-	configPath := fs.String("config", "", "Path to config.toml")
+	configPath := fs.String("config", "", "Path to config.toml (default: %APPDATA%\\LearningHub\\config.toml or ~/.config/learninghub/config.toml)")
 	asJSON := fs.Bool("json", false, "Print JSON")
 	_ = fs.Parse(args)
 
@@ -136,7 +136,7 @@ func runDoctor(args []string) {
 
 func runMigrate(args []string) {
 	fs := flag.NewFlagSet("migrate", flag.ExitOnError)
-	configPath := fs.String("config", "", "Path to config.toml")
+	configPath := fs.String("config", "", "Path to config.toml (default: %APPDATA%\\LearningHub\\config.toml or ~/.config/learninghub/config.toml)")
 	_ = fs.Parse(args)
 
 	cwd, _ := os.Getwd()
@@ -191,7 +191,7 @@ func runMigrate(args []string) {
 // runRebuild recreates the tables from the files (T6.8) into an empty database; files are only read.
 func runRebuild(args []string) {
 	fs := flag.NewFlagSet("rebuild", flag.ExitOnError)
-	configPath := fs.String("config", "", "Path to config.toml")
+	configPath := fs.String("config", "", "Path to config.toml (default: %APPDATA%\\LearningHub\\config.toml or ~/.config/learninghub/config.toml)")
 	dbPath := fs.String("db", "", "Database to create (default <base_dir>/app.db; must be new or empty)")
 	_ = fs.Parse(args)
 
@@ -251,7 +251,7 @@ func runRebuild(args []string) {
 // runServe returns an error on any fatal path so main exits 1 only after the defers have run.
 func runServe(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
-	configPath := fs.String("config", "", "Path to config.toml")
+	configPath := fs.String("config", "", "Path to config.toml (default: %APPDATA%\\LearningHub\\config.toml or ~/.config/learninghub/config.toml)")
 	_ = fs.Parse(args)
 
 	cwd, _ := os.Getwd()

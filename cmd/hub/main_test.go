@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"os/exec"
@@ -154,4 +155,68 @@ func TestServeExitsNonZeroWhenConfigMissing(t *testing.T) {
 	if !strings.Contains(string(out), "reading config file") {
 		t.Fatalf("expected error output about reading config file, got: %s", out)
 	}
+}
+
+// CR-41: CLI commands without --config must load default config if present in APPDATA/XDG.
+func TestCR41_CLIAppliesDefaultConfigWhenConfigOmitted(t *testing.T) {
+	if os.Getenv("HUB_TEST_DEFAULT_CONFIG_INVALID") == "1" {
+		os.Args = []string{"hub", "doctor"}
+		main()
+		os.Exit(0)
+	}
+	if os.Getenv("HUB_TEST_DEFAULT_CONFIG_MIGRATE") == "1" {
+		os.Args = []string{"hub", "migrate"}
+		main()
+		os.Exit(0)
+	}
+
+	t.Run("invalid default config causes doctor to fail with exit status 1", func(t *testing.T) {
+		appDataDir := t.TempDir()
+		cfgDir := filepath.Join(appDataDir, "LearningHub")
+		if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		badTOML := "unknown_cli_key = 'fail'\n"
+		if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(badTOML), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		cmd := exec.Command(os.Args[0], "-test.run=^TestCR41_CLIAppliesDefaultConfigWhenConfigOmitted$")
+		cmd.Env = append(os.Environ(), "HUB_TEST_DEFAULT_CONFIG_INVALID=1", "APPDATA="+appDataDir)
+		out, err := cmd.CombinedOutput()
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) || exit.ExitCode() != 1 {
+			t.Fatalf("want exit status 1, got %v\n%s", err, out)
+		}
+		if !strings.Contains(string(out), "unknown keys") {
+			t.Fatalf("expected error mentioning unknown keys from default config, got: %s", out)
+		}
+	})
+
+	t.Run("valid default config base_dir is used by migrate", func(t *testing.T) {
+		appDataDir := t.TempDir()
+		baseDir := t.TempDir()
+		cfgDir := filepath.Join(appDataDir, "LearningHub")
+		if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		validTOML := fmt.Sprintf("base_dir = %q\n", baseDir)
+		if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(validTOML), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		cmd := exec.Command(os.Args[0], "-test.run=^TestCR41_CLIAppliesDefaultConfigWhenConfigOmitted$")
+		cmd.Env = append(os.Environ(), "HUB_TEST_DEFAULT_CONFIG_MIGRATE=1", "APPDATA="+appDataDir)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("migrate with default config failed: %v\n%s", err, out)
+		}
+		if !strings.Contains(string(out), "user_version =") {
+			t.Fatalf("expected migrate success output, got: %s", out)
+		}
+		// Confirm app.db was created in baseDir from default config
+		if _, err := os.Stat(filepath.Join(baseDir, "app.db")); err != nil {
+			t.Fatalf("expected app.db to be created in baseDir %s: %v", baseDir, err)
+		}
+	})
 }

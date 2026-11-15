@@ -143,27 +143,44 @@ func DefaultConfig(defaultBaseDir string) Config {
 	}
 }
 
-// DefaultConfigPath returns the standard configuration file path (%APPDATA%\LearningHub\config.toml on Windows).
+// DefaultConfigPath returns the standard configuration file path (%APPDATA%\LearningHub\config.toml on Windows,
+// or ~/.config/learninghub/config.toml on Unix/macOS).
 func DefaultConfigPath() (string, error) {
 	appData := os.Getenv("APPDATA")
-	if appData == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		return filepath.Join(home, ".config", "learninghub", "config.toml"), nil
+	if appData != "" {
+		return filepath.Join(appData, "LearningHub", "config.toml"), nil
 	}
-	return filepath.Join(appData, "LearningHub", "config.toml"), nil
+	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
+		return filepath.Join(xdg, "learninghub", "config.toml"), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".config", "learninghub", "config.toml"), nil
 }
 
 // Load loads and validates configuration from a file or falls back to defaults.
+// When cfgPath is empty, it checks DefaultConfigPath(); if that default file exists,
+// it is loaded. If no default file exists, built-in defaults with fallbackBaseDir are used.
 func Load(cfgPath string, fallbackBaseDir string) (Config, error) {
 	cfg := DefaultConfig(fallbackBaseDir)
 
-	if cfgPath != "" {
-		md, err := toml.DecodeFile(cfgPath, &cfg)
+	actualPath := cfgPath
+	if actualPath == "" {
+		if defPath, err := DefaultConfigPath(); err == nil {
+			if _, statErr := os.Stat(defPath); statErr == nil {
+				actualPath = defPath
+			} else if !errors.Is(statErr, os.ErrNotExist) {
+				return cfg, fmt.Errorf("reading default config file %s: %w", defPath, statErr)
+			}
+		}
+	}
+
+	if actualPath != "" {
+		md, err := toml.DecodeFile(actualPath, &cfg)
 		if err != nil {
-			return cfg, fmt.Errorf("reading config file %s: %w", cfgPath, err)
+			return cfg, fmt.Errorf("reading config file %s: %w", actualPath, err)
 		}
 		if undecoded := md.Undecoded(); len(undecoded) > 0 {
 			keys := make([]string, len(undecoded))
@@ -171,7 +188,7 @@ func Load(cfgPath string, fallbackBaseDir string) (Config, error) {
 				keys[i] = k.String()
 			}
 			slices.Sort(keys)
-			return cfg, fmt.Errorf("%w in %s: %s", ErrUnknownConfigKey, cfgPath, strings.Join(keys, ", "))
+			return cfg, fmt.Errorf("%w in %s: %s", ErrUnknownConfigKey, actualPath, strings.Join(keys, ", "))
 		}
 	}
 
