@@ -60,7 +60,7 @@
           "status": { "enum": ["evaluated", "carried_over", "unanswered"] },
           "score": { "type": "integer", "minimum": 0, "maximum": 100 },
           "answer_sha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
-          "report_file": { "type": ["string", "null"] },
+          "report_file": { "type": ["string", "null"], "pattern": "^[a-zA-Z0-9._-]+\\.md$" },
           "carried_from_attempt": { "type": ["integer", "null"], "minimum": 1 },
           "criteria_scores": {
             "type": "array",

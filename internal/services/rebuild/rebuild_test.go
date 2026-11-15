@@ -2,6 +2,7 @@ package rebuild_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -253,5 +254,138 @@ func TestRebuildToleratesCopiedFolder(t *testing.T) {
 	db.Writer().QueryRow(`SELECT COUNT(*) FROM exercise_sets`).Scan(&sets)
 	if topics != 2 || sets != 2 {
 		t.Errorf("topics %d sets %d, want 2 and 2", topics, sets)
+	}
+}
+
+// CR-50: Rebuild validates report_file, skips unsupported topic folder names, and turns
+// "exercise not in manifest" into a warning instead of aborting.
+func TestCR50_RebuildValidatesReportFileAndWarns(t *testing.T) {
+	base := t.TempDir()
+	key := keyOf(t, "HTTP")
+
+	manifest := fmt.Sprintf(`{"schema_version":1,"topic":{"stable_key":%q,"title":"HTTP"},
+		"set":{"version":1,"rubric_version":1,"created_at":"2026-11-01T10:00:00Z","generator":{"adapter":"agy","model":"m1","skill":"exercises","skill_version":"1"}},
+		"exercises":[{"id":"q01","order":1,"title":"One","type":"coding","difficulty":"easy","weight":1,"answer":{"slug":"one","ext":".go","file_name":"q01-one.go"}}]}`, key)
+
+	// Attempt 1: report_file has path traversal "../x.md" (rejected by schema pattern)
+	resultBadReport := fmt.Sprintf(`{"schema_version":1,"topic":{"stable_key":%q,"title":"HTTP"},"set_version":1,"attempt_no":1,"mode":"full",
+		"rubric_version":1,"started_at":"2026-11-02T10:00:00Z","finished_at":"2026-11-02T10:05:00Z",
+		"evaluator":{"adapter":"agy","model":"m1","skill":"evaluate","skill_version":"2"},
+		"items":[{"exercise_id":"q01","weight":1,"status":"evaluated","score":80,"answer_sha256":%q,"report_file":"../x.md",
+		  "criteria_scores":[{"criterion_id":"c1","awarded":8,"max":10}],"error_types":["style"]}],
+		"aggregate":{"weighted_score":80,"answered_count":1,"total_count":1,"partial":false,
+		 "formula":"sum(weight_i*score_i)/sum(weight_i); unanswered=0","computed_by":"app"}}`, key, fsx.HashString("ans"))
+
+	// Attempt 2:
+	// - q01 has report_file "CON.md" (passes schema regex, but rejected by fsx.ValidateSegment reserved name)
+	// - q99 is not in manifest (should warn, skip q99, but record q01 and the attempt)
+	resultReservedAndMissing := fmt.Sprintf(`{"schema_version":1,"topic":{"stable_key":%q,"title":"HTTP"},"set_version":1,"attempt_no":2,"mode":"full",
+		"rubric_version":1,"started_at":"2026-11-02T10:10:00Z","finished_at":"2026-11-02T10:15:00Z",
+		"evaluator":{"adapter":"agy","model":"m1","skill":"evaluate","skill_version":"2"},
+		"items":[
+		 {"exercise_id":"q01","weight":1,"status":"evaluated","score":90,"answer_sha256":%q,"report_file":"CON.md",
+		  "criteria_scores":[{"criterion_id":"c1","awarded":9,"max":10}],"error_types":[]},
+		 {"exercise_id":"q99","weight":1,"status":"unanswered","score":0}
+		],
+		"aggregate":{"weighted_score":90,"answered_count":1,"total_count":1,"partial":false,
+		 "formula":"sum(weight_i*score_i)/sum(weight_i); unanswered=0","computed_by":"app"}}`, key, fsx.HashString("ans"))
+
+	files := map[string]string{
+		"roadmaps/go/rev-001.md":                          roadmapMD,
+		"topics/02-http/lesson/lesson.md":                 "# HTTP\n",
+		"topics/02-http/exercises/v1/exercises.md":        "## [q01] One\n",
+		"topics/02-http/exercises/v1/manifest.json":       manifest,
+		"topics/02-http/.internal/rubric-v1.json":         "{}",
+		"topics/02-http/answers/v1/q01-one.go":            "package main\n",
+		"topics/02-http/reports/v1/attempt-1/result.json": resultBadReport,
+		"topics/02-http/reports/v1/attempt-1/summary.md":  "summary 1\n",
+		"topics/02-http/reports/v1/attempt-2/result.json": resultReservedAndMissing,
+		"topics/02-http/reports/v1/attempt-2/summary.md":  "summary 2\n",
+	}
+
+	for rel, body := range files {
+		p := filepath.Join(base, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Create an unsupported topic folder "topics/x?"
+	badDir := filepath.Join(base, "topics", "x?")
+	if err := os.MkdirAll(badDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err := store.Open(filepath.Join(base, "app.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	root, err := fsx.OpenRoot(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+
+	rep, err := rebuild.Run(context.Background(), db, root)
+	if err != nil {
+		t.Fatalf("rebuild.Run failed: %v", err)
+	}
+
+	// Check warnings
+	var sawBadFolder, sawBadReport, sawReservedReport, sawMissingEx bool
+	for _, w := range rep.Warnings {
+		if strings.Contains(w, "topics/x?") && strings.Contains(w, "unsupported folder name") {
+			sawBadFolder = true
+		}
+		if strings.Contains(w, "attempt-1") && strings.Contains(w, "invalid result.json") {
+			sawBadReport = true
+		}
+		if strings.Contains(w, "attempt-2") && strings.Contains(w, "invalid report_file \"CON.md\"") {
+			sawReservedReport = true
+		}
+		if strings.Contains(w, "exercise q99 is not in manifest v1") {
+			sawMissingEx = true
+		}
+	}
+
+	if !sawBadFolder {
+		t.Errorf("expected warning for topics/x?, got warnings: %v", rep.Warnings)
+	}
+	if !sawBadReport {
+		t.Errorf("expected warning for bad report_file (attempt-1), got warnings: %v", rep.Warnings)
+	}
+	if !sawReservedReport {
+		t.Errorf("expected warning for reserved report_file (CON.md in attempt-2), got warnings: %v", rep.Warnings)
+	}
+	if !sawMissingEx {
+		t.Errorf("expected warning for missing exercise q99, got warnings: %v", rep.Warnings)
+	}
+
+	// Check that attempt 2 was successfully recorded and q01 was saved with NULL report_file
+	var attCount int
+	db.Writer().QueryRow(`SELECT COUNT(*) FROM attempts WHERE attempt_no = 2`).Scan(&attCount)
+	if attCount != 1 {
+		t.Errorf("attempt 2 not recorded; attCount = %d", attCount)
+	}
+
+	var q01Score int
+	var reportID sql.NullInt64
+	err = db.Writer().QueryRow(`SELECT i.score, i.report_file FROM attempt_items i
+		JOIN exercises x ON x.id = i.exercise_id
+		JOIN attempts a ON a.id = i.attempt_id
+		WHERE a.attempt_no = 2 AND x.ex_id = 'q01'`).Scan(&q01Score, &reportID)
+	if err != nil {
+		t.Fatalf("querying attempt 2 q01: %v", err)
+	}
+	if q01Score != 90 {
+		t.Errorf("q01 score = %d, want 90", q01Score)
+	}
+	if reportID.Valid {
+		t.Errorf("expected report_file to be NULL for CON.md, got %d", reportID.Int64)
 	}
 }

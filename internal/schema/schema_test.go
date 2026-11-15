@@ -2,6 +2,8 @@ package schema_test
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 
 	"learninghub/internal/schema"
@@ -199,5 +201,22 @@ func TestValidateAILessonOutput(t *testing.T) {
 
 	if err := schema.ValidateAILessonOutput([]byte(valid)); err != nil {
 		t.Fatalf("ValidateAILessonOutput failed: %v", err)
+	}
+}
+
+func TestValidateResult_ReportFilePattern(t *testing.T) {
+	// Replacing valid report_file in sampleResultJSON with invalid values should fail schema validation.
+	badTargets := []string{
+		"../x.md",
+		"/abs/report.md",
+		"sub/dir.md",
+		"x?.md",
+		"report.exe",
+	}
+	for _, bad := range badTargets {
+		badJSON := strings.Replace(sampleResultJSON, `"q01-report.md"`, fmt.Sprintf("%q", bad), 1)
+		if err := schema.ValidateResult([]byte(badJSON)); err == nil {
+			t.Errorf("ValidateResult accepted bad report_file %q, expected pattern error", bad)
+		}
 	}
 }

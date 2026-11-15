@@ -126,6 +126,10 @@ func (r *run) roadmaps() (map[string][]*candidate, error) {
 		return nil, err
 	}
 	for _, dir := range slugs {
+		if err := fsx.ValidateRelPath(dir); err != nil {
+			r.warn("%s: unsupported roadmaps path, skipped: %v", dir, err)
+			continue
+		}
 		revs, num, err := r.numbered(dir+"/rev-*.md", base, "rev-%d.md")
 		if err != nil || len(revs) == 0 {
 			continue
@@ -252,6 +256,10 @@ func (r *run) topics(cands map[string][]*candidate) error {
 			continue
 		}
 		dir := e.Name()
+		if err := fsx.ValidateRelPath(path.Join("topics", dir)); err != nil {
+			r.warn("topics/%s: unsupported folder name, skipped: %v", dir, err)
+			continue
+		}
 		m := dirNum.FindStringSubmatch(dir)
 		if m == nil {
 			r.warn("topics/%s: not a topic folder (NN-slug), skipped", dir)
@@ -626,15 +634,21 @@ func (r *run) attempts(topicID int64, dir, key string, v int, setID int64, exIDs
 		for _, it := range res.Items {
 			exID, ok := exIDs[it.ExerciseID]
 			if !ok {
-				return fmt.Errorf("%s: exercise %s is not in manifest v%d", p, it.ExerciseID, v)
+				r.warn("%s: exercise %s is not in manifest v%d, skipped", p, it.ExerciseID, v)
+				continue
 			}
 			var reportID, from sql.NullInt64
 			if it.ReportFile != nil && *it.ReportFile != "" {
-				id, _, err := r.file(topicID, "report", "attempt_item", path.Join(adir, *it.ReportFile), true)
-				if err != nil {
-					return err
+				rf := *it.ReportFile
+				if rf != path.Base(rf) || fsx.ValidateSegment(rf) != nil {
+					r.warn("%s: invalid report_file %q, skipped", p, rf)
+				} else {
+					id, _, err := r.file(topicID, "report", "attempt_item", path.Join(adir, rf), true)
+					if err != nil {
+						return err
+					}
+					reportID = sql.NullInt64{Int64: id, Valid: true}
 				}
-				reportID = sql.NullInt64{Int64: id, Valid: true}
 			}
 			if it.CarriedFromAttempt != nil {
 				id, ok := byNo[*it.CarriedFromAttempt]

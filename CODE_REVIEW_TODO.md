@@ -615,14 +615,14 @@ There are **no P0 tasks**.
   - [x] Test passes.
 - **Depends on:** none.
 
-### - [ ] CR-50 — Rebuild validates `report_file` and warns instead of aborting
+### - [x] CR-50 — Rebuild validates `report_file` and warns instead of aborting
 - **Problem:** `report_file` from disk is joined without validation; some inconsistencies (and unsupported folder names) abort the whole rebuild.
 - **Affected files:** `internal/services/rebuild/rebuild.go:574-581` (and the folder walk); `internal/schema/result.schema.json:63`.
 - **Expected outcome:** bad entries are skipped with warnings, and rebuild completes.
 - **Suggested implementation:** require `report_file == path.Base(report_file)` and `fsx.ValidateSegment`; add a `pattern` to the schema; turn "exercise not in manifest" into a warning; skip folders that fail `ValidateRelPath` (shared helper with CR-04).
 - **Required regression tests:** `report_file: "../x.md"` → a warning; a folder named `x?` → a warning; rebuild succeeds.
 - **Acceptance criteria:**
-  - [ ] Tests pass.
+  - [x] Tests pass.
 - **Depends on:** CR-04.
 
 ### - [ ] CR-51 — Fold invisible format characters in `Normalize`
