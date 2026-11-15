@@ -347,6 +347,7 @@ func TestCR41_LoadDefaultConfigPathWhenConfigOmitted(t *testing.T) {
 		t.Setenv("APPDATA", "")
 		t.Setenv("XDG_CONFIG_HOME", "")
 		t.Setenv("HOME", homeDir)
+		t.Setenv("USERPROFILE", homeDir)
 
 		cfg, err := config.Load("", t.TempDir())
 		if err != nil {

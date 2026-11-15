@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -313,8 +314,12 @@ func TestCR50_RebuildValidatesReportFileAndWarns(t *testing.T) {
 		}
 	}
 
-	// Create an unsupported topic folder "topics/x?"
-	badDir := filepath.Join(base, "topics", "x?")
+	// Create an unsupported topic folder ("topics/x?" on Unix; length > 220 on Windows)
+	badDirName := "x?"
+	if runtime.GOOS == "windows" {
+		badDirName = strings.Repeat("a", 215)
+	}
+	badDir := filepath.Join(base, "topics", badDirName)
 	if err := os.MkdirAll(badDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -339,7 +344,7 @@ func TestCR50_RebuildValidatesReportFileAndWarns(t *testing.T) {
 	// Check warnings
 	var sawBadFolder, sawBadReport, sawReservedReport, sawMissingEx bool
 	for _, w := range rep.Warnings {
-		if strings.Contains(w, "topics/x?") && strings.Contains(w, "unsupported folder name") {
+		if strings.Contains(w, "topics/"+badDirName) && strings.Contains(w, "unsupported folder name") {
 			sawBadFolder = true
 		}
 		if strings.Contains(w, "attempt-1") && strings.Contains(w, "invalid result.json") {
@@ -354,7 +359,7 @@ func TestCR50_RebuildValidatesReportFileAndWarns(t *testing.T) {
 	}
 
 	if !sawBadFolder {
-		t.Errorf("expected warning for topics/x?, got warnings: %v", rep.Warnings)
+		t.Errorf("expected warning for topics/%s, got warnings: %v", badDirName, rep.Warnings)
 	}
 	if !sawBadReport {
 		t.Errorf("expected warning for bad report_file (attempt-1), got warnings: %v", rep.Warnings)
