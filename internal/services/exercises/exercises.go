@@ -209,8 +209,6 @@ func (s *Service) input(jobID int64, t topic, lessonMD []byte, count int) (promp
 	return in, nil
 }
 
-type written struct{ rel, sha string }
-
 // commit writes every file with WriteNew (never overwrite, R3.3), then records it all in one
 // transaction. Any failure removes the files this job created; files that were already there
 // make the whole commit fail and are left untouched.

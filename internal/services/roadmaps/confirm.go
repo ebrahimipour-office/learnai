@@ -137,7 +137,7 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 		}
 		contentSHA := fsx.HashBytes(d.Content)
 		choiceSHA := fsx.HashBytes(choice)
-		rel := fmt.Sprintf("roadmaps/%s/rev-%03d.md", slug, revNo)
+		var rel string
 		for {
 			rel = fmt.Sprintf("roadmaps/%s/rev-%03d.md", slug, revNo)
 			b, err := s.root.ReadFile(rel)
