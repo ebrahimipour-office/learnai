@@ -584,14 +584,14 @@ There are **no P0 tasks**.
   - [x] Manual check recorded.
 - **Depends on:** CR-20 (shared `app.js` changes).
 
-### - [ ] CR-47 — Copy button restores its original label
+### - [x] CR-47 — Copy button restores its original label
 - **Problem:** a second click within 1.5 s saves "کپی شد" as the original label.
 - **Affected files:** `internal/ui/static/app.js:5,14`.
 - **Expected outcome:** the label always returns to the original.
 - **Suggested implementation:** `btn.dataset.label ??= btn.textContent;` and restore from `dataset.label`.
 - **Required regression tests:** a browser or DOM test with two quick clicks.
 - **Acceptance criteria:**
-  - [ ] Manual check.
+  - [x] Manual check.
 - **Depends on:** none.
 
 ### - [x] CR-48 — Add CORP and remove the side effect from `GET /settings`

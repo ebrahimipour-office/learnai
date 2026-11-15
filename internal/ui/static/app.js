@@ -1,17 +1,20 @@
-// Copy-path buttons (T4.5): CSP forbids inline handlers, so one delegated listener.
+// Copy-path buttons (T4.5, CR-47): CSP forbids inline handlers, so one delegated listener.
 document.addEventListener("click", async (ev) => {
   const btn = ev.target.closest("button[data-copy]");
   if (!btn) return;
-  const old = btn.textContent;
+  btn.dataset.label ??= btn.textContent;
+  clearTimeout(btn._copyTimeout);
   try {
     await navigator.clipboard.writeText(btn.dataset.copy);
     btn.textContent = "کپی شد";
   } catch {
     // clipboard blocked: select the path so Ctrl+C works
-    btn.parentElement.querySelector("input")?.select();
+    btn.parentElement?.querySelector("input")?.select();
     btn.textContent = "Ctrl+C";
   }
-  setTimeout(() => { btn.textContent = old; }, 1500);
+  btn._copyTimeout = setTimeout(() => {
+    btn.textContent = btn.dataset.label;
+  }, 1500);
 });
 
 // CR-20: htmx drops non-swapped errors silently; surface them, and reload on a stale CSRF token (server restart).

@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -613,5 +614,95 @@ func TestCR46_DraftFormSelectionChangeTrigger(t *testing.T) {
 	}
 	if !strings.Contains(pageAfterMerge, `value="Chapter Three"`) {
 		t.Errorf("expected Chapter Three to remain, got:\n%s", pageAfterMerge)
+	}
+}
+
+func TestCR47_CopyButtonRestoresOriginalLabel(t *testing.T) {
+	e := newEnv(t)
+
+	// 1. Verify app.js implementation for CR-47
+	appJS := e.do(httptest.NewRequest(http.MethodGet, "/static/app.js", nil)).Body.String()
+	for _, expected := range []string{
+		`btn.dataset.label ??= btn.textContent;`,
+		`clearTimeout(btn._copyTimeout);`,
+		`btn.textContent = btn.dataset.label;`,
+	} {
+		if !strings.Contains(appJS, expected) {
+			t.Errorf("app.js missing %q", expected)
+		}
+	}
+
+	// 2. If node is available on host, run DOM regression test for rapid clicks
+	nodePath, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node not available on host; skipping node DOM test")
+	}
+
+	script := `
+const fs = require("fs");
+const code = process.argv[1];
+
+let listeners = {};
+const document = {
+  addEventListener(evt, fn) { listeners[evt] = fn; },
+  body: { addEventListener() {} }
+};
+const navigator = {
+  clipboard: {
+    async writeText() { return Promise.resolve(); }
+  }
+};
+let timeouts = [];
+let nextId = 1;
+function customSetTimeout(cb, delay) {
+  const id = nextId++;
+  timeouts.push({ id, cb, delay });
+  return id;
+}
+function customClearTimeout(id) {
+  timeouts = timeouts.filter(t => t.id !== id);
+}
+
+const fn = new Function("document", "navigator", "clearTimeout", "setTimeout", code);
+fn(document, navigator, customClearTimeout, customSetTimeout);
+
+async function run() {
+  const btn = {
+    dataset: { copy: "/path/to/ex01.go" },
+    textContent: "کپی مسیر",
+    parentElement: null,
+    closest(sel) { if (sel === "button[data-copy]") return this; return null; }
+  };
+  const ev = { target: btn };
+
+  // First click: text becomes "کپی شد", label stored as "کپی مسیر"
+  await listeners["click"](ev);
+  if (btn.textContent !== "کپی شد" || btn.dataset.label !== "کپی مسیر") {
+    process.exit(2);
+  }
+
+  // Second rapid click (e.g. 500ms later while still "کپی شد"):
+  // dataset.label MUST NOT be overwritten with "کپی شد"
+  await listeners["click"](ev);
+  if (btn.textContent !== "کپی شد" || btn.dataset.label !== "کپی مسیر") {
+    process.exit(3);
+  }
+
+  // Timeout fires 1.5s after the last click
+  if (timeouts.length !== 1) process.exit(4);
+  timeouts[0].cb();
+
+  // textContent must be restored to original "کپی مسیر"
+  if (btn.textContent !== "کپی مسیر") {
+    process.exit(5);
+  }
+  process.exit(0);
+}
+run();
+`
+	cmd := exec.Command(nodePath, "-e", script, appJS)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("node DOM regression test failed (exit code %v): %s", err, string(out))
 	}
 }
