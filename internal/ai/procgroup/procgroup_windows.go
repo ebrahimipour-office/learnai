@@ -3,6 +3,8 @@
 package procgroup
 
 import (
+	"errors"
+	"fmt"
 	"os/exec"
 	"sync"
 	"unsafe"
@@ -34,19 +36,28 @@ func newGroup(cmd *exec.Cmd) (*Group, error) {
 	return &Group{cmd: cmd, job: job}, nil
 }
 
+var beforeAttachForTest func(g *Group)
+
 // attach puts the started child in the job; its later descendants join automatically.
 // shortcut: a grandchild spawned between CreateProcess and this call escapes the job; upgrade to CREATE_SUSPENDED + resume if ever seen.
-func (g *Group) attach() {
+func (g *Group) attach() error {
+	if beforeAttachForTest != nil {
+		beforeAttachForTest(g)
+	}
 	h, err := windows.OpenProcess(windows.PROCESS_SET_QUOTA|windows.PROCESS_TERMINATE, false, uint32(g.cmd.Process.Pid))
 	if err != nil {
-		return // child already gone; Kill still falls back to Process.Kill
+		return fmt.Errorf("procgroup: open child process %d: %w", g.cmd.Process.Pid, err)
 	}
 	defer windows.CloseHandle(h)
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if g.job != 0 {
-		windows.AssignProcessToJobObject(g.job, h)
+	if g.job == 0 {
+		return errors.New("procgroup: job object handle is closed")
 	}
+	if err := windows.AssignProcessToJobObject(g.job, h); err != nil {
+		return fmt.Errorf("procgroup: assign child process %d to job: %w", g.cmd.Process.Pid, err)
+	}
+	return nil
 }
 
 // Kill terminates every process in the job, plus the child directly in case attach has not run yet.

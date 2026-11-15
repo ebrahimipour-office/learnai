@@ -20,7 +20,12 @@ func Start(cmd *exec.Cmd) (*Group, error) {
 		g.release()
 		return nil, err
 	}
-	g.attach()
+	if err := g.attach(); err != nil {
+		_ = g.Kill()
+		g.release()
+		_ = cmd.Wait()
+		return nil, err
+	}
 	return g, nil
 }
 

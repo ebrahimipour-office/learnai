@@ -341,14 +341,14 @@ There are **no P0 tasks**.
   - [x] Test passes on Linux.
 - **Depends on:** CR-44 (testable exit path).
 
-### - [ ] CR-24 — Do not ignore Windows Job Object attach errors
+### - [x] CR-24 — Do not ignore Windows Job Object attach errors
 - **Problem:** errors from `OpenProcess`/`AssignProcessToJobObject` are discarded, so tree-kill silently degrades.
 - **Affected files:** `internal/ai/procgroup/procgroup_windows.go:38-49`.
 - **Expected outcome:** `Start` fails (and kills the child) if attaching fails, or the failure is at least logged.
 - **Suggested implementation:** return a wrapped error; the caller maps it to `tool_error`.
 - **Required regression tests:** Windows-only: force failure with a closed job handle → `Start` returns an error and no process remains.
 - **Acceptance criteria:**
-  - [ ] Test runs in Windows CI.
+  - [x] Test runs in Windows CI.
 - **Depends on:** CR-58.
 
 ### - [x] CR-25 — Unique log directories for parallel AI runs

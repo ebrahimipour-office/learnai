@@ -32,7 +32,7 @@ func newGroup(cmd *exec.Cmd) (*Group, error) {
 	return &Group{cmd: cmd, grace: killGrace, kill: syscall.Kill}, nil
 }
 
-func (g *Group) attach() {}
+func (g *Group) attach() error { return nil }
 
 // Kill sends SIGTERM to the group once, then SIGKILL after the grace period unless the group is
 // gone by then (even if the leader already exited, its helpers get the same grace).
