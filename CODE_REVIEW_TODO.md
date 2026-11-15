@@ -38,9 +38,9 @@ There are **no P0 tasks**.
   - Unit test: the key produced by `AcceptSuggestion` matches `^[0-9a-f]{16}$`.
   - Migration test: an old `suggestion-7` row is rewritten.
 - **Acceptance criteria:**
-  - [ ] The end-to-end flow suggestion → exercises → evaluation works with the fake adapter.
-  - [ ] No code path inserts a non-hex `stable_key` (grep plus test).
-  - [ ] Existing databases are migrated without data loss.
+  - [x] The end-to-end flow suggestion → exercises → evaluation works with the fake adapter.
+  - [x] No code path inserts a non-hex `stable_key` (grep plus test).
+  - [x] Existing databases are migrated without data loss.
 - **Depends on:** none.
 
 ### - [x] CR-02 — AI child holding stdout discards a valid result or hangs `Run`
@@ -154,8 +154,8 @@ There are **no P0 tasks**.
   - Require every `sel.Send` exercise to be in the manifest. Use DB weights.
 - **Required regression tests:** remove a sent exercise from the manifest → commit fails and nothing is written; change a weight → fail (or DB weight used); rubric with `criteria: []` → fail.
 - **Acceptance criteria:**
-  - [ ] All three scenarios are covered.
-  - [ ] The normal flow is unchanged.
+  - [x] All three scenarios are covered.
+  - [x] The normal flow is unchanged.
 - **Depends on:** none.
 
 ### - [x] CR-09 — Record answers that need manual review as "needs review", not "unanswered"
@@ -165,8 +165,8 @@ There are **no P0 tasks**.
 - **Suggested implementation:** pass `sel.Review` into `carried()`; set `Flags: ["needs_review"]` (the `attempt_items.flags` column already exists); add the label mapping in the UI and in `summary.md`.
 - **Required regression tests:** evaluate q01 and q02; grow q02 past the cap; evaluate again → q02 is flagged `needs_review` and is not labelled unanswered in the result, the summary and the UI.
 - **Acceptance criteria:**
-  - [ ] The label is visible.
-  - [ ] The score policy is documented (0 or carried).
+  - [x] The label is visible.
+  - [x] The score policy is documented (0 or carried).
 - **Depends on:** none.
 
 ### - [x] CR-10 — Refuse in-root symlinks under `.app/` and restrict `Root.RemoveAll`
@@ -205,8 +205,8 @@ There are **no P0 tasks**.
 - **Suggested implementation:** set `cmd.WaitDelay = 2*time.Second` and start the command via `procgroup`; map `ctx.Err()` to `ai.ErrTimeout`; replace mutex-held probing with a singleflight-style cached result.
 - **Required regression tests:** fake `--version` that runs `sleep 3 &` with a 500 ms context → returns in under 3 s with a timeout error; concurrent `/settings` requests do not serialize behind the probe.
 - **Acceptance criteria:**
-  - [ ] Both tests pass.
-  - [ ] The "auth required" hint no longer appears on a timeout.
+  - [x] Both tests pass.
+  - [x] The "auth required" hint no longer appears on a timeout.
 - **Depends on:** CR-48, which removes the probe from `GET /settings`; do the two together.
 
 ### - [x] CR-13 — Handle Windows `.cmd`/`.bat` shims safely (claude, codex, editor)
@@ -328,7 +328,7 @@ There are **no P0 tasks**.
 - **Suggested implementation:** store `*time.Timer` on `Group`; `release` stops it; after a clean leader exit, send SIGTERM and arm one timer instead of an immediate SIGKILL; make `Kill` idempotent.
 - **Required regression tests:** a grandchild trapping SIGTERM gets ≥ 1 s before SIGKILL; a spy kill function records no signal 3 s after a successful `Close`.
 - **Acceptance criteria:**
-  - [ ] Existing procgroup tests stay green.
+  - [x] Existing procgroup tests stay green.
 - **Depends on:** coordinate with CR-02.
 
 ### - [x] CR-23 — Handle SIGHUP in `serve` and `doctor`
@@ -602,8 +602,8 @@ There are **no P0 tasks**.
 - **Suggested implementation:** set `Cross-Origin-Resource-Policy: same-origin`; refuse GETs with `Sec-Fetch-Site: cross-site` unless `Sec-Fetch-Dest: document`; show the "run doctor" button instead of auto-probing.
 - **Required regression tests:** header assertion; a cross-site `GET /settings` does not call `Probe` (spy adapter).
 - **Acceptance criteria:**
-  - [ ] Tests pass.
-  - [ ] The settings page still shows the cached result.
+  - [x] Tests pass.
+  - [x] The settings page still shows the cached result.
 - **Depends on:** do together with CR-12.
 
 ### - [x] CR-49 — Ignore `?tab=` on `/topics/{id}`
