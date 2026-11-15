@@ -36,6 +36,26 @@ var (
 	ErrInput   = errors.New("prompt: input not allowed in sandbox")
 )
 
+// IsAllowedInput reports whether an input file path or placeholder name is permitted
+// in the sandbox under inputs/ according to the composer whitelist (TDD §6.3, CR-57).
+// It accepts filenames directly (e.g. "task.json", "answer.go") or with "inputs/" prefix,
+// and supports placeholder representations like "answer<ext>" or "answer.*".
+func IsAllowedInput(pathOrName string) bool {
+	name := strings.TrimPrefix(pathOrName, "inputs/")
+	name = strings.Trim(name, "`")
+	if idx := strings.IndexAny(name, " \t("); idx != -1 {
+		name = strings.TrimSpace(name[:idx])
+	}
+	name = strings.Trim(name, "`")
+	if slices.Contains(inputNames, name) || answerRe.MatchString(name) {
+		return true
+	}
+	if name == "answer<ext>" || name == "answer.*" || strings.HasPrefix(name, "answer.") {
+		return true
+	}
+	return false
+}
+
 type Composer struct {
 	Root *fsx.Root // base dir; sandboxes go to .app/work/<job>
 }

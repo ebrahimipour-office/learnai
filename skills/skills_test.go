@@ -2,8 +2,11 @@ package skills
 
 import (
 	"errors"
+	"io/fs"
+	"regexp"
 	"testing"
 
+	"learninghub/internal/ai/prompt"
 	"learninghub/internal/fsx"
 )
 
@@ -82,5 +85,34 @@ func TestOlder(t *testing.T) {
 		if got := older(c.a, c.b); got != c.want {
 			t.Errorf("older(%s, %s) = %v", c.a, c.b, got)
 		}
+	}
+}
+
+// CR-57: verify that every inputs/... path mentioned in embedded skills is allowed by composer whitelist.
+func TestSkillsInputsAllowedInComposerWhitelist(t *testing.T) {
+	files, err := fs.Glob(FS, "*/SKILL.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	re := regexp.MustCompile(`inputs/[A-Za-z0-9_.-]+(?:<ext>|\.\*)?`)
+	checked := 0
+	for _, f := range files {
+		b, err := FS.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		matches := re.FindAllString(string(b), -1)
+		if len(matches) == 0 {
+			t.Errorf("%s: no inputs found", f)
+		}
+		for _, m := range matches {
+			checked++
+			if !prompt.IsAllowedInput(m) {
+				t.Errorf("%s: input path %q is not in composer whitelist", f, m)
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no input paths were checked across embedded skills")
 	}
 }

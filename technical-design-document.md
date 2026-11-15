@@ -50,20 +50,27 @@
 | **D12** | همه عملیات فایل از طریق **`os.Root`** روی دایرکتوری پایه؛ کلاینت هیچ‌گاه مسیر نمی‌فرستد، فقط ID | حذف کلاس کامل آسیب‌پذیری‌های path traversal و symlink |
 | **D13** | تک‌نمونه‌ای: قفل فایل `.app/hub.lock` + bind به پورت ثابت | فرض «فقط یک پردازش» برای Job Runner و SQLite تضمین می‌شود |
 
-### ۱.۲. مبنای واقعی ابزار AI (از مستندات رسمی؛ هنوز تجربه عملی نیست)
+### ۱.۲. مبنای ابزارهای هوش مصنوعی و معماری چند آداپتوره (Multi-Adapter Architecture)
 
-بخش R7.3 می‌گوید پیش از طراحی نهایی باید با نسخه واقعی ابزار بررسی شود. مستندات رسمی «Headless mode» برای Antigravity CLI (فرمان `agy`) در زمان تهیه این سند موارد زیر را می‌گوید. این موارد **فرضِ مستند** هستند و کار `T1.1` باید آن‌ها را روی نصب واقعی تأیید کند:
+بخش R7.3 و نیازمندی‌های فاز ۷ بر پشتیبانی از ابزارهای هوش مصنوعی مختلف تأکید دارند. سیستم با استفاده از پکیج `internal/ai` و معماری `ai.Switch`، از سه ابزار مستقل زیر در حالت بدون رابط (Headless) پشتیبانی می‌کند:
 
-- اجرای غیرتعاملی با `agy -p "<prompt>"`؛ پاسخ روی `stdout` و تشخیص‌ها روی `stderr` می‌روند.
-- قالب‌های خروجی: `text` (پیش‌فرض)، `json` (یک پاکت JSON پس از پایان) و `stream-json` (رویدادهای NDJSON با نوع‌های `init` و `step_update` و `result`).
-- با `--json-schema` (رشته، مسیر فایل، یا نوع ساده) خروجی ساختاریافته در فیلد `structured_output` پاکت یا رویداد `result` می‌آید.
-- فیلدهای مفید پاکت: `status` (‏`SUCCESS`، `ERROR`، `CANCELED`، `INTERRUPTED`، `INVALID`، `WAITING`، `RUNNING`)، `error`، `duration_seconds`، `usage`، `conversation_id`.
-- پرچم‌ها: `--model`، `--effort`، `--print-timeout` (پیش‌فرض ۵ دقیقه)، `--sandbox`، `--continue`/`--conversation`، و `--dangerously-skip-permissions` که **فقط Adapter** با `adapter.skip_permissions` (پیش‌فرض `true`، فقط همراه `--sandbox`) اضافه می‌کند و در `extra_args` ممنوع است؛ این پرچم **اولین** آرگومان است (`agy --dangerously-skip-permissions -p …`) (T8.9، D5 و بخش ۸).
-- اعتبارنامه‌ها از نشست قبلی ذخیره می‌شوند؛ اگر احراز هویت نشده باشد، اجرا با خطای `authentication required` خارج می‌شود (و گیر نمی‌کند).
-- در حالت headless، خواندن و نوشتن فایل داخل workspace فعال خودکار است ولی اجرای دستور شل به‌صورت پیش‌فرض «رد نرم» می‌شود (اجرا با کد خروج ۰ ادامه می‌یابد و هشدار روی `stderr` می‌آید).
-- نام مدل‌ها با `agy models` فهرست می‌شود؛ مدل ناشناخته با کد خروج غیرصفر رد می‌شود.
+1. **Antigravity CLI (`agy` — پیش‌فرض):**
+   - اجرای غیرتعاملی با `agy -p "<prompt>"`؛ پاسخ روی `stdout` و تشخیص‌ها روی `stderr`.
+   - قالب‌های خروجی: `stream-json` (رویدادهای NDJSON با نوع‌های `init`، `step_update` و `result`) و استخراج شیء ساختاریافته از `structured_output`.
+   - پرچم‌ها: `--model`، `--effort`، `--print-timeout`، `--sandbox`، و `--dangerously-skip-permissions` (فقط همراه اجباری با `--sandbox` مجاز است و در `extra_args` ممنوع می‌باشد).
 
-> **هشدار:** منابع غیررسمی ادعا کرده‌اند حالت print در برخی نسخه‌ها همه فراخوانی ابزارها را بدون پرسش تأیید می‌کند. این با مستندات رسمی هم‌خوان نیست؛ برای همین طراحی ما (D4 و D5) **به رفتار دقیق مجوزها وابسته نیست**: حتی اگر ابزار همه چیز را تأیید کند، فقط به یک کپی موقت دسترسی دارد.
+2. **Claude Code CLI (`claude`):**
+   - اجرای غیرتعاملی با آرگومان‌های ایزوله‌شده: `-p … --output-format stream-json --verbose --json-schema <schema>`
+   - ابزارهای فقط‌خواندنی مجاز: `--tools Read,Glob,Grep` و محدودسازی به دایرکتوری کار با `--allowedTools Read(./**),Glob(./**),Grep(./**)`
+   - غیرفعال‌سازی وضعیت کاربری: `--no-session-persistence --strict-mcp-config --setting-sources ""`
+
+3. **Codex CLI (`codex`):**
+   - اجرای غیرتعاملی با `codex exec --json --skip-git-repo-check --sandbox read-only`
+   - استخراج شیء ساختاریافته JSON از رویداد `agent_message` و اعتبارسنجی با `WatchValid`
+
+در تمام ابزارها:
+- اعتبارسنجی خروجی ساختاریافته در لایه نرم‌افزار با JSON Schema انجام می‌شود و ابزارها هیچ دسترسی مستقیمی برای نوشتن یا تغییر فایل‌های اصلی ندارند (D4 و D5).
+- مدیریت پردازش‌ها با Windows Job Object و Unix Process Groups تضمین می‌کند که هیچ پردازه یتیمی پس از اتمام یا لغو کار باقی نماند.
 
 ---
 

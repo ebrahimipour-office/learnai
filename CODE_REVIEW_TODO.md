@@ -688,7 +688,7 @@ There are **no P0 tasks**.
   - [x] `diff INSTALL.md dist/INSTALL.md` is empty.
 - **Depends on:** Phase 1 (CR-01 … CR-04) completed first.
 
-### - [ ] CR-57 — Update outdated and contradictory documentation
+### - [x] CR-57 — Update outdated and contradictory documentation
 - **Problem:** `AGENTS.md`/`GEMINI.md` are Antigravity-only and do not point to open review findings; `implementation-strategy-report.md` describes 6 phases and only `agy`; `skills/answer-evaluator/SKILL.md:7,20` names `inputs/answer`; the TDD describes journal recovery and tmp+link writes as if implemented; `PROGRESS.md` says "complete / 100% green" while acceptance items are open; there is no recovery runbook.
 - **Affected files:** `AGENTS.md`, `GEMINI.md`, `PROGRESS.md`, `implementation-strategy-report.md`, `technical-design-document.md`, `skills/answer-evaluator/SKILL.md`, `INSTALL.md`.
 - **Expected outcome:** the docs match the code, and the continuity protocol includes "read `CODE_REVIEW_TODO.md` for open findings".
@@ -698,8 +698,8 @@ There are **no P0 tasks**.
   - Add a short "Recovering from a stuck commit" section to `INSTALL.md` until CR-03/CR-05 ship.
 - **Required regression tests:** `skills_test`: every `inputs/...` path mentioned in a SKILL.md exists in the composer whitelist.
 - **Acceptance criteria:**
-  - [ ] Docs reviewed.
-  - [ ] The skills test passes.
+  - [x] Docs reviewed.
+  - [x] The skills test passes.
 - **Depends on:** decisions in CR-03, CR-07, CR-41.
 
 ### - [ ] CR-58 — Close the critical test gaps and add CI
