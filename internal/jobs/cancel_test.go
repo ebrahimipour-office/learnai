@@ -58,6 +58,19 @@ func filesRunner(t *testing.T) (*jobs.Runner, *store.DB, *fsx.Root) {
 	return r, db, root
 }
 
+func waitCleaned(t *testing.T, root *fsx.Root, paths ...string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for _, p := range paths {
+		for root.Exists(p) {
+			if time.Now().After(deadline) {
+				t.Fatalf("%s still exists after 5s", p)
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+}
+
 func TestCancelRunningJob(t *testing.T) {
 	r, db, root := filesRunner(t)
 	r.Register(domain.JobKindLesson, lessonLike(root, &fake.Adapter{Scenario: fake.Slow, Delay: time.Minute}, ai.Request{}, nil))
@@ -79,11 +92,7 @@ func TestCancelRunningJob(t *testing.T) {
 	if !got.finished {
 		t.Error("finished_at not set")
 	}
-	for _, p := range []string{prompt.WorkRel(id), jobs.StagingRel(id), lessonRel} {
-		if root.Exists(p) {
-			t.Errorf("%s must not exist after cancel", p)
-		}
-	}
+	waitCleaned(t, root, prompt.WorkRel(id), jobs.StagingRel(id), lessonRel)
 	if _, err := r.Cancel(context.Background(), id); !errors.Is(err, domain.ErrInvalidState) {
 		t.Errorf("second cancel: want ErrInvalidState, got %v", err)
 	}
@@ -168,9 +177,7 @@ func TestCancelDuringCommitIsLate(t *testing.T) {
 	if !root.Exists(lessonRel) {
 		t.Error("commit must complete despite the cancel")
 	}
-	if root.Exists(prompt.WorkRel(id)) || root.Exists(jobs.StagingRel(id)) {
-		t.Error("succeeded job must clean work/ and staging/")
-	}
+	waitCleaned(t, root, prompt.WorkRel(id), jobs.StagingRel(id))
 }
 
 // A cancel that lands after the AI step but before commit starts must stop the commit.

@@ -655,14 +655,14 @@ There are **no P0 tasks**.
   - [x] Test passes.
 - **Depends on:** none.
 
-### - [ ] CR-54 — Fix flaky cancel tests in `internal/jobs`
+### - [x] CR-54 — Fix flaky cancel tests in `internal/jobs`
 - **Problem:** the tests check work and staging cleanup immediately after the status changes, but cleanup happens after the status write.
 - **Affected files:** `internal/jobs/cancel_test.go:74-85,163-172`.
 - **Expected outcome:** deterministic tests.
 - **Suggested implementation:** poll until the directories are gone, with a 5 s deadline.
 - **Required regression tests:** `go test -race -count=200 ./internal/jobs` green.
 - **Acceptance criteria:**
-  - [ ] 200 iterations pass.
+  - [x] 200 iterations pass.
 - **Depends on:** none.
 
 ### - [x] CR-55 — gofmt, dead code and the reserved-name list in `fsx`
