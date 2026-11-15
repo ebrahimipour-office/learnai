@@ -76,6 +76,9 @@ func WorkRel(jobID int64) string { return path.Join(".app/work", strconv.FormatI
 
 // Compose creates a fresh .app/work/<job> holding only whitelisted files and returns the request to run.
 func (c *Composer) Compose(in Input) (ai.Request, error) {
+	if len(in.Schema) == 0 {
+		return ai.Request{}, errors.New("output schema is required (CR-I10)")
+	}
 	ref, skill, err := parseSkill(in.Skill)
 	if err != nil {
 		return ai.Request{}, err
@@ -115,8 +118,8 @@ func (c *Composer) Compose(in Input) (ai.Request, error) {
 
 	prompt := fmt.Sprintf("Run the %q skill (version %s) for task %q.\nWorking directory: %s\nRead %s/SKILL.md for instructions, then %s/AGENTS.md and %s/profile.md, then the inputs: %s.\n\n%s",
 		ref.Name, ref.Version, in.Task, absWork, absWork, absWork, absWork, strings.Join(absInputs, ", "), Preamble)
-	if len(prompt) > MaxPrompt {
-		return ai.Request{}, fmt.Errorf("prompt: %d bytes exceeds %d", len(prompt), MaxPrompt)
+	if len(prompt) >= MaxPrompt {
+		return ai.Request{}, fmt.Errorf("prompt: %d bytes exceeds or equals max %d (CR-I10)", len(prompt), MaxPrompt)
 	}
 	if err := c.Root.EnsureRealDir(work); err != nil {
 		return ai.Request{}, err

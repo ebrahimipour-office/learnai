@@ -77,16 +77,26 @@ func GenerateAnswerTemplate(stableKey string, setVersion int, exID string, title
 // Returns the raw student answer after the marker, trimmed of leading newline.
 func ExtractAnswerContent(raw []byte) string {
 	content := string(raw)
-	idx := strings.Index(content, AnswerMarker)
+
+	// Search for AnswerMarker only after the metadata header lines (CR-I11).
+	// Line 1 contains @hub:... and Line 2 contains [exID] title.
+	searchStart := 0
+	lines := strings.SplitAfterN(content, "\n", 3)
+	if len(lines) >= 3 && strings.Contains(lines[0], "@hub:") {
+		searchStart = len(lines[0]) + len(lines[1])
+	}
+
+	idx := strings.Index(content[searchStart:], AnswerMarker)
 	if idx == -1 {
 		return strings.TrimSpace(content)
 	}
+	idx += searchStart
 
 	afterMarker := content[idx+len(AnswerMarker):]
 	// If the comment style had a closing suffix on the same line, drop that line
-	lines := strings.SplitN(afterMarker, "\n", 2)
-	if len(lines) > 1 {
-		return strings.TrimSpace(lines[1])
+	afterLines := strings.SplitN(afterMarker, "\n", 2)
+	if len(afterLines) > 1 {
+		return strings.TrimSpace(afterLines[1])
 	}
 	return strings.TrimSpace(afterMarker)
 }

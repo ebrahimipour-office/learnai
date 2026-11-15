@@ -26,12 +26,12 @@ func TestDB_OpenAndMigrate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get user_version: %v", err)
 	}
-	if version != 5 {
-		t.Errorf("Expected user_version 5, got %d", version)
+	if version != 6 {
+		t.Errorf("Expected user_version 6, got %d", version)
 	}
 	db.Close()
 
-	// 2. Second open: should safely recognize version 3 without re-running
+	// 2. Second open: should safely recognize version 6 without re-running
 	db2, err := store.Open(dbPath)
 	if err != nil {
 		t.Fatalf("Failed to re-open store: %v", err)
@@ -42,8 +42,8 @@ func TestDB_OpenAndMigrate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get user_version: %v", err)
 	}
-	if version2 != 5 {
-		t.Errorf("Expected user_version 5, got %d", version2)
+	if version2 != 6 {
+		t.Errorf("Expected user_version 6, got %d", version2)
 	}
 }
 
@@ -258,5 +258,26 @@ func TestDB_OpenReadOnly(t *testing.T) {
 	// Writing should fail.
 	if _, err := roDB.Writer().Exec(`INSERT INTO meta (key, value) VALUES ('test', 'val')`); err == nil {
 		t.Fatal("expected write to fail on read-only db, but it succeeded")
+	}
+}
+
+// CR-I6: index idx_jobs_scope exists on jobs(scope_key, id).
+func TestDB_JobsScopeIndex(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "scope_idx.db")
+
+	db, err := store.Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer db.Close()
+
+	var name string
+	err = db.Writer().QueryRow(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_jobs_scope'`).Scan(&name)
+	if err != nil {
+		t.Fatalf("index idx_jobs_scope not found: %v", err)
+	}
+	if name != "idx_jobs_scope" {
+		t.Errorf("expected idx_jobs_scope, got %q", name)
 	}
 }

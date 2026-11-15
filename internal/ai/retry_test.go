@@ -83,3 +83,43 @@ func TestTruncateRuneBoundary(t *testing.T) {
 		t.Fatalf("no-op truncate changed string: %q", got)
 	}
 }
+
+// CR-I10: Prompt length remains bounded by 4096 even when the initial prompt is already large
+// and an error message of several thousand bytes is appended in the retry note.
+func TestWatchValidRetryPromptBounded(t *testing.T) {
+	var secondPrompt string
+	runSpy := &spyAdapter{
+		runFn: func(ctx context.Context, req ai.Request) (*ai.Response, error) {
+			if strings.Contains(req.Prompt, "Your previous reply was rejected") {
+				secondPrompt = req.Prompt
+			}
+			return &ai.Response{Structured: json.RawMessage(`{}`)}, nil
+		},
+	}
+	hugePrompt := strings.Repeat("A", 3500)
+	hugeErr := fmt.Errorf("%w: %s", ai.ErrInvalidOutput, strings.Repeat("error detail ", 500))
+
+	_, _ = ai.WatchValid(context.Background(), runSpy, ai.Request{Prompt: hugePrompt}, nil, func(json.RawMessage) error {
+		if secondPrompt == "" {
+			return hugeErr
+		}
+		return nil
+	})
+
+	if len(secondPrompt) > 4096 {
+		t.Fatalf("secondPrompt length %d exceeds max 4096", len(secondPrompt))
+	}
+	if !strings.Contains(secondPrompt, "Your previous reply was rejected") {
+		t.Fatalf("second prompt missing retry note: %s", secondPrompt)
+	}
+}
+
+type spyAdapter struct {
+	runFn func(context.Context, ai.Request) (*ai.Response, error)
+}
+
+func (s *spyAdapter) Name() string                                   { return "spy" }
+func (s *spyAdapter) Probe(context.Context) (ai.Capabilities, error) { return ai.Capabilities{}, nil }
+func (s *spyAdapter) Run(ctx context.Context, req ai.Request, _ chan<- ai.Event) (*ai.Response, error) {
+	return s.runFn(ctx, req)
+}

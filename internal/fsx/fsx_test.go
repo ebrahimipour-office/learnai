@@ -191,6 +191,18 @@ func TestAnswerTemplate_GenerationAndExtraction(t *testing.T) {
 	if !strings.Contains(extracted, studentCode) {
 		t.Errorf("ExtractAnswerContent failed to extract student code, got: %s", extracted)
 	}
+
+	// CR-I11: an exercise title containing the AnswerMarker on line 2 must not fool extraction.
+	titleWithMarker := "Fix " + fsx.AnswerMarker + " bug"
+	trickyTpl := fsx.GenerateAnswerTemplate(stableKey, setVersion, exID, titleWithMarker, ".go", starter)
+	trickyFile := string(trickyTpl) + "\n" + studentCode
+	trickyExtracted := fsx.ExtractAnswerContent([]byte(trickyFile))
+	if !strings.Contains(trickyExtracted, studentCode) {
+		t.Errorf("ExtractAnswerContent failed when title has marker, got: %s", trickyExtracted)
+	}
+	if strings.Contains(trickyExtracted, fsx.AnswerMarker) {
+		t.Errorf("ExtractAnswerContent included header text, got: %s", trickyExtracted)
+	}
 }
 
 func TestHashing(t *testing.T) {

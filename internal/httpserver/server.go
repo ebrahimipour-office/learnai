@@ -69,6 +69,9 @@ func NewServer(addr string, sm *SecurityManager, drafts *roadmaps.Service, topic
 	mux.HandleFunc("POST /roadmaps/drafts/{id}/chapters", a.requireAck(a.draftJob(domain.JobKindChapterDetect)))
 	mux.HandleFunc("GET /roadmaps/drafts/{id}/ai", a.draftAIStatus)
 
+	// ReadTimeout and WriteTimeout are intentionally unset on this loopback server:
+	// WriteTimeout would prematurely cut off synchronous operations like adapter probing (~90s),
+	// while ReadHeaderTimeout (10s) and IdleTimeout (120s) protect against slowloris attacks on headers.
 	return &http.Server{
 		Addr:              addr,
 		Handler:           sm.SecurityMiddleware(mux),

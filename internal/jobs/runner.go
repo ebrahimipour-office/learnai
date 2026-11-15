@@ -308,8 +308,9 @@ func (r *Runner) claim(ctx context.Context) (*Job, error) {
 		var j Job
 		var topic, roadmap, retry sql.NullInt64
 		var params string
+		// Order strictly by id for monotonic FIFO claiming (CR-I6).
 		err := r.db.Writer().QueryRowContext(ctx, `SELECT id, kind, scope_key, topic_id, roadmap_id, params, retry_of
-			FROM jobs WHERE status = 'queued' ORDER BY enqueued_at, id LIMIT 1`).
+			FROM jobs WHERE status = 'queued' ORDER BY id LIMIT 1`).
 			Scan(&j.ID, &j.Kind, &j.Scope, &topic, &roadmap, &params, &retry)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil

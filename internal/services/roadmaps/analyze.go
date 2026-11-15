@@ -185,29 +185,32 @@ func (a *Analyzer) run(ctx context.Context, j jobs.Job, build func(*Draft, *road
 	raw, _ := json.Marshal(sug)
 
 	return j.Commit(ctx, func(ctx context.Context) error {
-		res, err := db.ExecContext(ctx, `UPDATE import_drafts SET ai_suggestion = ? WHERE id = ? AND expires_at > ?`,
-			string(raw), d.ID, s.ts(s.Now()))
-		if err != nil {
-			return err
-		}
-		if n, _ := res.RowsAffected(); n == 0 {
-			return ErrDraftNotFound
-		}
-		if t.apply && p.Selection != "" {
-			choice, err := json.Marshal(Choice{Rule: sug.Rule})
+		// Put updates in one transaction (CR-I12)
+		return s.db.WithTx(ctx, func(tx *sql.Tx) error {
+			res, err := tx.ExecContext(ctx, `UPDATE import_drafts SET ai_suggestion = ? WHERE id = ? AND expires_at > ?`,
+				string(raw), d.ID, s.ts(s.Now()))
 			if err != nil {
 				return err
 			}
-			title := sql.NullString{String: sug.Title, Valid: d.RoadmapID == 0 && sug.Title != ""} // first import only
-			// No row = the user changed the selection meanwhile: the suggestion waits for «اعمال پیشنهاد».
-			if _, err := db.ExecContext(ctx, `UPDATE import_drafts SET selection = ?, title = COALESCE(title, ?) WHERE id = ? AND selection = ?`,
-				string(choice), title, d.ID, p.Selection); err != nil {
-				return err
+			if n, _ := res.RowsAffected(); n == 0 {
+				return ErrDraftNotFound
 			}
-		}
-		ref, _ := json.Marshal(map[string]string{"draft_id": d.ID})
-		_, err = db.ExecContext(ctx, `UPDATE jobs SET result_ref = ? WHERE id = ?`, string(ref), j.ID)
-		return err
+			if t.apply && p.Selection != "" {
+				choice, err := json.Marshal(Choice{Rule: sug.Rule})
+				if err != nil {
+					return err
+				}
+				title := sql.NullString{String: sug.Title, Valid: d.RoadmapID == 0 && sug.Title != ""} // first import only
+				// No row = the user changed the selection meanwhile: the suggestion waits for «اعمال پیشنهاد».
+				if _, err := tx.ExecContext(ctx, `UPDATE import_drafts SET selection = ?, title = COALESCE(title, ?) WHERE id = ? AND selection = ?`,
+					string(choice), title, d.ID, p.Selection); err != nil {
+					return err
+				}
+			}
+			ref, _ := json.Marshal(map[string]string{"draft_id": d.ID})
+			_, err = tx.ExecContext(ctx, `UPDATE jobs SET result_ref = ? WHERE id = ?`, string(ref), j.ID)
+			return err
+		})
 	})
 }
 

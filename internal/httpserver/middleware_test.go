@@ -33,6 +33,17 @@ func TestSecurityMiddleware(t *testing.T) {
 		}
 	})
 
+	t.Run("Rejects Host with wrong port (CR-I1)", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:9999/topics", nil)
+		req.Host = "127.0.0.1:9999"
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("Expected 403 Forbidden for wrong Host port, got %d", rec.Code)
+		}
+	})
+
 	t.Run("Accepts valid 127.0.0.1 and localhost Host", func(t *testing.T) {
 		validHosts := []string{"127.0.0.1:8787", "localhost:8787", "127.0.0.1", "localhost"}
 		for _, vh := range validHosts {
@@ -71,6 +82,32 @@ func TestSecurityMiddleware(t *testing.T) {
 		handler.ServeHTTP(rec, req)
 		if rec.Code != http.StatusForbidden {
 			t.Errorf("Expected 403 Forbidden for invalid Origin, got %d", rec.Code)
+		}
+	})
+
+	t.Run("Rejects POST with port-less Origin (CR-I1)", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8787/topics/1/jobs/lesson", strings.NewReader("{}"))
+		req.Host = "127.0.0.1:8787"
+		req.Header.Set("Origin", "http://127.0.0.1")
+		req.Header.Set("X-CSRF-Token", sm.CSRFToken())
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("Expected 403 Forbidden for port-less Origin, got %d", rec.Code)
+		}
+	})
+
+	t.Run("Accepts POST with IPv6 loopback Origin with port (CR-I1)", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8787/topics/1/jobs/lesson", strings.NewReader("{}"))
+		req.Host = "127.0.0.1:8787"
+		req.Header.Set("Origin", "http://[::1]:8787")
+		req.Header.Set("X-CSRF-Token", sm.CSRFToken())
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Errorf("Expected 200 OK for [::1]:8787 Origin, got %d", rec.Code)
 		}
 	})
 
@@ -115,8 +152,8 @@ func TestSecurityMiddleware(t *testing.T) {
 		}
 	})
 
-	t.Run("Body limit applies before CSRF form parsing", func(t *testing.T) {
-		// Valid token in a form body larger than the 64KB default must not reach the handler.
+	t.Run("Body limit applies before CSRF form parsing (CR-I2)", func(t *testing.T) {
+		// Valid token in a form body larger than the 64KB default must return 413.
 		body := "csrf_token=" + sm.CSRFToken() + "&pad=" + strings.Repeat("a", 128*1024)
 		req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8787/topics/1/jobs/lesson", strings.NewReader(body))
 		req.Host = "127.0.0.1:8787"
@@ -124,8 +161,52 @@ func TestSecurityMiddleware(t *testing.T) {
 		rec := httptest.NewRecorder()
 
 		handler.ServeHTTP(rec, req)
-		if rec.Code == http.StatusOK {
-			t.Errorf("Expected oversized form POST to be rejected, got 200")
+		if rec.Code != http.StatusRequestEntityTooLarge {
+			t.Errorf("Expected 413 for oversized form POST, got %d", rec.Code)
+		}
+	})
+
+	t.Run("Body limit applies on header-CSRF path (CR-I2)", func(t *testing.T) {
+		// Oversized body with X-CSRF-Token must also return 413
+		body := "pad=" + strings.Repeat("a", 128*1024)
+		req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8787/topics/1/jobs/lesson", strings.NewReader(body))
+		req.Host = "127.0.0.1:8787"
+		req.Header.Set("Origin", "http://127.0.0.1:8787")
+		req.Header.Set("X-CSRF-Token", sm.CSRFToken())
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusRequestEntityTooLarge {
+			t.Errorf("Expected 413 for oversized htmx POST, got %d", rec.Code)
+		}
+	})
+
+	t.Run("Fast rejection when Content-Length exceeds limit (CR-I2)", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8787/topics/1/jobs/lesson", strings.NewReader("{}"))
+		req.Host = "127.0.0.1:8787"
+		req.ContentLength = 200 * 1024
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusRequestEntityTooLarge {
+			t.Errorf("Expected 413 for oversized Content-Length, got %d", rec.Code)
+		}
+	})
+
+	t.Run("Cache-Control header for static vs dynamic routes (CR-I4)", func(t *testing.T) {
+		reqStatic := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8787/static/app.css", nil)
+		recStatic := httptest.NewRecorder()
+		handler.ServeHTTP(recStatic, reqStatic)
+		if cc := recStatic.Header().Get("Cache-Control"); !strings.Contains(cc, "max-age=") {
+			t.Errorf("Expected max-age Cache-Control for /static/, got %q", cc)
+		}
+
+		reqDynamic := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8787/topics", nil)
+		recDynamic := httptest.NewRecorder()
+		handler.ServeHTTP(recDynamic, reqDynamic)
+		if cc := recDynamic.Header().Get("Cache-Control"); cc != "no-store" {
+			t.Errorf("Expected no-store Cache-Control for /topics, got %q", cc)
 		}
 	})
 

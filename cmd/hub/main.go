@@ -413,7 +413,9 @@ func runServe(args []string) error {
 		httpserver.Settings{DB: db, Adapter: adapter, Switch: adapter, Model: cfg.Adapter.Model, SkipPermissions: cfg.Adapter.SkipPermissions, Exercises: cfg.Exercises, MaxAnswerBytes: cfg.Limits.MaxAnswerBytes, Editor: cfg.Editor.Command})
 	// Maintenance at startup and hourly: expired job dirs/logs, daily DB backup, expired import drafts.
 	maint := &maintenance.Service{DB: db, Root: root, LogRetention: time.Duration(cfg.LogRetentionDays) * 24 * time.Hour, KeepBackups: cfg.BackupKeep}
+	maintDone := make(chan struct{})
 	go func() {
+		defer close(maintDone)
 		for t := time.NewTicker(time.Hour); ; {
 			if res, err := maint.Run(ctx, time.Now()); err != nil {
 				slog.Error("Maintenance failed", "error", err)
@@ -440,8 +442,9 @@ func runServe(args []string) error {
 			slog.Error("Job runner stopped", "error", err)
 		}
 	}()
-	// Runs before the deferred db.Close: running jobs are cancelled (process trees killed) and recorded.
-	defer func() { cancel(); <-runnerDone }()
+	// Runs before the deferred db.Close: running jobs are cancelled (process trees killed) and recorded,
+	// and the maintenance loop completes before the database connection closes (CR-I8).
+	defer func() { cancel(); <-runnerDone; <-maintDone }()
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.ListenAndServe() }()

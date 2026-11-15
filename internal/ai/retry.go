@@ -41,9 +41,21 @@ func WatchValid(ctx context.Context, a Adapter, req Request, events chan<- Event
 	if cerr := CtxErr(ctx); cerr != nil { // CR-26: a cancel after the first run must not start a second
 		return resp, cerr
 	}
-	note := Truncate(err.Error(), maxRetryNote)
-	req.Prompt += "\nYour previous reply was rejected by the validator:\n" + note +
-		"\nReply again with one corrected JSON object that satisfies output.schema.json and SKILL.md.\n"
+	const (
+		prefix         = "\nYour previous reply was rejected by the validator:\n"
+		suffix         = "\nReply again with one corrected JSON object that satisfies output.schema.json and SKILL.md.\n"
+		maxPromptLimit = 4096 // ceiling for -p prompt (CR-I10)
+	)
+	avail := maxPromptLimit - len(req.Prompt) - len(prefix) - len(suffix) - len("…")
+	noteCap := maxRetryNote
+	if avail < noteCap {
+		noteCap = avail
+	}
+	if noteCap < 0 {
+		noteCap = 0
+	}
+	note := Truncate(err.Error(), noteCap)
+	req.Prompt += prefix + note + suffix
 	first := resp
 	resp, err = watchChecked(ctx, a, req, events, check, 2)
 	if first != nil && resp != nil {

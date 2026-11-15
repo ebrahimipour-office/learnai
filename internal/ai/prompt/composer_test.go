@@ -216,6 +216,12 @@ func TestComposeRejects(t *testing.T) {
 	if _, err := c.Compose(in); err == nil || !strings.Contains(err.Error(), "version") {
 		t.Errorf("missing version: err = %v", err)
 	}
+	// CR-I10: empty schema must be rejected
+	in = evalInput(t, r)
+	in.Schema = nil
+	if _, err := c.Compose(in); err == nil || !strings.Contains(err.Error(), "output schema is required") {
+		t.Errorf("expected empty schema error, got %v", err)
+	}
 	if r.Exists(".app/work") {
 		t.Error("rejected compose left a sandbox behind")
 	}

@@ -47,8 +47,13 @@ func (sm *SecurityManager) SecurityMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// 1. Host header validation (Anti-DNS Rebinding)
 		host := r.Host
-		if h, _, err := net.SplitHostPort(host); err == nil {
+		if h, p, err := net.SplitHostPort(host); err == nil {
 			host = h
+			// Require the configured port if specified in the Host header (CR-I1).
+			if sm.port != "" && p != sm.port {
+				http.Error(w, "Forbidden: Invalid Host port", http.StatusForbidden)
+				return
+			}
 		}
 		if host != "127.0.0.1" && host != "localhost" && host != "::1" {
 			http.Error(w, "Forbidden: Invalid Host header", http.StatusForbidden)
@@ -61,7 +66,11 @@ func (sm *SecurityManager) SecurityMiddleware(next http.Handler) http.Handler {
 		// same-origin, not no-referrer: under no-referrer browsers send "Origin: null" on same-origin POSTs, which step 4B rejects.
 		w.Header().Set("Referrer-Policy", "same-origin")
 		w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
-		w.Header().Set("Cache-Control", "no-store")
+		if strings.HasPrefix(r.URL.Path, "/static/") {
+			w.Header().Set("Cache-Control", "public, max-age=3600")
+		} else {
+			w.Header().Set("Cache-Control", "no-store")
+		}
 		w.Header().Set("Cross-Origin-Resource-Policy", "same-origin") // CR-48: no cross-site <img>/<script> of /files/{id}
 
 		// Cross-site reads: only top-level navigations (a link to the hub) are allowed (CR-48).
@@ -75,6 +84,11 @@ func (sm *SecurityManager) SecurityMiddleware(next http.Handler) http.Handler {
 		maxBytes := int64(64 * 1024)
 		if strings.HasPrefix(r.URL.Path, "/roadmaps/drafts") {
 			maxBytes = sm.MaxUpload + 64<<10 // file plus multipart overhead; the service enforces the exact limit
+		}
+		// Fast rejection if Content-Length exceeds limit (CR-I2)
+		if r.ContentLength > maxBytes {
+			http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+			return
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 
@@ -95,11 +109,14 @@ func (sm *SecurityManager) SecurityMiddleware(next http.Handler) http.Handler {
 					return
 				}
 
+				// Only allow origins explicitly matching the listening port (CR-I1).
 				validOrigins := []string{
 					"http://127.0.0.1:" + sm.port,
 					"http://localhost:" + sm.port,
-					"http://127.0.0.1",
-					"http://localhost",
+					"http://[::1]:" + sm.port,
+				}
+				if sm.port == "80" {
+					validOrigins = append(validOrigins, "http://127.0.0.1", "http://localhost", "http://[::1]")
 				}
 
 				originValid := false
@@ -116,11 +133,10 @@ func (sm *SecurityManager) SecurityMiddleware(next http.Handler) http.Handler {
 				}
 			}
 
-			// C. CSRF Token verification
-			// Check X-CSRF-Token header first (htmx), then fallback to form field
-			submittedToken := r.Header.Get("X-CSRF-Token")
-			if submittedToken == "" {
-				// Parse explicitly: FormValue hides an oversized body, which would surface as a bogus CSRF 403.
+			// Pre-parse form bodies for both header and form-based CSRF paths (CR-I2)
+			// so that MaxBytesReader triggers 413 instead of FormValue silently dropping data.
+			ct := r.Header.Get("Content-Type")
+			if strings.HasPrefix(ct, "application/x-www-form-urlencoded") || strings.HasPrefix(ct, "multipart/form-data") {
 				if err := r.ParseMultipartForm(1 << 20); err != nil {
 					var tooBig *http.MaxBytesError
 					if errors.As(err, &tooBig) {
@@ -128,6 +144,12 @@ func (sm *SecurityManager) SecurityMiddleware(next http.Handler) http.Handler {
 						return
 					}
 				}
+			}
+
+			// C. CSRF Token verification
+			// Check X-CSRF-Token header first (htmx), then fallback to form field
+			submittedToken := r.Header.Get("X-CSRF-Token")
+			if submittedToken == "" {
 				submittedToken = r.FormValue("csrf_token")
 			}
 

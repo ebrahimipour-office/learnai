@@ -764,20 +764,20 @@ There are **no P0 tasks**.
 
 ## INFO — Optional improvements (not defects)
 
-- [ ] **CR-I1** — Remove the port-less `Origin` entries; optionally require the configured port in the Host check (`internal/httpserver/middleware.go:47-54,88-93`).
-- [ ] **CR-I2** — Parse the form (or check `Content-Length`) on the header-CSRF path so oversized htmx bodies return 413 (`middleware.go:112-123`).
-- [ ] **CR-I3** — Document why `ReadTimeout`/`WriteTimeout` are unset (`internal/httpserver/server.go:68-73`).
-- [ ] **CR-I4** — Stream `serveFile` with `http.ServeContent`; give `/static/` a short `max-age` (`handlers_exercises.go:232`).
-- [ ] **CR-I5** — State in the TDD that each report embeds that exercise's rubric criteria (`evaluation/report.go:96-98`).
-- [ ] **CR-I6** — Add `CREATE INDEX idx_jobs_scope ON jobs(scope_key, id)`; order `claim` by `id` (`jobs/view.go:61`, `runner.go:263`).
-- [ ] **CR-I7** — Check the error from the deferred `PRAGMA foreign_keys = ON` and fail `Open` on error (`store/db.go:150`).
-- [ ] **CR-I8** — Join the maintenance goroutine before `db.Close` (`cmd/hub/main.go:325-353`).
-- [ ] **CR-I9** — Document environment inheritance (`ANTHROPIC_API_KEY`, `CLAUDECODE`) in `INSTALL.md`.
-- [ ] **CR-I10** — Re-check the prompt size after appending the retry note; align `>` vs `>=`; require a non-empty `Schema` in `Compose` (`ai/retry.go`, `ai/prompt/composer.go:82`).
-- [ ] **CR-I11** — Search for the answer marker only after the header lines (`fsx/answertpl.go:78-92`).
-- [ ] **CR-I12** — Put the analyze commit's two `UPDATE`s in one transaction (`services/roadmaps/analyze.go:172-184`).
-- [ ] **CR-I13** — Keep the phrase-list injection guard as an accepted risk (no action; tracked for visibility).
-- [ ] **CR-I14** — Verify Windows console-close shutdown in the manual checklist (`INSTALL.md`).
+- [x] **CR-I1** — Remove the port-less `Origin` entries; optionally require the configured port in the Host check (`internal/httpserver/middleware.go:47-54,88-93`).
+- [x] **CR-I2** — Parse the form (or check `Content-Length`) on the header-CSRF path so oversized htmx bodies return 413 (`middleware.go:112-123`).
+- [x] **CR-I3** — Document why `ReadTimeout`/`WriteTimeout` are unset (`internal/httpserver/server.go:68-73`).
+- [x] **CR-I4** — Stream `serveFile` with `http.ServeContent`; give `/static/` a short `max-age` (`handlers_exercises.go:232`).
+- [x] **CR-I5** — State in the TDD that each report embeds that exercise's rubric criteria (`evaluation/report.go:96-98`).
+- [x] **CR-I6** — Add `CREATE INDEX idx_jobs_scope ON jobs(scope_key, id)`; order `claim` by `id` (`jobs/view.go:61`, `runner.go:263`).
+- [x] **CR-I7** — Check the error from the deferred `PRAGMA foreign_keys = ON` and fail `Open` on error (`store/db.go:150`).
+- [x] **CR-I8** — Join the maintenance goroutine before `db.Close` (`cmd/hub/main.go:325-353`).
+- [x] **CR-I9** — Document environment inheritance (`ANTHROPIC_API_KEY`, `CLAUDECODE`) in `INSTALL.md`.
+- [x] **CR-I10** — Re-check the prompt size after appending the retry note; align `>` vs `>=`; require a non-empty `Schema` in `Compose` (`ai/retry.go`, `ai/prompt/composer.go:82`).
+- [x] **CR-I11** — Search for the answer marker only after the header lines (`fsx/answertpl.go:78-92`).
+- [x] **CR-I12** — Put the analyze commit's two `UPDATE`s in one transaction (`services/roadmaps/analyze.go:172-184`).
+- [x] **CR-I13** — Keep the phrase-list injection guard as an accepted risk (no action; tracked for visibility).
+- [x] **CR-I14** — Verify Windows console-close shutdown in the manual checklist (`INSTALL.md`).
 
 ---
 

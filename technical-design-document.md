@@ -688,7 +688,7 @@ CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- base_id، ن
 
 ### ۵.۲. `rubric-v<N>.json`
 
-مسیر: `topics/<dir>/.internal/rubric-v<N>.json` (در UI تا پیش از اولین ارزیابی نمایش داده نمی‌شود، R6).
+مسیر: `topics/<dir>/.internal/rubric-v<N>.json` (در UI تا پیش از اولین ارزیابی کامل همه تمرین‌های این مجموعه قفل و غیرقابل دسترسی است، R6. طبق طراحی، هر فایل گزارش ارزیابی `qNN-report.md` معیارهای روبیک مختص همان تمرین را مستقیماً در جدول ارزیابی خود تعبیه می‌کند، در حالی که فایل کامل روبیک قفل باقی می‌ماند).
 
 ```json
 {

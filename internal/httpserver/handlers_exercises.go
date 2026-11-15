@@ -231,10 +231,17 @@ func (a *app) serveFile(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "معیار ارزیابی پیش از ارزیابی همه تمرین‌های این مجموعه نمایش داده نمی‌شود.", http.StatusForbidden)
 		return
 	}
-	b, err := a.root.ReadFile(f.RelPath)
+	file, err := a.root.Open(f.RelPath)
 	if err != nil {
 		slog.Warn("reading file", "path", f.RelPath, "error", err)
 		http.Error(w, "فایل روی دیسک پیدا نشد.", http.StatusNotFound)
+		return
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		slog.Warn("stating file", "path", f.RelPath, "error", err)
+		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
 		return
 	}
 	name := path.Base(f.RelPath)
@@ -247,7 +254,7 @@ func (a *app) serveFile(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", ctype)
 	w.Header().Set("Content-Disposition", mime.FormatMediaType(disp, map[string]string{"filename": name}))
-	_, _ = w.Write(b)
+	http.ServeContent(w, r, name, info.ModTime(), file)
 }
 
 // openFile starts the configured editor on a registered file (R13.2): no shell, the program

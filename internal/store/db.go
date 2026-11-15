@@ -155,7 +155,7 @@ func (d *DB) WithTx(ctx context.Context, fn func(tx *sql.Tx) error) error {
 }
 
 // migrations run in order; file i sets user_version i+1.
-var migrations = []string{"0001_init.sql", "0002_eval_guards.sql", "0003_chapters.sql", "0004_suggestion_keys.sql", "0005_topic_tree.sql"}
+var migrations = []string{"0001_init.sql", "0002_eval_guards.sql", "0003_chapters.sql", "0004_suggestion_keys.sql", "0005_topic_tree.sql", "0006_jobs_scope_index.sql"}
 
 // migrate applies all pending embedded migrations.
 func (d *DB) migrate() error { return d.migrateTo(len(migrations)) }
@@ -163,7 +163,7 @@ func (d *DB) migrate() error { return d.migrateTo(len(migrations)) }
 // migrateTo applies pending migrations up to version target. Each file runs in its own transaction on
 // one dedicated connection with foreign_keys OFF (the PRAGMA is a no-op inside a transaction), so a
 // file may rebuild a referenced table (design §12.6); foreign_key_check must be empty before commit.
-func (d *DB) migrateTo(target int) error {
+func (d *DB) migrateTo(target int) (retErr error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	ctx := context.Background()
@@ -187,7 +187,12 @@ func (d *DB) migrateTo(target int) error {
 		return err
 	}
 	// Restored even on failure: the pool reuses this connection for every later query.
-	defer conn.ExecContext(ctx, "PRAGMA foreign_keys = ON;")
+	// Check the error so the connection never silently runs without FK enforcement (CR-I7).
+	defer func() {
+		if _, fkErr := conn.ExecContext(ctx, "PRAGMA foreign_keys = ON;"); fkErr != nil && retErr == nil {
+			retErr = fmt.Errorf("re-enabling foreign keys: %w", fkErr)
+		}
+	}()
 
 	for v := current + 1; v <= target; v++ {
 		name := migrations[v-1]
