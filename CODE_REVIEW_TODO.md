@@ -677,15 +677,15 @@ There are **no P0 tasks**.
   - [x] Tests pass.
 - **Depends on:** none.
 
-### - [ ] CR-56 — Reproducible release artifacts
+### - [x] CR-56 — Reproducible release artifacts
 - **Problem:** `dist/hub` and `dist/hub.exe` were built from `ceae190+dirty` (T6.8), not HEAD; `dist/INSTALL.md` is outdated.
 - **Affected files:** `Makefile` (release target), `cmd/hub/main.go` (`version` output), `dist/`.
 - **Expected outcome:** release binaries always match a clean commit, and `hub version` prints the revision.
 - **Suggested implementation:** in `make release`, fail if `git status --porcelain` is non-empty; print `debug.ReadBuildInfo()` `vcs.revision`/`vcs.modified` in `hub version`; rebuild `dist/` after the Phase 1 fixes.
 - **Required regression tests:** a release-script check that `go version -m dist/hub` shows no `+dirty` and the revision equals `git rev-parse HEAD`.
 - **Acceptance criteria:**
-  - [ ] `dist/` is rebuilt from a clean tree.
-  - [ ] `diff INSTALL.md dist/INSTALL.md` is empty.
+  - [x] `dist/` is rebuilt from a clean tree.
+  - [x] `diff INSTALL.md dist/INSTALL.md` is empty.
 - **Depends on:** Phase 1 (CR-01 … CR-04) completed first.
 
 ### - [ ] CR-57 — Update outdated and contradictory documentation

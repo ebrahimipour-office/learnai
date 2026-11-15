@@ -312,3 +312,97 @@ binary = %q
 		t.Fatalf(".doctor_test was modified: got %q, want %q", string(gotContent), existingContent)
 	}
 }
+
+// CR-56: hub version prints version, date, runtime OS/Arch, and VCS revision when available.
+func TestCR56_VersionFormat(t *testing.T) {
+	gotClean := formatVersion("1.0.0", "2026-11-15", "linux", "amd64", "abc123456789", false)
+	wantClean := "LearningHub CLI version 1.0.0 (rev abc123456789, 2026-11-15, linux/amd64)"
+	if gotClean != wantClean {
+		t.Errorf("got %q, want %q", gotClean, wantClean)
+	}
+
+	gotDirty := formatVersion("1.0.0", "2026-11-15", "linux", "amd64", "abc123456789", true)
+	wantDirty := "LearningHub CLI version 1.0.0 (rev abc123456789+dirty, 2026-11-15, linux/amd64)"
+	if gotDirty != wantDirty {
+		t.Errorf("got %q, want %q", gotDirty, wantDirty)
+	}
+
+	gotNoRev := formatVersion("1.0.0", "2026-11-15", "linux", "amd64", "", false)
+	wantNoRev := "LearningHub CLI version 1.0.0 (2026-11-15, linux/amd64)"
+	if gotNoRev != wantNoRev {
+		t.Errorf("got %q, want %q", gotNoRev, wantNoRev)
+	}
+}
+
+func TestCR56_VersionSubcommand(t *testing.T) {
+	if os.Getenv("HUB_TEST_VERSION") == "1" {
+		os.Args = []string{"hub", "version"}
+		main()
+		os.Exit(0)
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=^TestCR56_VersionSubcommand$")
+	cmd.Env = append(os.Environ(), "HUB_TEST_VERSION=1")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("expected version to succeed: %v\n%s", err, out)
+	}
+	s := strings.TrimSpace(string(out))
+	if !strings.HasPrefix(s, "LearningHub CLI version ") {
+		t.Errorf("unexpected output prefix: %s", s)
+	}
+	if !strings.Contains(s, "linux/amd64") && !strings.Contains(s, "windows/amd64") {
+		t.Errorf("expected OS/Arch in output, got: %s", s)
+	}
+}
+
+// CR-56: If HUB_VERIFY_DIST=1, verify that dist/ binaries match clean git HEAD and INSTALL.md is synced.
+func TestCR56_DistArtifactsVerification(t *testing.T) {
+	if os.Getenv("HUB_VERIFY_DIST") != "1" {
+		t.Skip("skipping dist artifacts verification; set HUB_VERIFY_DIST=1 to run")
+	}
+
+	distDir := filepath.Join("..", "..", "dist")
+	distHub := filepath.Join(distDir, "hub")
+	distExe := filepath.Join(distDir, "hub.exe")
+	distInstall := filepath.Join(distDir, "INSTALL.md")
+	origInstall := filepath.Join("..", "..", "INSTALL.md")
+
+	for _, p := range []string{distHub, distExe, distInstall} {
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("missing dist artifact %s: %v", p, err)
+		}
+	}
+
+	headBytes, err := exec.Command("git", "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatalf("git rev-parse HEAD failed: %v", err)
+	}
+	head := strings.TrimSpace(string(headBytes))
+
+	for _, bin := range []string{distHub, distExe} {
+		out, err := exec.Command("go", "version", "-m", bin).CombinedOutput()
+		if err != nil {
+			t.Fatalf("go version -m %s failed: %v\n%s", bin, err, out)
+		}
+		s := string(out)
+		if strings.Contains(s, "vcs.modified=true") {
+			t.Errorf("%s was built from dirty tree (vcs.modified=true)", bin)
+		}
+		if !strings.Contains(s, "vcs.revision="+head) {
+			t.Errorf("%s revision does not match HEAD %s\n%s", bin, head, s)
+		}
+	}
+
+	origBytes, err := os.ReadFile(origInstall)
+	if err != nil {
+		t.Fatalf("reading %s: %v", origInstall, err)
+	}
+	distBytes, err := os.ReadFile(distInstall)
+	if err != nil {
+		t.Fatalf("reading %s: %v", distInstall, err)
+	}
+	if string(origBytes) != string(distBytes) {
+		t.Errorf("dist/INSTALL.md does not match %s", origInstall)
+	}
+}

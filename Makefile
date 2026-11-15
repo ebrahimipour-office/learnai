@@ -17,11 +17,33 @@ vuln:
 	go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 $(PKGS)
 
 release: test
+	@if [ -n "$$(git status --porcelain)" ]; then \
+		echo "ERROR: working tree is dirty; commit or stash changes before building release" >&2; \
+		exit 1; \
+	fi
 	rm -rf dist
 	mkdir -p dist
 	GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "$(LDFLAGS)" -o dist/hub.exe ./cmd/hub
 	GOOS=linux   GOARCH=amd64 go build -trimpath -ldflags "$(LDFLAGS)" -o dist/hub ./cmd/hub
 	cp INSTALL.md dist/
+	@if go version -m dist/hub | grep -q "vcs.modified=true"; then \
+		echo "ERROR: dist/hub built with dirty VCS state" >&2; \
+		exit 1; \
+	fi
+	@if go version -m dist/hub.exe | grep -q "vcs.modified=true"; then \
+		echo "ERROR: dist/hub.exe built with dirty VCS state" >&2; \
+		exit 1; \
+	fi
+	@REV=$$(git rev-parse HEAD); \
+	if ! go version -m dist/hub | grep -q "vcs.revision=$$REV"; then \
+		echo "ERROR: dist/hub revision does not match HEAD ($$REV)" >&2; \
+		exit 1; \
+	fi
+	@if ! go version -m dist/hub.exe | grep -q "vcs.revision=$$REV"; then \
+		echo "ERROR: dist/hub.exe revision does not match HEAD ($$REV)" >&2; \
+		exit 1; \
+	fi
+	@diff -u INSTALL.md dist/INSTALL.md
 
 clean:
 	rm -rf dist

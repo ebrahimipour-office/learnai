@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -72,8 +73,40 @@ func main() {
 	}
 }
 
+func vcsInfo() (revision string, modified bool) {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "", false
+	}
+	for _, s := range info.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			revision = s.Value
+		case "vcs.modified":
+			modified = s.Value == "true"
+		}
+	}
+	return revision, modified
+}
+
+func formatVersion(version, buildDate, goos, goarch, revision string, modified bool) string {
+	if revision != "" {
+		suffix := ""
+		if modified {
+			suffix = "+dirty"
+		}
+		return fmt.Sprintf("LearningHub CLI version %s (rev %s%s, %s, %s/%s)", version, revision, suffix, buildDate, goos, goarch)
+	}
+	return fmt.Sprintf("LearningHub CLI version %s (%s, %s/%s)", version, buildDate, goos, goarch)
+}
+
+func versionString() string {
+	rev, mod := vcsInfo()
+	return formatVersion(Version, BuildDate, runtime.GOOS, runtime.GOARCH, rev, mod)
+}
+
 func runVersion() {
-	fmt.Printf("LearningHub CLI version %s (%s, %s/%s)\n", Version, BuildDate, runtime.GOOS, runtime.GOARCH)
+	fmt.Println(versionString())
 }
 
 // runDoctor checks the environment and the AI tool (R7.3); --json prints the same as one object.
@@ -117,12 +150,27 @@ func runDoctor(args []string) {
 	ok := writeErr == "" && d.Ready()
 
 	if *asJSON {
-		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{
+		res := map[string]any{
 			"ok": ok, "version": Version, "os": runtime.GOOS + "/" + runtime.GOARCH, "base_dir": cfg.BaseDir,
 			"base_dir_writable": writeErr == "", "base_dir_error": writeErr, "adapter": d,
-		})
+		}
+		if rev, mod := vcsInfo(); rev != "" {
+			if mod {
+				rev += "+dirty"
+			}
+			res["revision"] = rev
+		}
+		_ = json.NewEncoder(os.Stdout).Encode(res)
 	} else {
-		fmt.Printf("LearningHub %s (%s/%s)\n", Version, runtime.GOOS, runtime.GOARCH)
+		rev, mod := vcsInfo()
+		revStr := ""
+		if rev != "" {
+			if mod {
+				rev += "+dirty"
+			}
+			revStr = " (rev " + rev + ")"
+		}
+		fmt.Printf("LearningHub %s%s (%s/%s)\n", Version, revStr, runtime.GOOS, runtime.GOARCH)
 		fmt.Printf("Base directory: %s\n", cfg.BaseDir)
 		if writeErr != "" {
 			fmt.Printf("[FAIL] base directory not writable: %s\n", writeErr)
