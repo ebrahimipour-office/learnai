@@ -19,7 +19,7 @@
 
 {{define "draft-form"}}
 <form id="draft-form" method="post" action="/roadmaps/drafts/{{.Draft.ID}}/selection"
-      hx-post="/roadmaps/drafts/{{.Draft.ID}}/selection" hx-trigger="change" hx-target="this" hx-swap="outerHTML">
+      hx-post="/roadmaps/drafts/{{.Draft.ID}}/selection" hx-trigger="selection-change" hx-target="this" hx-swap="outerHTML">
   <input type="hidden" name="csrf_token" value="{{.CSRF}}">
   <input type="hidden" name="shown_rule" value="{{.RuleValue}}">
   <label>قاعده انتخاب موضوع

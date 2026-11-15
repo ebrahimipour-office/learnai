@@ -181,7 +181,7 @@ func TestSecurityMiddlewareIsWired(t *testing.T) {
 		t.Error("layout lacks the #flash alert container")
 	}
 	rec = e.do(httptest.NewRequest(http.MethodGet, "/static/app.js", nil))
-	for _, want := range []string{`"htmx:responseError"`, `"htmx:sendError"`, `"X-CSRF-Stale"`, "location.reload()"} {
+	for _, want := range []string{`"htmx:responseError"`, `"htmx:sendError"`, `"X-CSRF-Stale"`, "location.reload()", `"selection-change"`} {
 		if !strings.Contains(rec.Body.String(), want) {
 			t.Errorf("app.js missing %s", want)
 		}
@@ -537,5 +537,81 @@ func TestCR45_TopicsHistoryRestoreReturnsFullPage(t *testing.T) {
 	}
 	if !strings.Contains(bodyRestore, `<div id="topic-results">`) {
 		t.Fatalf("restore: expected #topic-results in full page, got:\n%s", bodyRestore)
+	}
+}
+
+func TestCR46_DraftFormSelectionChangeTrigger(t *testing.T) {
+	e := newEnv(t)
+	draftURL := e.upload("go.md", []byte("# Go\n## Part 1\nLine 3\n## Part 2\nLine 5\n## Part 3\nLine 7\n")).Header().Get("Location")
+
+	// 1. GET draft page: form must use hx-trigger="selection-change", not "change"
+	page := e.do(httptest.NewRequest(http.MethodGet, draftURL, nil)).Body.String()
+	if !strings.Contains(page, `hx-trigger="selection-change"`) {
+		t.Fatalf("expected hx-trigger=\"selection-change\" on draft form, got:\n%s", page)
+	}
+	if strings.Contains(page, `hx-trigger="change"`) {
+		t.Fatalf("found unwanted hx-trigger=\"change\" on draft form:\n%s", page)
+	}
+
+	// 2. Switch to tree rule to inspect chapter rows
+	rec := e.selection(draftURL, url.Values{"rule": {"tree"}}, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("switch to tree: want 200, got %d", rec.Code)
+	}
+	treeFrag := rec.Body.String()
+	if !strings.Contains(treeFrag, `hx-trigger="selection-change"`) {
+		t.Fatalf("fragment expected hx-trigger=\"selection-change\", got:\n%s", treeFrag)
+	}
+	if !strings.Contains(treeFrag, `id="ttl-1"`) || !strings.Contains(treeFrag, `id="ttl-2"`) {
+		t.Fatalf("expected stable input ids ttl-1, ttl-2, got:\n%s", treeFrag)
+	}
+
+	// 3. app.js checks: delegated listener handles selection-change for select and checkboxes, ignoring text inputs
+	appJS := e.do(httptest.NewRequest(http.MethodGet, "/static/app.js", nil)).Body.String()
+	for _, expected := range []string{
+		`closest("#draft-form")`,
+		`matches("select, input[type='checkbox']")`,
+		`htmx.trigger(form, "selection-change")`,
+	} {
+		if !strings.Contains(appJS, expected) {
+			t.Errorf("app.js missing expected pattern %q", expected)
+		}
+	}
+
+	// 4. Title edit + merge via form submission:
+	// Set chapters rule with 3 chapters
+	e.selection(draftURL, url.Values{
+		"rule":       {"chapters"},
+		"shown_rule": {"chapters"},
+		"ch_line":    {"2", "4", "6"},
+		"ch_end":     {"3", "5", "7"},
+		"ch_title":   {"Chapter One", "Chapter Two", "Chapter Three"},
+		"include":    {"k1", "k2", "k3"},
+	}, true)
+
+	// User edits title of Chapter 1 and clicks merge on Chapter 1 (merging 1 and 2)
+	mergeReq := url.Values{
+		"rule":       {"chapters"},
+		"shown_rule": {"chapters"},
+		"ch_line":    {"2", "4", "6"},
+		"ch_end":     {"3", "5", "7"},
+		"ch_title":   {"Edited Chapter One", "Chapter Two", "Chapter Three"},
+		"merge":      {"1"},
+	}
+	recMerge := e.selection(draftURL, mergeReq, false)
+	if recMerge.Code != http.StatusSeeOther {
+		t.Fatalf("merge submit: want 303, got %d", recMerge.Code)
+	}
+
+	// Draft re-renders with N-1 (2) chapters and the edited title is preserved
+	pageAfterMerge := e.do(httptest.NewRequest(http.MethodGet, draftURL, nil)).Body.String()
+	if !strings.Contains(pageAfterMerge, `value="Edited Chapter One"`) {
+		t.Errorf("expected edited chapter title to be preserved after merge, got:\n%s", pageAfterMerge)
+	}
+	if strings.Contains(pageAfterMerge, `value="Chapter Two"`) {
+		t.Errorf("expected Chapter Two to be absorbed in merge, got:\n%s", pageAfterMerge)
+	}
+	if !strings.Contains(pageAfterMerge, `value="Chapter Three"`) {
+		t.Errorf("expected Chapter Three to remain, got:\n%s", pageAfterMerge)
 	}
 }

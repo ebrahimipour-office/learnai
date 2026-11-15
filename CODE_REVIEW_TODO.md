@@ -574,14 +574,14 @@ There are **no P0 tasks**.
   - [x] Test passes.
 - **Depends on:** none.
 
-### - [ ] CR-46 — Draft form: do not post on text-input `change`
+### - [x] CR-46 — Draft form: do not post on text-input `change`
 - **Problem:** blur on chapter-title inputs posts and swaps the form, which loses focus and races the merge buttons.
 - **Affected files:** `internal/ui/templates/draft.html:20-43`; `internal/ui/static/app.js`.
 - **Expected outcome:** only the rule select and the checkboxes trigger live updates; title edits are submitted explicitly.
 - **Suggested implementation:** a delegated `change` listener in `app.js` that calls `htmx.trigger(form, "selection-change")` only for `select` and checkbox targets; set `hx-trigger="selection-change"`; give inputs stable `id`s.
 - **Required regression tests:** browser test: tabbing between titles keeps focus and value; title edit + merge → N−1 chapters with the edited title.
 - **Acceptance criteria:**
-  - [ ] Manual check recorded.
+  - [x] Manual check recorded.
 - **Depends on:** CR-20 (shared `app.js` changes).
 
 ### - [ ] CR-47 — Copy button restores its original label

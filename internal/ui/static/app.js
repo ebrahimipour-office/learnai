@@ -34,3 +34,18 @@ document.body.addEventListener("htmx:sendError", htmxFailed);
 document.body.addEventListener("htmx:afterRequest", (ev) => {
   if (ev.detail.successful) document.getElementById("flash")?.setAttribute("hidden", "");
 });
+
+// CR-46: Draft form: trigger htmx live update only when selection controls (rule select or checkboxes) change,
+// not on text input blur/change which caused focus loss and raced merge buttons.
+document.addEventListener("change", (ev) => {
+  const form = ev.target.closest("#draft-form");
+  if (!form) return;
+  if (ev.target.matches("select, input[type='checkbox']")) {
+    if (window.htmx) {
+      htmx.trigger(form, "selection-change");
+    } else {
+      form.dispatchEvent(new CustomEvent("selection-change", { bubbles: true }));
+    }
+  }
+});
+
