@@ -645,6 +645,7 @@ const code = process.argv[1];
 let listeners = {};
 const document = {
   addEventListener(evt, fn) { listeners[evt] = fn; },
+  querySelectorAll() { return []; },
   body: { addEventListener() {} }
 };
 const navigator = {

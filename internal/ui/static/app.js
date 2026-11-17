@@ -52,3 +52,6 @@ document.addEventListener("change", (ev) => {
   }
 });
 
+
+// T9.5: a long absolute path shows only "/home/…"; scroll each path field to its end so the file name is visible.
+for (const input of document.querySelectorAll(".path input")) input.scrollLeft = input.scrollWidth;

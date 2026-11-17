@@ -326,7 +326,7 @@ func TestReportsTab(t *testing.T) {
 	a := res.Aggregate
 	for _, want := range []string{
 		"تلاش " + strconv.Itoa(res.AttemptNo),
-		`<td class="score">` + strconv.FormatFloat(a.WeightedScore, 'f', 2, 64) + "</td>",
+		`<td data-label="نمره موضوع" class="score">` + strconv.FormatFloat(a.WeightedScore, 'f', 2, 64) + "</td>",
 		`<strong>ارزیابی</strong>`,
 		"ناقص (" + strconv.Itoa(a.AnsweredCount) + " از " + strconv.Itoa(a.TotalCount) + " پاسخ‌داده‌شده)",
 		`aria-current="page">گزارش‌ها`,

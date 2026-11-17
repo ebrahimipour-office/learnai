@@ -199,6 +199,14 @@ dd code { white-space: nowrap; }
   main { padding-inline-start: .75rem; }
   header nav { gap: 1rem; }
   main table { display: block; overflow-x: auto; }
+  /* T9.5: data tables become one card per row; each cell names its column (thead is hidden) */
+  table.grid, table.grid tbody, table.grid tr, table.grid td { display: block; }
+  table.grid thead { display: none; }
+  table.grid tr { padding: .5rem 0; border-bottom: 1px solid var(--line); }
+  main table.grid td { padding: .2rem 0; border: 0; }
+  table.grid td[data-label]::before { content: attr(data-label); display: inline-block; min-width: 6rem; margin-inline-end: .5rem; color: var(--muted); font-size: .85em; }
+  .path { min-width: 0; }
+  .path input { min-width: 0; }
   input[type=text], input[type=search], select { margin-inline-start: 0; display: block; width: 100%; margin-top: .25rem; }
   .adapter-form { flex-direction: column; align-items: stretch; gap: .75rem; }
   .adapter-form label { flex-direction: column; align-items: stretch; }
