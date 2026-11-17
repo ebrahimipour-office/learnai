@@ -144,6 +144,10 @@ ol.tree-rows .depth-1 { padding-inline-start: 1rem; } ol.tree-rows .depth-2 { pa
 ol.tree-rows .depth-3 { padding-inline-start: 3rem; } ol.tree-rows .depth-4 { padding-inline-start: 4rem; }
 ol.tree-rows .depth-5 { padding-inline-start: 5rem; }
 
+/* roadmap progress (T9.8) */
+.roadmap-progress { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .75rem; margin: -.25rem 0 .75rem; }
+.roadmap-progress progress { flex: 0 1 12rem; }
+
 /* job card */
 #job-area { margin: 1rem 0; }
 .job-card {

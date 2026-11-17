@@ -161,6 +161,56 @@ func TestListShowsLatestAttemptOfCurrentSet(t *testing.T) {
 	if topic.Missing != 2 {
 		t.Errorf("Missing = %d, want 2", topic.Missing)
 	}
+	if rm := tree[0]; !rm.Avg.Valid || rm.Avg.Float64 != 40 {
+		t.Errorf("roadmap Avg = %v, want latest score 40", rm.Avg)
+	}
+}
+
+// TestListRoadmapProgress: T9.8 counts active topics only, picks the first unevaluated one in
+// roadmap order, and ignores the search filter.
+func TestListRoadmapProgress(t *testing.T) {
+	s, db := setup(t, md)
+	var ids []int64
+	rows, err := db.Writer().Query(`SELECT id FROM topics ORDER BY ord`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if len(ids) != 3 {
+		t.Fatalf("want 3 topics, got %d", len(ids))
+	}
+	exec := func(q string, args ...any) {
+		t.Helper()
+		if _, err := db.Writer().Exec(q, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	check := func(f topics.Filter, done, total int, next int64) {
+		t.Helper()
+		tree, _, _ := list(t, s, f)
+		if len(tree) != 1 {
+			t.Fatalf("want 1 roadmap, got %d", len(tree))
+		}
+		rm := tree[0]
+		if rm.Done != done || rm.Total != total || rm.NextID != next || rm.Avg.Valid {
+			t.Errorf("%+v: got done=%d total=%d next=%d avg=%v, want %d/%d next=%d no avg", f, rm.Done, rm.Total, rm.NextID, rm.Avg, done, total, next)
+		}
+	}
+	check(topics.Filter{}, 0, 3, ids[0])
+	exec(`UPDATE topics SET status = 'evaluated' WHERE id = ?`, ids[0])
+	check(topics.Filter{}, 1, 3, ids[1])
+	check(topics.Filter{Query: "گوروتین"}, 1, 3, ids[1]) // filter narrows the tree, not the stats
+	exec(`UPDATE topics SET state = 'archived' WHERE id = ?`, ids[1])
+	check(topics.Filter{}, 1, 2, ids[2])
+	exec(`UPDATE topics SET status = 'evaluated' WHERE id = ?`, ids[2])
+	check(topics.Filter{}, 2, 2, 0)
 }
 
 func TestListEmpty(t *testing.T) {

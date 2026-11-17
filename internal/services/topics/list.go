@@ -31,7 +31,20 @@ type Node struct {
 	Partial               bool
 	Busy                  bool // has a queued or running job
 	Missing               int  // registered files last seen missing by sync
+
+	// Roadmap fields (T9.8): over all active topics of the roadmap, whatever the filter
+	Done, Total int             // evaluated / all active topics
+	Avg         sql.NullFloat64 // mean latest score of the topics that have one
+	NextID      int64           // first active topic in roadmap order not yet evaluated; 0 = all done
+	NextTitle   string
 }
+
+// latestAttempt ranks each topic's attempts on its current exercise set, newest first (rn = 1).
+const latestAttempt = `
+		WITH latest AS (
+		  SELECT s.topic_id, a.topic_score, a.is_partial,
+		         ROW_NUMBER() OVER (PARTITION BY s.topic_id ORDER BY a.attempt_no DESC) AS rn
+		  FROM attempts a JOIN exercise_sets s ON s.id = a.set_id AND s.is_current = 1)`
 
 type Service struct {
 	db   *store.DB
@@ -92,11 +105,7 @@ func (s *Service) List(ctx context.Context, f Filter) (tree []*Node, matched, to
 		}
 	}
 
-	baseQuery := `
-		WITH latest AS (
-		  SELECT s.topic_id, a.topic_score, a.is_partial,
-		         ROW_NUMBER() OVER (PARTITION BY s.topic_id ORDER BY a.attempt_no DESC) AS rn
-		  FROM attempts a JOIN exercise_sets s ON s.id = a.set_id AND s.is_current = 1)
+	baseQuery := latestAttempt + `
 		SELECT r.id, r.title, t.id, t.group_id, t.parent_id, t.title, t.status, t.state, t.origin, l.topic_score, COALESCE(l.is_partial, 0),
 		       EXISTS (SELECT 1 FROM jobs j WHERE j.topic_id = t.id AND j.status IN ('queued','running')),
 		       (SELECT COUNT(*) FROM files f WHERE f.topic_id = t.id AND f.presence = 'missing')
@@ -183,5 +192,41 @@ func (s *Service) List(ctx context.Context, f Filter) (tree []*Node, matched, to
 		shown[t.ID] = t
 		matched++
 	}
-	return tree, matched, total, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, 0, 0, err
+	}
+	return tree, matched, total, s.progress(ctx, roadmaps)
+}
+
+// progress fills the roadmap nodes' T9.8 fields. It ignores the filter on purpose: the bar shows how
+// far the whole roadmap is, so a search does not make it look finished.
+func (s *Service) progress(ctx context.Context, roadmaps map[int64]*Node) error {
+	if len(roadmaps) == 0 {
+		return nil
+	}
+	rows, err := s.db.Writer().QueryContext(ctx, latestAttempt+`,
+		next AS (
+		  SELECT roadmap_id, id, title, ROW_NUMBER() OVER (PARTITION BY roadmap_id ORDER BY ord) AS rn
+		  FROM topics WHERE state = 'active' AND status <> 'evaluated')
+		SELECT t.roadmap_id, COUNT(*), SUM(t.status = 'evaluated'), AVG(l.topic_score), COALESCE(n.id, 0), COALESCE(n.title, '')
+		FROM topics t
+		LEFT JOIN latest l ON l.topic_id = t.id AND l.rn = 1
+		LEFT JOIN next n ON n.roadmap_id = t.roadmap_id AND n.rn = 1
+		WHERE t.state = 'active'
+		GROUP BY t.roadmap_id`)
+	if err != nil {
+		return fmt.Errorf("roadmap progress: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var rid int64
+		var p Node
+		if err := rows.Scan(&rid, &p.Total, &p.Done, &p.Avg, &p.NextID, &p.NextTitle); err != nil {
+			return err
+		}
+		if rm := roadmaps[rid]; rm != nil {
+			rm.Total, rm.Done, rm.Avg, rm.NextID, rm.NextTitle = p.Total, p.Done, p.Avg, p.NextID, p.NextTitle
+		}
+	}
+	return rows.Err()
 }

@@ -2,6 +2,7 @@ package httpserver_test
 
 import (
 	"encoding/json"
+	"html"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -106,6 +107,10 @@ func TestLessonGenerateFlow(t *testing.T) {
 	}
 	if list := e.get("/topics").Body.String(); !strings.Contains(list, "در حال اجرا") || !strings.Contains(list, `href="/topics/1"`) {
 		t.Error("topic list must link topics and mark the running one")
+	}
+	// T9.8: each roadmap shows its progress bar and the next topic to study
+	if list := html.UnescapeString(e.get("/topics").Body.String()); !strings.Contains(list, `<progress max="`) || !strings.Contains(list, "ارزیابی‌شده") || !strings.Contains(list, `ادامه یادگیری`) {
+		t.Error("topic list must show roadmap progress and a continue link")
 	}
 	if rec := e.post("/topics/1/jobs/lesson", nil, true); rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "در جریان است") {
 		t.Errorf("second enqueue: want 409 busy, got %d", rec.Code)

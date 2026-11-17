@@ -28,6 +28,11 @@
   {{range .Topics}}
   <section>
     <h2><bdi>{{.Title}}</bdi></h2>
+    {{if .Total}}<p class="roadmap-progress">
+      <progress max="{{.Total}}" value="{{.Done}}" aria-label="پیشرفت {{.Title}}"></progress>
+      <span class="note">{{.Done}} از {{.Total}} ارزیابی‌شده{{if .Avg.Valid}} · میانگین نمره <span class="score">{{num .Avg.Float64}}</span>{{end}}</span>
+      {{if .NextID}}<a href="/topics/{{.NextID}}">ادامه یادگیری: <bdi>{{.NextTitle}}</bdi></a>{{end}}
+    </p>{{end}}
     <ul class="tree">{{range .Items}}{{template "tnode" .}}{{end}}</ul>
   </section>
   {{end}}
