@@ -33,12 +33,18 @@ func (a *app) listTopics(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
 		return
 	}
+	resume, err := a.topics.Resume(r.Context())
+	if err != nil {
+		slog.Error("loading resume card", "error", err)
+		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
+		return
+	}
 	opts := make([]ruleOption, len(statusOrder))
 	for i, s := range statusOrder {
 		opts[i] = ruleOption{Value: string(s), Label: statusLabels[string(s)], Selected: string(s) == f.Status}
 	}
 	data := &pageData{Title: "موضوعات", Query: f.Query, Status: f.Status, Archived: f.Archived, Statuses: opts,
-		Topics: tree, Matched: matched, TopicTotal: total}
+		Topics: tree, Matched: matched, TopicTotal: total, Resume: resume}
 	name := "layout"
 	if r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-History-Restore-Request") != "true" {
 		name = "topic-results"

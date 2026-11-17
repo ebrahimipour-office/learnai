@@ -68,6 +68,7 @@ type pageData struct {
 	Statuses            []ruleOption
 	Topics              []*topics.Node
 	Matched, TopicTotal int
+	Resume              *topics.Resume // T10.4: last opened topic; nil = none
 
 	Panel   *topics.Panel
 	Viewing *topics.LessonVersion // lesson version shown; nil = none

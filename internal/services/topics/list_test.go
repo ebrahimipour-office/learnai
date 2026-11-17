@@ -213,6 +213,10 @@ func TestListRoadmapProgress(t *testing.T) {
 	exec(`UPDATE topics SET status = 'evaluated' WHERE id = ?`, ids[0])
 	check(topics.Filter{}, 1, 3, ids[1])
 	check(topics.Filter{Query: "گوروتین"}, 1, 3, ids[1]) // filter narrows the tree, not the stats
+	// T10.4: a topic with work under way comes before an earlier one not yet started
+	exec(`UPDATE topics SET status = 'content_ready' WHERE id = ?`, ids[2])
+	check(topics.Filter{}, 1, 3, ids[2])
+	exec(`UPDATE topics SET status = 'created' WHERE id = ?`, ids[2])
 	exec(`UPDATE topics SET state = 'archived' WHERE id = ?`, ids[1])
 	check(topics.Filter{}, 1, 2, ids[2])
 	exec(`UPDATE topics SET status = 'evaluated' WHERE id = ?`, ids[2])
@@ -275,5 +279,35 @@ func TestListSearchesLessonText(t *testing.T) {
 		if got := strings.Join(labelled, "|"); got != c.labels {
 			t.Errorf("%q: labelled %q, want %q", c.query, got, c.labels)
 		}
+	}
+}
+
+func TestResume(t *testing.T) {
+	s, db := setup(t, md)
+	ctx := context.Background()
+	if r, err := s.Resume(ctx); err != nil || r != nil {
+		t.Fatalf("no topic opened: want nil, got %+v %v", r, err)
+	}
+	var a, b int64
+	if err := db.Writer().QueryRow(`SELECT MIN(id), MAX(id) FROM topics`).Scan(&a, &b); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Writer().Exec(`UPDATE topics SET status = 'evaluated' WHERE id = ?`, a); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []int64{b, a} { // a is opened last
+		if err := s.Touch(ctx, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r, err := s.Resume(ctx)
+	if err != nil || r == nil || r.ID != a || r.Status != "evaluated" || r.Counts["evaluated"] != 1 || r.Counts["created"] != 2 {
+		t.Fatalf("want topic %d with counts, got %+v %v", a, r, err)
+	}
+	if err := s.SetArchived(ctx, a, true); err != nil {
+		t.Fatal(err)
+	}
+	if r, err := s.Resume(ctx); err != nil || r == nil || r.ID != b {
+		t.Fatalf("archived topic must be skipped: want %d, got %+v %v", b, r, err)
 	}
 }

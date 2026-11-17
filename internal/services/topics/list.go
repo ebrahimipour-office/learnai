@@ -38,7 +38,7 @@ type Node struct {
 	// Roadmap fields (T9.8): over all active topics of the roadmap, whatever the filter
 	Done, Total int             // evaluated / all active topics
 	Avg         sql.NullFloat64 // mean latest score of the topics that have one
-	NextID      int64           // first active topic in roadmap order not yet evaluated; 0 = all done
+	NextID      int64           // first active topic in roadmap order with work under way, else the first not started (T10.4); 0 = all done
 	NextTitle   string
 }
 
@@ -222,7 +222,7 @@ func (s *Service) progress(ctx context.Context, roadmaps map[int64]*Node) error 
 	}
 	rows, err := s.db.Writer().QueryContext(ctx, latestAttempt+`,
 		next AS (
-		  SELECT roadmap_id, id, title, ROW_NUMBER() OVER (PARTITION BY roadmap_id ORDER BY ord) AS rn
+		  SELECT roadmap_id, id, title, ROW_NUMBER() OVER (PARTITION BY roadmap_id ORDER BY status = 'created', ord) AS rn
 		  FROM topics WHERE state = 'active' AND status <> 'evaluated')
 		SELECT t.roadmap_id, COUNT(*), SUM(t.status = 'evaluated'), AVG(l.topic_score), COALESCE(n.id, 0), COALESCE(n.title, '')
 		FROM topics t

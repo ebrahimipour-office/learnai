@@ -421,3 +421,18 @@ func TestArchiveTopic(t *testing.T) {
 		t.Error("restoring changed the topic folder")
 	}
 }
+
+// T10.4: the resume card appears only once a topic was opened, and points at that topic.
+func TestResumeCard(t *testing.T) {
+	e := newEnv(t)
+	e.seedTopics()
+	page := func() string { return e.do(httptest.NewRequest(http.MethodGet, "/topics", nil)).Body.String() } // full page, not the htmx fragment
+	if list := page(); !strings.Contains(list, `role="search"`) || strings.Contains(list, `class="resume"`) {
+		t.Error("no topic opened yet: no resume card")
+	}
+	e.get("/topics/2/exercises")
+	card, _, _ := strings.Cut(page(), `role="search"`)
+	if !strings.Contains(card, `class="resume"`) || !strings.Contains(card, `<a href="/topics/2">`) || !strings.Contains(card, "ساخت درس") {
+		t.Errorf("resume card must show topic 2 and its next step:\n%s", card)
+	}
+}

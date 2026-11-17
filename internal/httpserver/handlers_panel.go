@@ -51,6 +51,11 @@ func (a *app) panelData(r *http.Request, id int64, tab string, job *jobs.Info) (
 			return nil, err
 		}
 	}
+	if job == nil && r.Method == http.MethodGet { // a page view, not a job response
+		if err := a.topics.Touch(r.Context(), id); err != nil {
+			slog.Warn("recording topic open", "topic", id, "error", err) // the card is a convenience; still show the page
+		}
+	}
 	c := a.settings.Exercises
 	return &pageData{Title: tabTitles[tab] + " · " + p.Title, Panel: p, Job: job, Tab: tab, CountMin: c.CountMin, CountMax: c.CountMax}, nil
 }

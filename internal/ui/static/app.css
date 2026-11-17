@@ -261,3 +261,6 @@ dd code { white-space: nowrap; }
 .trend line { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .trend polyline { fill: none; stroke: var(--mark); stroke-width: 2; vector-effect: non-scaling-stroke; }
 .trend circle { fill: var(--mark); }
+/* T10.4: resume card on /topics */
+.resume h2 { margin-top: .5rem; }
+.status-counts { display: flex; flex-wrap: wrap; gap: .25rem 1.25rem; list-style: none; padding: 0; margin: 0; color: var(--muted); font-size: .9em; }

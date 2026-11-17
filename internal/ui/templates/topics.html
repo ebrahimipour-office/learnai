@@ -3,6 +3,18 @@
 {{if eq .TopicTotal 0}}
 <p class="note empty">هنوز موضوعی ثبت نشده است.<br><a class="button primary" href="/roadmaps/new">یک نقشه راه وارد کنید</a></p>
 {{else}}
+{{with .Resume}}<section class="resume" aria-labelledby="resume-h">
+  <h2 id="resume-h">از همان‌جا ادامه بده</h2>
+  <p><a href="/topics/{{.ID}}"><bdi>{{.Title}}</bdi></a> <span class="badge status-{{.Status}}">{{statusLabel .Status}}</span></p>
+  {{/* same steps as next-step in topic.html */}}
+  <p class="next-step">گام بعدی:
+  {{if eq .Status "created"}}<a href="/topics/{{.ID}}">ساخت درس</a>
+  {{else if eq .Status "content_ready"}}<a href="/topics/{{.ID}}/exercises">ساخت تمرین</a>
+  {{else if eq .Status "exercises_ready"}}<a href="/topics/{{.ID}}/answers">نوشتن پاسخ‌ها</a>
+  {{else if eq .Status "answered"}}<a href="/topics/{{.ID}}/reports">ارزیابی پاسخ‌ها</a>
+  {{else}}<a href="/topics/{{.ID}}/reports">مرور گزارش‌ها</a>{{end}}</p>
+  <ul class="status-counts">{{range $.Statuses}}<li>{{statusLabel .Value}}: <strong>{{index $.Resume.Counts .Value}}</strong></li>{{end}}</ul>
+</section>{{end}}
 <form method="get" action="/topics" role="search"
       hx-get="/topics" hx-trigger="input delay:300ms" hx-target="#topic-results" hx-swap="outerHTML" hx-push-url="true">
   <label>جست‌وجو <input type="search" name="q" value="{{.Query}}"></label>
