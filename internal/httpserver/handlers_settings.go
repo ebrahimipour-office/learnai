@@ -129,7 +129,8 @@ func (a *app) renderSettings(w http.ResponseWriter, r *http.Request, status int,
 	}
 	a.render(w, status, "settings", "layout", &pageData{Title: "تنظیمات", Error: msg, Doctor: a.doctor(),
 		Model: ai.ModelFor(a.settings.Adapter, a.settings.Model), Adapter: a.settings.Adapter.Name(), SkipPermissions: a.settings.SkipPermissions,
-		Adapters: a.adapterNames(), PrivacyAck: ack, Privacy: PrivacyNotice, SkillUpdates: ups})
+		Adapters: a.adapterNames(), PrivacyAck: ack, Privacy: PrivacyNotice, SkillUpdates: ups,
+		NeedAck: r.URL.Query().Has("need_ack")})
 }
 
 func (a *app) adapterNames() []string {
@@ -250,10 +251,10 @@ func (a *app) requireAck(h http.HandlerFunc) http.HandlerFunc {
 		case ack != "":
 			h(w, r)
 		case r.Header.Get("HX-Request") == "true":
-			w.Header().Set("HX-Redirect", "/settings")
+			w.Header().Set("HX-Redirect", "/settings?need_ack=1")
 			http.Error(w, "ابتدا متن حریم خصوصی را در تنظیمات تأیید کنید.", http.StatusConflict)
 		default:
-			http.Redirect(w, r, "/settings", http.StatusSeeOther)
+			http.Redirect(w, r, "/settings?need_ack=1", http.StatusSeeOther)
 		}
 	}
 }

@@ -130,17 +130,17 @@ func TestFirstRunGate(t *testing.T) {
 	e.seedTopics()
 	e.unack()
 	req := httptest.NewRequest(http.MethodGet, "/topics", nil)
-	if rec := e.do(req); rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/settings" {
+	if rec := e.do(req); rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/settings?need_ack=1" {
 		t.Fatalf("GET /topics before ack: %d %v", rec.Code, rec.Header())
 	}
 	if b := e.settingsPage(false); !strings.Contains(b, "راه‌اندازی اولیه") {
 		t.Error("settings page must explain first run")
 	}
 	for _, p := range []string{"/topics/1/jobs/lesson", "/topics/1/jobs/exercises", "/topics/1/jobs/evaluate", "/jobs/1/retry", "/roadmaps/drafts/1/ai-assist"} {
-		if rec := e.post(p, nil, true); rec.Code != http.StatusConflict || rec.Header().Get("HX-Redirect") != "/settings" {
+		if rec := e.post(p, nil, true); rec.Code != http.StatusConflict || rec.Header().Get("HX-Redirect") != "/settings?need_ack=1" {
 			t.Errorf("%s (htmx) before ack: %d %v", p, rec.Code, rec.Header())
 		}
-		if rec := e.post(p, nil, false); rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/settings" {
+		if rec := e.post(p, nil, false); rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/settings?need_ack=1" {
 			t.Errorf("%s (form) before ack: %d", p, rec.Code)
 		}
 	}
@@ -148,11 +148,21 @@ func TestFirstRunGate(t *testing.T) {
 	if err := e.db.Writer().QueryRow(`SELECT COUNT(*) FROM jobs`).Scan(&n); err != nil || n != 0 {
 		t.Fatalf("jobs queued before ack: %d %v", n, err)
 	}
+	const needAck = "برای دیدن موضوعات و استفاده از هوش مصنوعی ابتدا این متن را تأیید کنید."
+	if b := html.UnescapeString(e.get("/settings?need_ack=1").Body.String()); !strings.Contains(b, needAck) || !strings.Contains(b, "autofocus") {
+		t.Error("gate redirect target must say why the user landed on settings")
+	}
+	if strings.Contains(e.settingsPage(false), needAck) {
+		t.Error("plain /settings must not show the gate message")
+	}
 	if rec := e.post("/settings/privacy", url.Values{"ack": {"1"}}, false); rec.Code != http.StatusSeeOther {
 		t.Fatalf("ack: %d", rec.Code)
 	}
 	if rec := e.do(httptest.NewRequest(http.MethodGet, "/topics", nil)); rec.Code != http.StatusOK {
 		t.Errorf("GET /topics after ack: %d", rec.Code)
+	}
+	if strings.Contains(html.UnescapeString(e.get("/settings?need_ack=1").Body.String()), needAck) {
+		t.Error("gate message must disappear after ack")
 	}
 }
 
