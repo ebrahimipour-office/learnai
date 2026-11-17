@@ -455,3 +455,25 @@ func TestCR42_ConcurrentEnqueueAndSwitchWithIdle(t *testing.T) {
 		}
 	}
 }
+
+// T10.8: a job the previous process left running is retried by itself after the delay.
+func TestRecoveredJobIsRetried(t *testing.T) {
+	r, db := newRunner(t)
+	r.AutoRetry, r.RetryDelay = 2, 10*time.Millisecond
+	res, err := db.Writer().Exec(`INSERT INTO jobs (kind, scope_key, status, started_at) VALUES ('lesson', 'topic:1', 'running', '2026-01-01T00:00:00.000Z')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	crashed, _ := res.LastInsertId()
+	r.Register(domain.JobKindLesson, func(context.Context, jobs.Job) error { return nil })
+	start(t, r)
+	waitStatus(t, db, crashed, domain.JobStatusFailed)
+	var next int64
+	for deadline := time.Now().Add(5 * time.Second); db.Writer().QueryRow(`SELECT id FROM jobs WHERE retry_of = ?`, crashed).Scan(&next) != nil; {
+		if time.Now().After(deadline) {
+			t.Fatal("no automatic retry of the interrupted job")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	waitStatus(t, db, next, domain.JobStatusSucceeded)
+}

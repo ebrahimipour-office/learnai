@@ -59,6 +59,10 @@ timeout_evaluate = "30m"
 timeout_analyze = "15m"
 # Stall timeout when AI sends no output (default "6m"; keep below lesson/exercises timeouts).
 stall_timeout = "6m"
+# Automatic retries of a job that failed with rate_limited or interrupted (default 2; 0 = off).
+auto_retry = 2
+# Wait before each automatic retry (default "2m", minimum "1s").
+retry_delay = "2m"
 
 [exercises]
 count_default = 6

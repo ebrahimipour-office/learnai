@@ -1550,6 +1550,8 @@ timeout_evaluate_item = "5m"
 timeout_evaluate      = "30m"             # سقف کل Job ارزیابی (۶.۵)
 timeout_analyze       = "10m"
 stall_timeout         = "6m"
+auto_retry            = 2       # T10.8: تلاش مجدد خودکار برای rate_limited و interrupted (0 = خاموش)
+retry_delay           = "2m"
 
 [exercises]
 count_default = 6

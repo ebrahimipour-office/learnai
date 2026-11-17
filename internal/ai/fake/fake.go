@@ -1,5 +1,5 @@
 // Package fake is a scripted ai.Adapter for tests, no network or binary (TDD §6.7).
-// shortcut: no auth_required/rate_limited/crash_midway yet; add them with the handlers that test them.
+// shortcut: no auth_required/crash_midway yet; add them with the handlers that test them.
 package fake
 
 import (
@@ -25,6 +25,7 @@ const (
 	InvalidJSON      = "invalid_json"       // every run returns output that fails the schema
 	InvalidThenValid = "invalid_then_valid" // first run invalid, later runs return Output
 	Missing          = "missing"            // the tool binary is not installed (adapter_missing)
+	RateLimited      = "rate_limited"       // the first Fails runs hit a quota (every run if Fails is 0), then Output
 )
 
 // invalid is valid JSON that no output schema accepts.
@@ -35,6 +36,7 @@ type Adapter struct {
 	Output   json.RawMessage  // returned by OK and Slow
 	Delay    time.Duration    // Slow: total run time
 	Tick     time.Duration    // Slow: event interval; 0 means 10ms
+	Fails    int              // RateLimited: runs that fail before Output; 0 = all
 	Caps     *ai.Capabilities // returned by Probe when set
 	ProbeErr error            // returned by Probe when set
 
@@ -84,6 +86,11 @@ func (a *Adapter) Run(ctx context.Context, req ai.Request, events chan<- ai.Even
 		}
 		return &ai.Response{Structured: a.Output}, nil
 	case OK:
+		return &ai.Response{Structured: a.Output}, nil
+	case RateLimited:
+		if a.Fails == 0 || n <= a.Fails {
+			return nil, fmt.Errorf("%w: fake quota exhausted", ai.ErrRateLimited)
+		}
 		return &ai.Response{Structured: a.Output}, nil
 	case Missing:
 		return nil, fmt.Errorf("%w: fake-agent not on PATH", ai.ErrBinaryNotFound)

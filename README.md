@@ -292,6 +292,8 @@ timeout_evaluate_item  = "5m"      # Per exercise evaluation
 timeout_evaluate       = "30m"     # Whole evaluation job
 timeout_analyze        = "10m"     # Roadmap rule/chapter detection
 stall_timeout          = "6m"      # Kills the CLI if it sends no output for this long
+auto_retry             = 2         # Re-queue rate_limited/interrupted jobs this many times (0 = off)
+retry_delay            = "2m"      # Wait before each automatic retry
 
 [exercises]
 count_default = 6

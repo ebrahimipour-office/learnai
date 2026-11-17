@@ -204,3 +204,111 @@ func TestCancelBeforeCommitBlocksIt(t *testing.T) {
 		t.Error("commit ran after cancel")
 	}
 }
+
+// autoRunner is a filesRunner whose rate_limited/interrupted failures retry by themselves (T10.8).
+func autoRunner(t *testing.T, delay time.Duration) (*jobs.Runner, *store.DB, *fsx.Root) {
+	t.Helper()
+	r, db, root := filesRunner(t)
+	r.AutoRetry, r.RetryDelay = 2, delay
+	return r, db, root
+}
+
+// retryOf returns the job queued as the retry of id, waiting up to 5s for it.
+func retryOf(t *testing.T, db *store.DB, id int64) (next int64, attempt int, notBefore string) {
+	t.Helper()
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(5 * time.Millisecond) {
+		err := db.Writer().QueryRow(`SELECT id, auto_attempt, COALESCE(not_before, '') FROM jobs WHERE retry_of = ?`, id).
+			Scan(&next, &attempt, &notBefore)
+		if err == nil {
+			return next, attempt, notBefore
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no retry of job %d: %v", id, err)
+		}
+	}
+}
+
+func TestRateLimitedRetriesAfterDelay(t *testing.T) {
+	r, db, root := autoRunner(t, 300*time.Millisecond)
+	a := &fake.Adapter{Scenario: fake.RateLimited, Fails: 1}
+	r.Register(domain.JobKindLesson, lessonLike(root, a, ai.Request{}, nil))
+	start(t, r)
+	first := enqueue(t, r, "topic:1")
+
+	if got := waitStatus(t, db, first, domain.JobStatusFailed); got.code != "rate_limited" {
+		t.Fatalf("first run: %+v", got)
+	}
+	next, attempt, notBefore := retryOf(t, db, first)
+	if attempt != 1 || notBefore == "" {
+		t.Fatalf("auto retry: attempt %d, not_before %q", attempt, notBefore)
+	}
+	time.Sleep(100 * time.Millisecond) // well inside the delay
+	if got := get(t, db, next); got.status != "queued" || got.started {
+		t.Fatalf("retry ran before its delay: %+v", got)
+	}
+	waitStatus(t, db, next, domain.JobStatusSucceeded)
+	if !root.Exists(lessonRel) || len(a.Calls()) != 2 {
+		t.Errorf("want the lesson after 2 AI runs, got %d runs", len(a.Calls()))
+	}
+	if info, err := r.Get(context.Background(), next); err != nil || info.AutoAttempt != 1 || info.AutoMax != 2 {
+		t.Errorf("card info: %+v, %v", info, err)
+	}
+}
+
+func TestAutoRetryStopsAfterLimit(t *testing.T) {
+	r, db, root := autoRunner(t, 10*time.Millisecond)
+	a := &fake.Adapter{Scenario: fake.RateLimited}
+	r.Register(domain.JobKindLesson, lessonLike(root, a, ai.Request{}, nil))
+	start(t, r)
+	id := enqueue(t, r, "topic:1")
+	for range 2 {
+		waitStatus(t, db, id, domain.JobStatusFailed)
+		id, _, _ = retryOf(t, db, id)
+	}
+	if got := waitStatus(t, db, id, domain.JobStatusFailed); got.code != "rate_limited" {
+		t.Fatalf("last retry: %+v", got)
+	}
+	time.Sleep(100 * time.Millisecond)
+	var n int
+	if err := db.Writer().QueryRow(`SELECT COUNT(*) FROM jobs`).Scan(&n); err != nil || n != 3 {
+		t.Errorf("want 1 run + 2 automatic retries, got %d jobs (%v)", n, err)
+	}
+	// A manual retry still works and starts a fresh automatic count.
+	if _, err := r.Retry(context.Background(), id); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestOtherFailureIsNotRetried(t *testing.T) {
+	r, db, root := autoRunner(t, 10*time.Millisecond)
+	r.Register(domain.JobKindLesson, lessonLike(root, &fake.Adapter{Scenario: fake.Missing}, ai.Request{}, nil))
+	start(t, r)
+	id := enqueue(t, r, "topic:1")
+	if got := waitStatus(t, db, id, domain.JobStatusFailed); got.code != "adapter_missing" {
+		t.Fatalf("got %+v", got)
+	}
+	time.Sleep(100 * time.Millisecond)
+	var n int
+	if err := db.Writer().QueryRow(`SELECT COUNT(*) FROM jobs`).Scan(&n); err != nil || n != 1 {
+		t.Errorf("want no retry, got %d jobs (%v)", n, err)
+	}
+}
+
+func TestCancelScheduledRetry(t *testing.T) {
+	r, db, root := autoRunner(t, time.Hour)
+	a := &fake.Adapter{Scenario: fake.RateLimited}
+	r.Register(domain.JobKindLesson, lessonLike(root, a, ai.Request{}, nil))
+	start(t, r)
+	first := enqueue(t, r, "topic:1")
+	waitStatus(t, db, first, domain.JobStatusFailed)
+	next, _, _ := retryOf(t, db, first)
+	if late, err := r.Cancel(context.Background(), next); err != nil || late {
+		t.Fatalf("cancel: late=%v err=%v", late, err)
+	}
+	waitStatus(t, db, next, domain.JobStatusCanceled)
+	// The scope is free again for the user.
+	waitStatus(t, db, enqueue(t, r, "topic:1"), domain.JobStatusFailed)
+	if len(a.Calls()) != 2 {
+		t.Errorf("want the new job to run, got %d AI runs", len(a.Calls()))
+	}
+}

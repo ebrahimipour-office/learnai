@@ -393,6 +393,7 @@ func runServe(args []string) error {
 	adapter := newAdapter(cfg, root, httpserver.SavedAdapter(ctx, db, cfg.Adapter.Kind))
 	runner := jobs.New(db, cfg.Jobs.MaxConcurrent)
 	runner.Files = root
+	runner.AutoRetry, runner.RetryDelay = cfg.Jobs.AutoRetry, cfg.Jobs.RetryDelay
 	runner.Register(domain.JobKindLesson, (&lessons.Service{
 		DB: db, Root: root, Adapter: adapter, Model: cfg.Adapter.Model, Language: cfg.Language,
 		Timeout: cfg.Jobs.TimeoutLesson, Stall: cfg.Jobs.StallTimeout, MaxSource: cfg.Limits.MaxSourceBytes,

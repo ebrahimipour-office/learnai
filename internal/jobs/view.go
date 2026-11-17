@@ -17,6 +17,17 @@ type Info struct {
 	ErrorCode, ErrorMessage           string
 	CancelRequested                   bool
 	EnqueuedAt, StartedAt, FinishedAt string
+	AutoAttempt, AutoMax              int    // T10.8: automatic retry n of AutoMax; 0 = started by the user
+	NotBefore                         string // a queued automatic retry waits until then
+}
+
+// Waiting is how long a queued automatic retry still waits, rounded to seconds; 0 if it may run now.
+func (i *Info) Waiting() time.Duration {
+	t, err := time.Parse(time.RFC3339Nano, i.NotBefore)
+	if err != nil || i.Status != string(domain.JobStatusQueued) {
+		return 0
+	}
+	return max(time.Until(t).Round(time.Second), 0)
 }
 
 // Active reports a queued or running job: polling continues and the scope's buttons stay disabled.
@@ -52,12 +63,14 @@ func (i *Info) Duration() time.Duration {
 
 const infoCols = `SELECT id, COALESCE(topic_id, 0), kind, status, COALESCE(phase, ''), progress_done, progress_total,
 	COALESCE(error_code, ''), COALESCE(error_message, ''), cancel_requested, enqueued_at,
-	COALESCE(started_at, ''), COALESCE(finished_at, '') FROM jobs `
+	COALESCE(started_at, ''), COALESCE(finished_at, ''), auto_attempt, COALESCE(not_before, '') FROM jobs `
 
 func (r *Runner) scanInfo(ctx context.Context, where string, args ...any) (*Info, error) {
 	var i Info
 	err := r.db.Writer().QueryRowContext(ctx, infoCols+where, args...).Scan(&i.ID, &i.TopicID, &i.Kind, &i.Status,
-		&i.Phase, &i.Done, &i.Total, &i.ErrorCode, &i.ErrorMessage, &i.CancelRequested, &i.EnqueuedAt, &i.StartedAt, &i.FinishedAt)
+		&i.Phase, &i.Done, &i.Total, &i.ErrorCode, &i.ErrorMessage, &i.CancelRequested, &i.EnqueuedAt, &i.StartedAt, &i.FinishedAt,
+		&i.AutoAttempt, &i.NotBefore)
+	i.AutoMax = r.AutoRetry
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}

@@ -70,6 +70,8 @@ type JobsConfig struct {
 	TimeoutEvaluate     time.Duration `toml:"timeout_evaluate"` // whole evaluation job (TDD §6.5)
 	TimeoutAnalyze      time.Duration `toml:"timeout_analyze"`
 	StallTimeout        time.Duration `toml:"stall_timeout"`
+	AutoRetry           int           `toml:"auto_retry"`  // T10.8: automatic retries of rate_limited/interrupted jobs; 0 = off
+	RetryDelay          time.Duration `toml:"retry_delay"` // wait before each automatic retry
 }
 
 type ExercisesConfig struct {
@@ -120,6 +122,8 @@ func DefaultConfig(defaultBaseDir string) Config {
 			TimeoutEvaluate:     30 * time.Minute,
 			TimeoutAnalyze:      10 * time.Minute,
 			StallTimeout:        6 * time.Minute, // agy sends nothing while writing a long final answer (B4); keep below lesson/exercises timeouts
+			AutoRetry:           2,
+			RetryDelay:          2 * time.Minute,
 		},
 		Exercises: ExercisesConfig{
 			CountDefault: 6,
@@ -262,6 +266,7 @@ func (c *Config) Validate() error {
 		{"jobs.timeout_evaluate", c.Jobs.TimeoutEvaluate},
 		{"jobs.timeout_analyze", c.Jobs.TimeoutAnalyze},
 		{"jobs.stall_timeout", c.Jobs.StallTimeout},
+		{"jobs.retry_delay", c.Jobs.RetryDelay},
 	} {
 		if tc.d < time.Second {
 			return fmt.Errorf("%w: %s must be at least 1s, got %s", ErrInvalidDuration, tc.name, tc.d)
@@ -292,6 +297,7 @@ func (c *Config) Validate() error {
 	if c.Jobs.MaxConcurrent < 1 {
 		c.Jobs.MaxConcurrent = 1
 	}
+	c.Jobs.AutoRetry = max(c.Jobs.AutoRetry, 0)
 	if c.Jobs.EvaluateParallelism < 1 {
 		c.Jobs.EvaluateParallelism = 1
 	}

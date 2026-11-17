@@ -23,6 +23,8 @@ import (
 
 const (
 	nowSQL = `strftime('%Y-%m-%dT%H:%M:%fZ','now')`
+	// sqlTime is nowSQL's layout in Go, so stored times compare as strings.
+	sqlTime = "2006-01-02T15:04:05.000Z"
 	// InterruptedMessage is shown when the app closed while the job ran (TDD §6.4).
 	InterruptedMessage = "برنامه هنگام اجرا بسته شد؛ قابل تکرار است"
 	// LateCancelMessage is recorded on a job that succeeded because a cancel reached it during commit.
@@ -95,7 +97,14 @@ type Runner struct {
 	// Files is the base dir; work/ and staging/ of succeeded and canceled jobs are removed from it.
 	// Failed jobs keep them for diagnosis and retry. nil skips cleanup.
 	Files *fsx.Root
+	// AutoRetry is how many times in a row a job failed with rate_limited or interrupted is
+	// queued again by itself, each RetryDelay after the failure (T10.8). 0 disables it.
+	AutoRetry  int
+	RetryDelay time.Duration
 }
+
+// autoRetryCodes are the failures that usually pass by waiting (T10.8); others need the user.
+var autoRetryCodes = map[string]bool{"rate_limited": true, "interrupted": true}
 
 // New returns a runner that runs at most maxConcurrent jobs at once (config jobs.max_concurrent).
 func New(db *store.DB, maxConcurrent int) *Runner {
@@ -112,17 +121,23 @@ func (r *Runner) Register(kind domain.JobKind, h Handler) { r.handlers[kind] = h
 
 // Enqueue queues j (ID and RetryOf are ignored) and returns the new job id, or *BusyError.
 func (r *Runner) Enqueue(ctx context.Context, j Job) (int64, error) {
-	return r.enqueue(ctx, j, 0)
+	return r.enqueue(ctx, j, 0, 0)
 }
 
 // Retry queues a new job with retry_of = id; only failed jobs can be retried (TDD §6.4).
 func (r *Runner) Retry(ctx context.Context, id int64) (int64, error) {
+	return r.retry(ctx, id, false)
+}
+
+// retry queues a retry of failed job id; auto ones wait RetryDelay and stop after AutoRetry in a row (0, nil).
+func (r *Runner) retry(ctx context.Context, id int64, auto bool) (int64, error) {
 	var j Job
 	var status, params string
 	var topic, roadmap sql.NullInt64
+	var attempt int
 	err := r.db.Writer().QueryRowContext(ctx,
-		`SELECT kind, scope_key, topic_id, roadmap_id, params, status FROM jobs WHERE id = ?`, id).
-		Scan(&j.Kind, &j.Scope, &topic, &roadmap, &params, &status)
+		`SELECT kind, scope_key, topic_id, roadmap_id, params, status, auto_attempt FROM jobs WHERE id = ?`, id).
+		Scan(&j.Kind, &j.Scope, &topic, &roadmap, &params, &status, &attempt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, domain.ErrNotFound
 	}
@@ -133,7 +148,25 @@ func (r *Runner) Retry(ctx context.Context, id int64) (int64, error) {
 		return 0, fmt.Errorf("%w: job %d is %s", domain.ErrInvalidState, id, status)
 	}
 	j.TopicID, j.RoadmapID, j.Params = topic.Int64, roadmap.Int64, json.RawMessage(params)
-	return r.enqueue(ctx, j, id)
+	if !auto {
+		return r.enqueue(ctx, j, id, 0)
+	}
+	if attempt >= r.AutoRetry {
+		return 0, nil
+	}
+	return r.enqueue(ctx, j, id, attempt+1)
+}
+
+// autoRetry queues the automatic retry of a job that just failed with code (T10.8).
+func (r *Runner) autoRetry(ctx context.Context, id int64, code string) {
+	if r.AutoRetry < 1 || !autoRetryCodes[code] {
+		return
+	}
+	if next, err := r.retry(ctx, id, true); err != nil {
+		slog.Error("Queueing automatic retry failed", "job", id, "error", err)
+	} else if next != 0 {
+		slog.Info("Automatic retry queued", "job", id, "retry", next, "delay", r.RetryDelay)
+	}
 }
 
 // WithIdle runs fn only if there are no queued or running jobs, serialised against Enqueue (CR-42).
@@ -154,7 +187,8 @@ func (r *Runner) WithIdle(ctx context.Context, fn func() error) error {
 	return fn()
 }
 
-func (r *Runner) enqueue(ctx context.Context, j Job, retryOf int64) (id int64, err error) {
+// enqueue inserts j; autoAttempt > 0 marks an automatic retry, not claimed before now + RetryDelay.
+func (r *Runner) enqueue(ctx context.Context, j Job, retryOf int64, autoAttempt int) (id int64, err error) {
 	if j.Scope == "" {
 		return 0, fmt.Errorf("%w: empty job scope", domain.ErrInvalidInput)
 	}
@@ -174,9 +208,14 @@ func (r *Runner) enqueue(ctx context.Context, j Job, retryOf int64) (id int64, e
 		if !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
+		var notBefore any
+		if autoAttempt > 0 {
+			notBefore = time.Now().UTC().Add(r.RetryDelay).Format(sqlTime)
+		}
 		res, err := tx.ExecContext(ctx,
-			`INSERT INTO jobs (kind, scope_key, topic_id, roadmap_id, status, params, retry_of) VALUES (?, ?, ?, ?, 'queued', ?, ?)`,
-			j.Kind, j.Scope, nullID(j.TopicID), nullID(j.RoadmapID), string(j.Params), nullID(retryOf))
+			`INSERT INTO jobs (kind, scope_key, topic_id, roadmap_id, status, params, retry_of, not_before, auto_attempt)
+			VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?)`,
+			j.Kind, j.Scope, nullID(j.TopicID), nullID(j.RoadmapID), string(j.Params), nullID(retryOf), notBefore, autoAttempt)
 		if err != nil {
 			return err
 		}
@@ -232,16 +271,33 @@ func (r *Runner) Cancel(ctx context.Context, id int64) (late bool, err error) {
 // Recover marks jobs left running by a previous process as failed/interrupted; queued jobs stay queued.
 // Then, when Files is set, it replays the commit journal of every job that did not succeed (CR-03).
 func (r *Runner) Recover(ctx context.Context) (int64, error) {
-	res, err := r.db.Writer().ExecContext(ctx, `UPDATE jobs SET status = 'failed', error_code = 'interrupted',
-		error_message = ?, finished_at = `+nowSQL+` WHERE status = 'running'`, InterruptedMessage)
+	rows, err := r.db.Writer().QueryContext(ctx, `UPDATE jobs SET status = 'failed', error_code = 'interrupted',
+		error_message = ?, finished_at = `+nowSQL+` WHERE status = 'running' RETURNING id`, InterruptedMessage)
 	if err != nil {
 		return 0, err
 	}
-	n, err := res.RowsAffected()
-	if err != nil || r.Files == nil {
-		return n, err
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		ids = append(ids, id)
 	}
-	return n, r.replayJournals(ctx)
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return 0, err
+	}
+	n := int64(len(ids))
+	if r.Files != nil {
+		if err := r.replayJournals(ctx); err != nil {
+			return n, err
+		}
+	}
+	for _, id := range ids { // after the journals, so a retry never runs on a half-replayed commit
+		r.autoRetry(ctx, id, "interrupted")
+	}
+	return n, nil
 }
 
 // Run recovers interrupted jobs (retrying until that works), then dispatches queued jobs in FIFO order until ctx is done.
@@ -310,7 +366,7 @@ func (r *Runner) claim(ctx context.Context) (*Job, error) {
 		var params string
 		// Order strictly by id for monotonic FIFO claiming (CR-I6).
 		err := r.db.Writer().QueryRowContext(ctx, `SELECT id, kind, scope_key, topic_id, roadmap_id, params, retry_of
-			FROM jobs WHERE status = 'queued' ORDER BY id LIMIT 1`).
+			FROM jobs WHERE status = 'queued' AND (not_before IS NULL OR not_before <= `+nowSQL+`) ORDER BY id LIMIT 1`).
 			Scan(&j.ID, &j.Kind, &j.Scope, &topic, &roadmap, &params, &retry)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -417,6 +473,8 @@ func (r *Runner) execute(ctx context.Context, j Job) {
 		r.finals[j.ID] = Info{Status: string(status), ErrorCode: code, ErrorMessage: msg,
 			FinishedAt: time.Now().UTC().Format(time.RFC3339Nano)}
 		r.mu.Unlock()
+	} else if status == domain.JobStatusFailed {
+		r.autoRetry(wctx, j.ID, code)
 	}
 	slog.Info("Job finished", "job", j.ID, "status", status, "error_code", code)
 }

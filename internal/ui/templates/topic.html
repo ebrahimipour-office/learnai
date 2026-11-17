@@ -216,6 +216,7 @@
     {{if .Active}}{{with .Phase}}<span>مرحله: {{jobPhase .}}</span>{{end}}{{end}}
     {{if .Total}}<progress aria-label="پیشرفت" value="{{.Done}}" max="{{.Total}}">{{.Done}}/{{.Total}}</progress>{{end}}
     {{if .Duration}}<span class="note">مدت: {{faDuration .Duration}}</span>{{end}}
+    {{if .AutoAttempt}}<span class="note">تلاش خودکار {{.AutoAttempt}} از {{.AutoMax}}{{with .Waiting}}؛ شروع تا {{faDuration .}} دیگر{{end}}</span>{{end}}
     {{if eq .Status "failed"}}{{$msg := aiMessage .ErrorCode}}<p class="error">{{if $msg}}{{$msg}}{{else}}<bdi>{{.ErrorMessage}}</bdi>{{end}}
       {{if or (eq .ErrorCode "auth_required") (eq .ErrorCode "adapter_missing")}}<a href="/settings">تنظیمات</a>{{end}}</p>
     {{if $msg}}<details><summary>جزئیات فنی</summary><pre>{{.ErrorMessage}}</pre> <code>{{.ErrorCode}}</code></details>{{end}}
