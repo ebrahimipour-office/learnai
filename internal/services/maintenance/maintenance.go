@@ -1,6 +1,6 @@
 // Package maintenance removes expired internal scratch files and backs up app.db (T6.5, TDD §8).
 // It only ever touches .app/work, .app/staging, .app/logs/jobs, .app/backup and the app's own stale
-// temp files (CR-34); the learner's files are never read or changed.
+// temp files under topics/, roadmaps/ and .app/ (CR-34, T10.7); the learner's files are never read or changed.
 package maintenance
 
 import (
@@ -62,21 +62,28 @@ func (s *Service) Run(ctx context.Context, now time.Time) (*Result, error) {
 var tmpFile = regexp.MustCompile(`^\.(tmp-.+-|.+\.tmp-)[0-9a-f]{16}$`)
 
 // sweepTmp removes temp files a crash left behind; an hour is far longer than any write takes (CR-34).
+// Only the trees the app writes into are walked, not the whole base dir (T10.7).
 func (s *Service) sweepTmp(now time.Time, res *Result) error {
 	cutoff := now.Add(-time.Hour)
-	return fs.WalkDir(s.Root.FS(), ".", func(p string, d fs.DirEntry, err error) error {
-		if err != nil || !d.Type().IsRegular() || !tmpFile.MatchString(d.Name()) {
-			return nil // unreadable, symlink, directory or not ours
-		}
-		if info, err := d.Info(); err != nil || info.ModTime().After(cutoff) {
+	for _, dir := range []string{"topics", "roadmaps", ".app"} {
+		err := fs.WalkDir(s.Root.FS(), dir, func(p string, d fs.DirEntry, err error) error {
+			if err != nil || !d.Type().IsRegular() || !tmpFile.MatchString(d.Name()) {
+				return nil // missing, unreadable, symlink, directory or not ours
+			}
+			if info, err := d.Info(); err != nil || info.ModTime().After(cutoff) {
+				return nil
+			}
+			if err := s.Root.Remove(p); err != nil {
+				return fmt.Errorf("removing stale temp file %s: %w", p, err)
+			}
+			res.Removed = append(res.Removed, p)
 			return nil
+		})
+		if err != nil {
+			return err
 		}
-		if err := s.Root.Remove(p); err != nil {
-			return fmt.Errorf("removing stale temp file %s: %w", p, err)
-		}
-		res.Removed = append(res.Removed, p)
-		return nil
-	})
+	}
+	return nil
 }
 
 // clean removes <dir>/<job id> unless its job is queued/running, or finished within the retention

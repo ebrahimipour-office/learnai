@@ -239,6 +239,17 @@ func TestRunSweepsStaleTempFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// T10.7: only topics/, roadmaps/ and .app/ are swept; elsewhere in the base dir is the learner's.
+	outside := filepath.Join(base, "notes", ".lesson.md.tmp-0123456789abcdef")
+	if err := os.MkdirAll(filepath.Dir(outside), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(outside, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(outside, now.Add(-2*time.Hour), now.Add(-2*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := (&maintenance.Service{DB: db, Root: root, LogRetention: time.Hour}).Run(context.Background(), now); err != nil {
 		t.Fatal(err)
 	}
@@ -247,6 +258,9 @@ func TestRunSweepsStaleTempFiles(t *testing.T) {
 		if gone := os.IsNotExist(err); gone != f.gone {
 			t.Errorf("%s: removed = %v, want %v", name, gone, f.gone)
 		}
+	}
+	if _, err := os.Stat(outside); err != nil {
+		t.Errorf("temp file outside the app dirs was touched: %v", err)
 	}
 }
 

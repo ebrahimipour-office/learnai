@@ -367,6 +367,7 @@ CREATE TABLE files (
   immutable       INTEGER NOT NULL DEFAULT 0,          -- ۱ برای پاسخ/گزارش: هرگز بازنویسی نشود
   observed_sha256 TEXT,                                -- آخرین hash مشاهده‌شده روی دیسک
   observed_mtime  INTEGER,                             -- ns
+  observed_size   INTEGER,                             -- T10.7: اندازه هنگام مشاهده؛ size+mtime یکسان ⇐ hash قبلی پذیرفته می‌شود
   observed_at     TEXT,
   presence        TEXT NOT NULL DEFAULT 'present' CHECK (presence IN ('present','missing')),
   created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))

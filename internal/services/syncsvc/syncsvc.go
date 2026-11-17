@@ -79,6 +79,8 @@ type row struct {
 	Item
 	SHA, Observed string
 	Present       bool
+	ObsSize       int64 // -1 = unknown
+	ObsMtime      int64
 }
 
 // Scan checks every registered file and every file under topics/, records observations and the report.
@@ -97,8 +99,8 @@ func (s *Service) Scan(ctx context.Context) (*Run, error) {
 	}
 
 	type obs struct {
-		sha   string
-		mtime int64
+		sha         string
+		size, mtime int64
 	}
 	type observed struct {
 		r   row
@@ -109,7 +111,7 @@ func (s *Service) Scan(ctx context.Context) (*Run, error) {
 	var missing []row
 	reindex := map[int64][]byte{}
 	for _, r := range rows {
-		sha, mtime, err := s.observe(r.RelPath)
+		sha, size, mtime, err := s.observe(r)
 		if errors.Is(err, fs.ErrNotExist) {
 			missing = append(missing, r)
 			continue
@@ -117,7 +119,7 @@ func (s *Service) Scan(ctx context.Context) (*Run, error) {
 		if err != nil {
 			return nil, fmt.Errorf("reading %s: %w", r.RelPath, err)
 		}
-		seen = append(seen, observed{r: r, obs: obs{sha, mtime}})
+		seen = append(seen, observed{r: r, obs: obs{sha, size, mtime}})
 		// T9.15: a current lesson edited by hand since the last look gets its search text refreshed.
 		if r.Kind == "lesson" && strings.HasSuffix(r.RelPath, "/lesson/lesson.md") && sha != r.Observed {
 			md, err := s.Root.ReadFile(r.RelPath)
@@ -158,8 +160,8 @@ func (s *Service) Scan(ctx context.Context) (*Run, error) {
 	beforeCommitTx()
 	err = s.DB.WithTx(ctx, func(tx *sql.Tx) error {
 		for _, o := range seen {
-			if _, err := tx.ExecContext(ctx, `UPDATE files SET observed_sha256 = ?, observed_mtime = ?, observed_at = `+nowSQL+`,
-				presence = 'present' WHERE id = ? AND rel_path = ? AND sha256 = ?`, o.obs.sha, o.obs.mtime, o.r.FileID, o.r.RelPath, o.r.SHA); err != nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE files SET observed_sha256 = ?, observed_size = ?, observed_mtime = ?, observed_at = `+nowSQL+`,
+				presence = 'present' WHERE id = ? AND rel_path = ? AND sha256 = ?`, o.obs.sha, o.obs.size, o.obs.mtime, o.r.FileID, o.r.RelPath, o.r.SHA); err != nil {
 				return err
 			}
 		}
@@ -190,8 +192,8 @@ func (s *Service) Scan(ctx context.Context) (*Run, error) {
 }
 
 func (s *Service) rows(ctx context.Context) ([]row, error) {
-	q, err := s.DB.Writer().QueryContext(ctx, `SELECT id, topic_id, kind, rel_path, sha256, COALESCE(observed_sha256, ''), presence = 'present'
-		FROM files ORDER BY id`)
+	q, err := s.DB.Writer().QueryContext(ctx, `SELECT id, topic_id, kind, rel_path, sha256, COALESCE(observed_sha256, ''), presence = 'present',
+		COALESCE(observed_size, -1), COALESCE(observed_mtime, 0) FROM files ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -199,7 +201,7 @@ func (s *Service) rows(ctx context.Context) ([]row, error) {
 	var out []row
 	for q.Next() {
 		var r row
-		if err := q.Scan(&r.FileID, &r.TopicID, &r.Kind, &r.RelPath, &r.SHA, &r.Observed, &r.Present); err != nil {
+		if err := q.Scan(&r.FileID, &r.TopicID, &r.Kind, &r.RelPath, &r.SHA, &r.Observed, &r.Present, &r.ObsSize, &r.ObsMtime); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -207,16 +209,25 @@ func (s *Service) rows(ctx context.Context) ([]row, error) {
 	return out, q.Err()
 }
 
-func (s *Service) observe(rel string) (sha string, mtime int64, err error) {
-	fi, err := s.Root.Stat(rel)
+// hashFile is swapped by tests to count hashing (T10.7).
+var hashFile = (*fsx.Root).HashFile
+
+// observe stats r and hashes it, unless size and mtime still match the last observation (T10.7).
+// Pass a row with only RelPath set to always hash.
+func (s *Service) observe(r row) (sha string, size, mtime int64, err error) {
+	fi, err := s.Root.Stat(r.RelPath)
 	if err != nil {
-		return "", 0, err
+		return "", 0, 0, err
 	}
 	if !fi.Mode().IsRegular() {
-		return "", 0, fs.ErrNotExist // a directory where the file was is as good as missing
+		return "", 0, 0, fs.ErrNotExist // a directory where the file was is as good as missing
 	}
-	sha, _, err = s.Root.HashFile(rel)
-	return sha, fi.ModTime().UnixNano(), err
+	size, mtime = fi.Size(), fi.ModTime().UnixNano()
+	if r.Observed != "" && r.ObsSize == size && r.ObsMtime == mtime {
+		return r.Observed, size, mtime, nil
+	}
+	sha, _, err = hashFile(s.Root, r.RelPath)
+	return sha, size, mtime, err
 }
 
 // unregistered lists regular files under topics/ that no files row points at, in path order.
@@ -425,16 +436,16 @@ func (s *Service) ApplyMoves(ctx context.Context, runID int64, fileIDs []int64) 
 		return nil, fmt.Errorf("%w: no move selected", domain.ErrInvalidInput)
 	}
 	type obs struct {
-		sha   string
-		mtime int64
-		dbSHA string
+		sha         string
+		size, mtime int64
+		dbSHA       string
 	}
 	seen := make([]obs, len(chosen))
 	for i, m := range chosen {
 		if s.Root.Exists(m.RelPath) {
 			return nil, fmt.Errorf("%w: %s is back", ErrStale, m.RelPath)
 		}
-		sha, mtime, err := s.observe(m.To)
+		sha, size, mtime, err := s.observe(row{Item: Item{RelPath: m.To}})
 		if err != nil {
 			return nil, fmt.Errorf("%w: %s: %v", ErrStale, m.To, err)
 		}
@@ -472,7 +483,7 @@ func (s *Service) ApplyMoves(ctx context.Context, runID int64, fileIDs []int64) 
 		default:
 			return nil, fmt.Errorf("%w: unknown move kind %s", domain.ErrInvalidState, m.By)
 		}
-		seen[i] = obs{sha: sha, mtime: mtime, dbSHA: dbSHA}
+		seen[i] = obs{sha: sha, size: size, mtime: mtime, dbSHA: dbSHA}
 	}
 	applied, err := json.Marshal(chosen)
 	if err != nil {
@@ -484,9 +495,9 @@ func (s *Service) ApplyMoves(ctx context.Context, runID int64, fileIDs []int64) 
 			if m.FileSHA != "" {
 				expectedSHA = m.FileSHA
 			}
-			res, err := tx.ExecContext(ctx, `UPDATE files SET rel_path = ?, presence = 'present', observed_sha256 = ?, observed_mtime = ?,
+			res, err := tx.ExecContext(ctx, `UPDATE files SET rel_path = ?, presence = 'present', observed_sha256 = ?, observed_size = ?, observed_mtime = ?,
 				observed_at = `+nowSQL+` WHERE id = ? AND rel_path = ? AND sha256 = ? AND NOT EXISTS (SELECT 1 FROM files WHERE rel_path = ?)`,
-				m.To, seen[i].sha, seen[i].mtime, m.FileID, m.RelPath, expectedSHA, m.To)
+				m.To, seen[i].sha, seen[i].size, seen[i].mtime, m.FileID, m.RelPath, expectedSHA, m.To)
 			if err != nil {
 				return err
 			}

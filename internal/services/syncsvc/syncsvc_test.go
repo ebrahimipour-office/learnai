@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"learninghub/internal/domain"
 	"learninghub/internal/fsx"
@@ -513,5 +514,36 @@ func TestScanReindexesEditedLesson(t *testing.T) {
 	}
 	if hits("middleware") != 1 {
 		t.Error("edited lesson not reindexed")
+	}
+}
+
+// T10.7: an unchanged file is not hashed again; a same-size edit with a new mtime is.
+func TestScanSkipsHashOfUnchangedFiles(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	if _, err := e.svc.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	n := syncsvc.CountHashes(t)
+	run, err := e.svc.Scan(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *n != 0 || len(run.Report.Modified) != 0 {
+		t.Fatalf("second scan: %d hashes, modified %v; want none", *n, run.Report.Modified)
+	}
+
+	e.write(lessonRel, "# HTTX\n") // same size
+	p := filepath.Join(e.base, filepath.FromSlash(lessonRel))
+	later := time.Now().Add(time.Minute)
+	if err := os.Chtimes(p, later, later); err != nil {
+		t.Fatal(err)
+	}
+	run, err = e.svc.Scan(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *n != 1 || len(run.Report.Modified) != 1 || run.Report.Modified[0].FileID != 1 {
+		t.Fatalf("after same-size edit: %d hashes, modified %v; want 1 hash and the lesson", *n, run.Report.Modified)
 	}
 }
