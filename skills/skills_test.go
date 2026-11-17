@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io/fs"
 	"regexp"
+	"strings"
 	"testing"
 
 	"learninghub/internal/ai/prompt"
@@ -114,5 +115,21 @@ func TestSkillsInputsAllowedInComposerWhitelist(t *testing.T) {
 	}
 	if checked == 0 {
 		t.Fatal("no input paths were checked across embedded skills")
+	}
+}
+
+// T9.3: exercise statements must put each numbered item on its own line.
+func TestExerciseSkillListRule(t *testing.T) {
+	b, err := FS.ReadFile("exercise-generator/SKILL.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if older(Version(b), "1.3.0") {
+		t.Errorf("exercise-generator version %s, want >= 1.3.0", Version(b))
+	}
+	for _, want := range []string{"statement_markdown", "خط جداگانه", `\n1. `, `\n\n1. `} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("exercise-generator/SKILL.md lacks %q", want)
+		}
 	}
 }
