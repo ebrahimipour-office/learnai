@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"learninghub/internal/fsx"
 	"learninghub/internal/roadmap"
@@ -32,6 +33,7 @@ type Node struct {
 	Partial               bool
 	Busy                  bool // has a queued or running job
 	Missing               int  // registered files last seen missing by sync
+	InLesson              bool // the query matched only the current lesson's text (T9.15)
 
 	// Roadmap fields (T9.8): over all active topics of the roadmap, whatever the filter
 	Done, Total int             // evaluated / all active topics
@@ -108,6 +110,7 @@ func (s *Service) List(ctx context.Context, f Filter) (tree []*Node, matched, to
 
 	baseQuery := latestAttempt + `
 		SELECT r.id, r.title, t.id, t.group_id, t.parent_id, t.title, t.status, t.state, t.origin, l.topic_score, COALESCE(l.is_partial, 0),
+		       IN_LESSON,
 		       EXISTS (SELECT 1 FROM jobs j WHERE j.topic_id = t.id AND j.status IN ('queued','running')),
 		       (SELECT COUNT(*) FROM files f WHERE f.topic_id = t.id AND f.presence = 'missing')
 		FROM topics t
@@ -118,23 +121,32 @@ func (s *Service) List(ctx context.Context, f Filter) (tree []*Node, matched, to
 	var whereClauses []string
 	var args []any
 
+	inLesson := "0"
+	var selArgs []any
 	if q != "" {
-		if len(matchingGroups) > 0 {
-			placeholders := make([]string, len(matchingGroups))
-			matchGroupArgs := make([]any, len(matchingGroups))
-			idx := 0
-			for gid := range matchingGroups {
-				placeholders[idx] = "?"
-				matchGroupArgs[idx] = gid
-				idx++
-			}
-			whereClauses = append(whereClauses, fmt.Sprintf("(instr(t.title_norm, ?) > 0 OR t.group_id IN (%s))", strings.Join(placeholders, ",")))
-			args = append(args, q)
-			args = append(args, matchGroupArgs...)
-		} else {
-			whereClauses = append(whereClauses, "instr(t.title_norm, ?) > 0")
-			args = append(args, q)
+		// Trigram MATCH needs 3+ characters; a shorter query scans the stored text instead.
+		lessonCond := `lesson_fts MATCH ?`
+		lessonArg := `"` + strings.ReplaceAll(q, `"`, `""`) + `"`
+		if utf8.RuneCountInString(q) < 3 {
+			lessonCond, lessonArg = `instr(body, ?) > 0`, q
 		}
+		inLessonSQL := "t.id IN (SELECT rowid FROM lesson_fts WHERE " + lessonCond + ")"
+		match := []string{"instr(t.title_norm, ?) > 0"}
+		args = append(args, q)
+		if len(matchingGroups) > 0 {
+			placeholders := make([]string, 0, len(matchingGroups))
+			for gid := range matchingGroups {
+				placeholders = append(placeholders, "?")
+				args = append(args, gid)
+			}
+			match = append(match, fmt.Sprintf("t.group_id IN (%s)", strings.Join(placeholders, ",")))
+		}
+		match = append(match, inLessonSQL)
+		args = append(args, lessonArg)
+		whereClauses = append(whereClauses, "("+strings.Join(match, " OR ")+")")
+		// A topic found by title or group is not labelled, even if its lesson matches too.
+		inLesson = "(NOT (" + strings.Join(match[:len(match)-1], " OR ") + ") AND " + inLessonSQL + ")"
+		selArgs = append([]any(nil), args...) // the select column repeats the WHERE match's arguments
 	}
 	if !f.Archived {
 		whereClauses = append(whereClauses, "t.state = 'active'")
@@ -151,7 +163,7 @@ func (s *Service) List(ctx context.Context, f Filter) (tree []*Node, matched, to
 	}
 	baseQuery += "ORDER BY r.id, t.ord"
 
-	rows, err := s.db.Writer().QueryContext(ctx, baseQuery, args...)
+	rows, err := s.db.Writer().QueryContext(ctx, strings.Replace(baseQuery, "IN_LESSON", inLesson, 1), append(selArgs, args...)...)
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("listing topics: %w", err)
 	}
@@ -179,7 +191,7 @@ func (s *Service) List(ctx context.Context, f Filter) (tree []*Node, matched, to
 		var rtitle string
 		var gid, pid sql.NullInt64
 		t := &Node{Kind: "topic"}
-		if err := rows.Scan(&rid, &rtitle, &t.ID, &gid, &pid, &t.Title, &t.Status, &t.State, &t.Origin, &t.Score, &t.Partial, &t.Busy, &t.Missing); err != nil {
+		if err := rows.Scan(&rid, &rtitle, &t.ID, &gid, &pid, &t.Title, &t.Status, &t.State, &t.Origin, &t.Score, &t.Partial, &t.InLesson, &t.Busy, &t.Missing); err != nil {
 			return nil, 0, 0, err
 		}
 		rm := roadmaps[rid]

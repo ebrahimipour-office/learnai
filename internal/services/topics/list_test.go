@@ -2,10 +2,13 @@ package topics_test
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"learninghub/internal/fsx"
+	"learninghub/internal/services/lessons"
 	"learninghub/internal/services/roadmaps"
 	"learninghub/internal/services/topics"
 	"learninghub/internal/store"
@@ -220,5 +223,57 @@ func TestListEmpty(t *testing.T) {
 	s, _ := setup(t)
 	if tree, matched, total := list(t, s, topics.Filter{}); tree != nil || matched != 0 || total != 0 {
 		t.Errorf("empty db: %v %d %d", tree, matched, total)
+	}
+}
+
+// T9.15: a word found only in a topic's lesson text finds the topic, labelled "in lesson".
+func TestListSearchesLessonText(t *testing.T) {
+	s, db := setup(t, md)
+	ctx := context.Background()
+	index := func(title, body string) {
+		t.Helper()
+		if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+			var id int64
+			if err := tx.QueryRow(`SELECT id FROM topics WHERE title = ?`, title).Scan(&id); err != nil {
+				return err
+			}
+			return lessons.IndexText(ctx, tx, id, []byte(body))
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	index("گوروتین", "# گوروتین\nکانال‌ها و select برای هماهنگی")
+	index("نوع‌ها", "# نوع‌ها\nint و string؛ گوروتین اینجا فقط نام برده می‌شود")
+
+	for _, c := range []struct {
+		query  string
+		want   string // matched titles, in order
+		labels string // titles labelled InLesson
+	}{
+		{"کانال ها", "گوروتین", "گوروتین"},      // ZWNJ in the lesson, space in the query
+		{"SELECT", "گوروتین", "گوروتین"},        // case-insensitive
+		{"گوروتین", "نوع‌ها|گوروتین", "نوع‌ها"}, // title match is not labelled
+		{"if", "", ""},             // short query scans the text: no lesson has "if"
+		{"in", "نوع‌ها", "نوع‌ها"}, // short query (< 3 runes) still finds "int"
+		{`"x`, "", ""},             // a quote cannot break the MATCH expression
+	} {
+		tree, _, _ := list(t, s, topics.Filter{Query: c.query})
+		var labelled []string
+		var walk func([]*topics.Node)
+		walk = func(ns []*topics.Node) {
+			for _, n := range ns {
+				if n.InLesson {
+					labelled = append(labelled, n.Title)
+				}
+				walk(n.Items)
+			}
+		}
+		walk(tree)
+		if got := strings.Join(titles(tree), "|"); got != c.want {
+			t.Errorf("%q: matched %q, want %q", c.query, got, c.want)
+		}
+		if got := strings.Join(labelled, "|"); got != c.labels {
+			t.Errorf("%q: labelled %q, want %q", c.query, got, c.labels)
+		}
 	}
 }

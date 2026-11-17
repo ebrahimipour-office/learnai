@@ -26,8 +26,8 @@ func TestDB_OpenAndMigrate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get user_version: %v", err)
 	}
-	if version != 6 {
-		t.Errorf("Expected user_version 6, got %d", version)
+	if version != 7 {
+		t.Errorf("Expected user_version 7, got %d", version)
 	}
 	db.Close()
 
@@ -42,8 +42,8 @@ func TestDB_OpenAndMigrate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get user_version: %v", err)
 	}
-	if version2 != 6 {
-		t.Errorf("Expected user_version 6, got %d", version2)
+	if version2 != 7 {
+		t.Errorf("Expected user_version 7, got %d", version2)
 	}
 }
 

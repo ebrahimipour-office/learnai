@@ -199,6 +199,26 @@ func TestRegenerate(t *testing.T) {
 	if n := e.count(`SELECT COUNT(*) FROM files`); n != 2 {
 		t.Errorf("%d files rows, want 2", n)
 	}
+	// T9.15: the search text follows the current lesson only.
+	if n := e.count(`SELECT COUNT(*) FROM lesson_fts WHERE lesson_fts MATCH '"v2 lesson"'`); n != 1 {
+		t.Error("v2 not indexed")
+	}
+	if n := e.count(`SELECT COUNT(*) FROM lesson_fts`); n != 1 {
+		t.Errorf("%d search rows, want 1", n)
+	}
+
+	// IndexMissing restores a lost row from lesson.md and leaves indexed lessons alone.
+	if _, err := e.db.Writer().Exec(`DELETE FROM lesson_fts`); err != nil {
+		t.Fatal(err)
+	}
+	for want := 1; want >= 0; want-- {
+		if n, err := lessons.IndexMissing(context.Background(), e.db, e.root); err != nil || n != want {
+			t.Fatalf("IndexMissing = %d, %v; want %d", n, err, want)
+		}
+	}
+	if n := e.count(`SELECT COUNT(*) FROM lesson_fts WHERE lesson_fts MATCH '"v2 lesson"'`); n != 1 {
+		t.Error("backfill did not index lesson.md")
+	}
 }
 
 func TestDBFailureRestoresFiles(t *testing.T) {

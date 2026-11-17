@@ -50,6 +50,7 @@
   {{if .Score.Valid}}<span class="score">{{num .Score.Float64}}</span>{{if .Partial}} <span class="badge warn">ناقص</span>{{end}}{{end}}
   {{if eq .Origin "suggested"}}<span class="badge suggested">پیشنهادی</span>{{end}}
   {{if eq .State "archived"}}<span class="badge">بایگانی‌شده</span>{{end}}
+  {{if .InLesson}}<span class="badge">در متن درس</span>{{end}}
   {{if .Busy}}<span class="badge busy">در حال اجرا</span>{{end}}
   {{if .Missing}}<a class="badge warn" href="/sync">{{.Missing}} فایل گم‌شده</a>{{end}}
   {{with .Items}}<ul>{{range .}}{{template "tnode" .}}{{end}}</ul>{{end}}

@@ -180,6 +180,18 @@ func TestRebuildFromFiles(t *testing.T) {
 	if cur != 2 || hist != 1 {
 		t.Errorf("lesson current v%d, history %d", cur, hist)
 	}
+	// T9.15: rebuild fills the search text from the current lesson, not its history.
+	var fts []string
+	rows, _ = db.Writer().Query(`SELECT body FROM lesson_fts ORDER BY body`)
+	for rows.Next() {
+		var b string
+		rows.Scan(&b)
+		fts = append(fts, b)
+	}
+	rows.Close()
+	if strings.Join(fts, "|") != "# http v2|# orphan|# variables" {
+		t.Errorf("lesson_fts = %q", fts)
+	}
 	// The chapter text is linked to its topic with its own hash; the range comes from the revision (§12.6).
 	var srcRel, srcSHA, topicSHA string
 	var start, end, srcRows int

@@ -423,6 +423,9 @@ func (s *Service) record(ctx context.Context, j jobs.Job, skill ai.SkillRef, t t
 			observed_mtime = NULL, observed_at = NULL, presence = 'present' WHERE id = ?`, verID, sha, size, sha, fileID); err != nil {
 			return err
 		}
+		if err := IndexText(ctx, tx, t.ID, md); err != nil {
+			return err
+		}
 		for _, x := range out.Suggestions {
 			// Same title again for this topic is a duplicate (T6.1 dedupe by title_norm).
 			if _, err := tx.ExecContext(ctx, `INSERT INTO suggestions (topic_id, job_id, kind, title, title_norm, reason)

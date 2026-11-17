@@ -23,6 +23,7 @@ import (
 	"learninghub/internal/schema"
 	"learninghub/internal/services/evaluation"
 	"learninghub/internal/services/exercises"
+	"learninghub/internal/services/lessons"
 	"learninghub/internal/services/roadmaps"
 	"learninghub/internal/services/status"
 	"learninghub/internal/store"
@@ -516,7 +517,14 @@ func (r *run) lessons(topicID int64, dir string) error {
 		last = num[rel]
 	}
 	if rel := "topics/" + dir + "/lesson/lesson.md"; r.root.Exists(rel) {
-		return add(rel, last+1, true)
+		if err := add(rel, last+1, true); err != nil {
+			return err
+		}
+		md, err := r.root.ReadFile(rel)
+		if err != nil {
+			return err
+		}
+		return lessons.IndexText(r.ctx, r.tx, topicID, md)
 	}
 	return nil
 }

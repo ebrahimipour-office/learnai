@@ -413,6 +413,12 @@ func runServe(args []string) error {
 	}
 	runner.Register(domain.JobKindRoadmapAnalyze, analyzer.Handle)
 	runner.Register(domain.JobKindChapterDetect, analyzer.DetectChapters)
+	// T9.15: lessons committed before the search index existed become searchable.
+	if n, err := lessons.IndexMissing(ctx, db, root); err != nil {
+		slog.Error("Failed to index lesson text for search", "error", err)
+	} else if n > 0 {
+		slog.Info("Indexed lesson text for search", "count", n)
+	}
 	srv := httpserver.NewServer(cfg.Listen, sm, drafts, topics.NewService(db, root), runner, root,
 		httpserver.Settings{DB: db, Adapter: adapter, Switch: adapter, Model: cfg.Adapter.Model, SkipPermissions: cfg.Adapter.SkipPermissions, Exercises: cfg.Exercises, MaxAnswerBytes: cfg.Limits.MaxAnswerBytes, Editor: cfg.Editor.Command})
 	// Maintenance at startup and hourly: expired job dirs/logs, daily DB backup, expired import drafts.
