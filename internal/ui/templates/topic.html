@@ -41,7 +41,20 @@
 {{end}}
 </section>
 {{end}}{{end}}
+{{template "next-step" .}}
+{{if or .Panel.Prev .Panel.Next}}<nav class="pager" aria-label="فصل قبل و بعد">
+  {{with .Panel.Prev}}<a href="/topics/{{.ID}}" rel="prev">→ فصل قبل: <bdi>{{.Title}}</bdi></a>{{else}}<span></span>{{end}}
+  {{with .Panel.Next}}<a href="/topics/{{.ID}}" rel="next">فصل بعد: <bdi>{{.Title}}</bdi> ←</a>{{end}}
+</nav>{{end}}
 {{end}}
+
+{{/* next-step (T9.9) points to the tab that moves the topic's status forward; hidden on that tab itself. */}}
+{{define "next-step"}}{{$s := .Panel.Status}}{{$id := .Panel.ID}}
+{{if and (eq $s "content_ready") (ne .Tab "exercises")}}<p class="next-step">گام بعدی: <a href="/topics/{{$id}}/exercises">ساخت تمرین</a></p>
+{{else if and (eq $s "exercises_ready") (ne .Tab "answers")}}<p class="next-step">گام بعدی: <a href="/topics/{{$id}}/answers">نوشتن پاسخ‌ها</a></p>
+{{else if and (eq $s "answered") (ne .Tab "reports")}}<p class="next-step">گام بعدی: <a href="/topics/{{$id}}/reports">ارزیابی پاسخ‌ها</a></p>
+{{else if eq $s "evaluated"}}{{with .Panel.Next}}<p class="next-step">گام بعدی: <a href="/topics/{{.ID}}">فصل بعد: <bdi>{{.Title}}</bdi></a></p>{{end}}
+{{end}}{{end}}
 
 {{define "set-tab"}}
 <section class="set">

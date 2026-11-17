@@ -289,3 +289,40 @@ func TestTopicIgnoresTabQueryParam(t *testing.T) {
 		}
 	}
 }
+
+// T9.9: chapter pager and the status-driven next-step link.
+func TestTopicPagerAndNextStep(t *testing.T) {
+	e := newEnv(t)
+	e.seedTopics()
+	first := e.get("/topics/1").Body.String()
+	if !strings.Contains(first, `<a href="/topics/2" rel="next">فصل بعد: <bdi>مسیریابی</bdi> ←</a>`) || strings.Contains(first, `rel="prev"`) {
+		t.Error("first topic: want only a next link")
+	}
+	if strings.Contains(first, `class="next-step"`) {
+		t.Error("created topic: no next step (the lesson tab already offers generation)")
+	}
+	second := e.get("/topics/2/answers").Body.String()
+	if !strings.Contains(second, `<a href="/topics/1" rel="prev">→ فصل قبل: <bdi>پروتکل HTTP</bdi></a>`) || strings.Contains(second, `rel="next"`) {
+		t.Error("last topic: want only a prev link")
+	}
+
+	for status, want := range map[string]string{
+		"content_ready":   `<a href="/topics/1/exercises">ساخت تمرین</a>`,
+		"exercises_ready": `<a href="/topics/1/answers">نوشتن پاسخ‌ها</a>`,
+		"answered":        `<a href="/topics/1/reports">ارزیابی پاسخ‌ها</a>`,
+		"evaluated":       `<a href="/topics/2">فصل بعد: <bdi>مسیریابی</bdi></a>`,
+	} {
+		if _, err := e.db.Writer().Exec(`UPDATE topics SET status = ? WHERE id = 1`, status); err != nil {
+			t.Fatal(err)
+		}
+		if body := e.get("/topics/1").Body.String(); !strings.Contains(body, want) {
+			t.Errorf("%s: missing next step %s", status, want)
+		}
+	}
+	if _, err := e.db.Writer().Exec(`UPDATE topics SET status = 'answered' WHERE id = 1`); err != nil {
+		t.Fatal(err)
+	}
+	if body := e.get("/topics/1/reports").Body.String(); strings.Contains(body, `class="next-step"`) {
+		t.Error("next step must be hidden on the tab it points to")
+	}
+}

@@ -187,3 +187,47 @@ func TestSuggestionTopic(t *testing.T) {
 		t.Fatalf("expected topic %d, got %d", topicID, got)
 	}
 }
+
+// T9.9: Prev/Next follow the roadmap's tree order over active topics.
+func TestPanelPrevNext(t *testing.T) {
+	s, db := setup(t, md)
+	// tree rule: «جزئیات» is a child of «نوع‌ها», ordered between it and the next sibling
+	if _, err := db.Writer().Exec(`INSERT INTO topics (roadmap_id, group_id, parent_id, stable_key, title, title_norm, ord, slug, dir_name)
+		SELECT roadmap_id, group_id, id, 'child', 'جزئیات', 'جزئیات', ord + 0.5, 'details', '99-details' FROM topics WHERE title = 'نوع‌ها'`); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	id := func(title string) int64 {
+		var id int64
+		if err := db.Writer().QueryRow(`SELECT id FROM topics WHERE title = ?`, title).Scan(&id); err != nil {
+			t.Fatalf("%s: %v", title, err)
+		}
+		return id
+	}
+	title := func(r *topics.Ref) string {
+		if r == nil {
+			return ""
+		}
+		return r.Title
+	}
+	check := func(at, prev, next string) {
+		t.Helper()
+		p, err := s.Panel(ctx, id(at))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if title(p.Prev) != prev || title(p.Next) != next {
+			t.Errorf("%s: prev/next = %q/%q, want %q/%q", at, title(p.Prev), title(p.Next), prev, next)
+		}
+	}
+	check("نوع‌ها", "", "جزئیات")                    // first
+	check("جزئیات", "نوع‌ها", "کتابخانه استاندارد")  // child sits between its parent and the next sibling
+	check("کتابخانه استاندارد", "جزئیات", "گوروتین") // crosses groups
+	check("گوروتین", "کتابخانه استاندارد", "")       // last
+
+	if _, err := db.Writer().Exec(`UPDATE topics SET state = 'archived' WHERE title = 'کتابخانه استاندارد'`); err != nil {
+		t.Fatal(err)
+	}
+	check("جزئیات", "نوع‌ها", "گوروتین")             // archived topics are skipped
+	check("کتابخانه استاندارد", "جزئیات", "گوروتین") // an archived topic still links to its active neighbours
+}

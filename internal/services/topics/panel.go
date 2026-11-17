@@ -19,6 +19,7 @@ type Panel struct {
 	Source                *Source         // chapter source text (§12.9); nil = topic has none
 	Ancestors             []Ref           // tree rule: root first, ending at the parent (§13.6)
 	Children              []Ref           // tree rule: direct sub-records in document order
+	Prev, Next            *Ref            // T9.9: neighbouring active topics of the roadmap in tree order; nil at the ends
 }
 
 // Ref links to another topic.
@@ -50,15 +51,18 @@ func Scope(id int64) string { return "topic:" + strconv.FormatInt(id, 10) }
 func (s *Service) Panel(ctx context.Context, id int64) (*Panel, error) {
 	p := &Panel{ID: id}
 	var srcID sql.NullInt64
+	var roadmapID int64
+	var ord float64
 	src := Source{}
 	err := s.db.Writer().QueryRowContext(ctx, `
 		SELECT t.title, COALESCE(g.title, ''), r.title, t.status, t.state, t.origin,
 		       EXISTS (SELECT 1 FROM jobs j WHERE j.topic_id = t.id AND j.status IN ('queued','running')),
-		       f.id, COALESCE(f.rel_path, ''), COALESCE(t.source_start_line, 0), COALESCE(t.source_end_line, 0)
+		       f.id, COALESCE(f.rel_path, ''), COALESCE(t.source_start_line, 0), COALESCE(t.source_end_line, 0),
+		       t.roadmap_id, t.ord
 		FROM topics t JOIN roadmaps r ON r.id = t.roadmap_id LEFT JOIN groups g ON g.id = t.group_id
 		LEFT JOIN files f ON f.id = t.source_file_id
 		WHERE t.id = ?`, id).Scan(&p.Title, &p.Group, &p.Roadmap, &p.Status, &p.State, &p.Origin, &p.Busy,
-		&srcID, &src.RelPath, &src.Start, &src.End)
+		&srcID, &src.RelPath, &src.Start, &src.End, &roadmapID, &ord)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
@@ -79,6 +83,15 @@ func (s *Service) Panel(ctx context.Context, id int64) (*Panel, error) {
 	}
 	if err := s.refs(ctx, &p.Children, `
 		SELECT id, title, state = 'archived' FROM topics WHERE parent_id = ? ORDER BY ord`, id); err != nil {
+		return nil, err
+	}
+	// ord is the roadmap-wide document order (parents precede children), the order topics.List uses.
+	if p.Prev, err = s.neighbour(ctx, `SELECT id, title FROM topics WHERE roadmap_id = ? AND state = 'active' AND ord < ?
+		ORDER BY ord DESC LIMIT 1`, roadmapID, ord); err != nil {
+		return nil, err
+	}
+	if p.Next, err = s.neighbour(ctx, `SELECT id, title FROM topics WHERE roadmap_id = ? AND state = 'active' AND ord > ?
+		ORDER BY ord LIMIT 1`, roadmapID, ord); err != nil {
 		return nil, err
 	}
 	rows, err := s.db.Writer().QueryContext(ctx, `
@@ -113,4 +126,14 @@ func (s *Service) refs(ctx context.Context, dst *[]Ref, query string, id int64) 
 		*dst = append(*dst, r)
 	}
 	return rows.Err()
+}
+
+// neighbour returns the one topic query finds, or nil when there is none.
+func (s *Service) neighbour(ctx context.Context, query string, args ...any) (*Ref, error) {
+	r := &Ref{}
+	err := s.db.Writer().QueryRowContext(ctx, query, args...).Scan(&r.ID, &r.Title)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	return r, err
 }
