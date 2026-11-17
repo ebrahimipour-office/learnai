@@ -59,7 +59,7 @@ func WatchValid(ctx context.Context, a Adapter, req Request, events chan<- Event
 	first := resp
 	resp, err = watchChecked(ctx, a, req, events, check, 2)
 	if first != nil && resp != nil {
-		resp.Usage = addUsage(first.Usage, resp.Usage)
+		resp.Usage = AddUsage(first.Usage, resp.Usage)
 	} else if resp == nil {
 		resp = first
 	}
@@ -80,7 +80,7 @@ func watchChecked(ctx context.Context, a Adapter, req Request, events chan<- Eve
 	return resp, err
 }
 
-func addUsage(a, b Usage) Usage {
+func AddUsage(a, b Usage) Usage {
 	return Usage{a.InputTokens + b.InputTokens, a.OutputTokens + b.OutputTokens, a.ThinkingTokens + b.ThinkingTokens,
 		a.CacheReadTokens + b.CacheReadTokens, a.TotalTokens + b.TotalTokens}
 }

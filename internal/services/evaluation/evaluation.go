@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -207,6 +208,7 @@ func (s *Service) run(ctx context.Context, j jobs.Job, mode string) error {
 	var wg sync.WaitGroup
 	var once sync.Once
 	var first error
+	var acc usageAcc
 	for _, pk := range sel.Send {
 		if done[pk.ExID] {
 			continue
@@ -225,12 +227,19 @@ func (s *Service) run(ctx context.Context, j jobs.Job, mode string) error {
 					once.Do(func() { first = fmt.Errorf("step %s panic: %v", pk.ExID, p) })
 				}
 			}()
-			if err := s.step(ctx, j, sh, pk); err != nil {
+			if err := s.step(ctx, j, sh, pk, &acc); err != nil {
 				once.Do(func() { first = err })
 			}
 		})
 	}
 	wg.Wait()
+	if acc.ran { // carried-over steps add nothing: their usage stays on the job they ran in
+		usage, _ := json.Marshal(acc.usage)
+		if _, err := s.DB.Writer().ExecContext(context.WithoutCancel(ctx), `UPDATE jobs SET usage = ?, log_dir = ? WHERE id = ?`,
+			string(usage), acc.logDir, j.ID); err != nil {
+			first = errors.Join(first, err)
+		}
+	}
 	if first == nil && ctx.Err() != nil {
 		first = fmt.Errorf("%w: %v", ai.ErrCanceled, ctx.Err())
 	}
@@ -288,7 +297,28 @@ func (s *Service) inherit(ctx context.Context, j jobs.Job, fingerprint string) (
 	return done, nil
 }
 
-func (s *Service) step(ctx context.Context, j jobs.Job, sh shared, pk topics.Pick) (err error) {
+// usageAcc sums the token usage of a job's parallel steps (T10.1).
+type usageAcc struct {
+	mu     sync.Mutex
+	ran    bool
+	usage  ai.Usage
+	logDir string // the job's log dir: parent of the per-run dirs
+}
+
+func (a *usageAcc) add(r *ai.Response) {
+	if r == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.ran = true
+	a.usage = ai.AddUsage(a.usage, r.Usage)
+	if a.logDir == "" && r.RawLogDir != "" {
+		a.logDir = filepath.Dir(r.RawLogDir)
+	}
+}
+
+func (s *Service) step(ctx context.Context, j jobs.Job, sh shared, pk topics.Pick, acc *usageAcc) (err error) {
 	key := StepKey(pk.ExID)
 	if _, err := s.DB.Writer().ExecContext(ctx, `UPDATE job_steps SET status = 'running', started_at = `+nowSQL+`,
 		error_code = NULL, error_message = NULL WHERE job_id = ? AND step_key = ?`, j.ID, key); err != nil {
@@ -346,13 +376,14 @@ func (s *Service) step(ctx context.Context, j jobs.Job, sh shared, pk topics.Pic
 	req.Model, req.Timeout, req.StallTimeout = ai.ModelFor(s.Adapter, s.Model), s.Timeout, s.Stall
 
 	var out json.RawMessage
-	_, err = ai.WatchValid(ctx, s.Adapter, req, nil, func(raw json.RawMessage) error {
+	resp, err := ai.WatchValid(ctx, s.Adapter, req, nil, func(raw json.RawMessage) error {
 		if err := Check(raw, pk.ExID, rub); err != nil {
 			return fmt.Errorf("%w: %s: %v", ai.ErrInvalidOutput, pk.ExID, err)
 		}
 		out = raw
 		return nil
 	})
+	acc.add(resp) // a failed run still spent tokens
 	if err != nil {
 		return err
 	}

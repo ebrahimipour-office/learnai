@@ -85,7 +85,9 @@ func (a *adapter) Run(ctx context.Context, req ai.Request, _ chan<- ai.Event) (*
 		return nil, fmt.Errorf("%w: scripted", ai.ErrToolFailed)
 	}
 	return &ai.Response{Structured: json.RawMessage(fmt.Sprintf(`{"exercise_id":%q,"criteria_scores":[{"criterion_id":"c1","awarded":%d,"comment":"ok"}],
-		"score":70,"errors":[],"strengths":[],"corrected_answer":{"format":"text","content":"x"},"teaching_notes_markdown":"n"}`, t.ExerciseID, award))}, nil
+		"score":70,"errors":[],"strengths":[],"corrected_answer":{"format":"text","content":"x"},"teaching_notes_markdown":"n"}`, t.ExerciseID, award)),
+		Usage:     ai.Usage{InputTokens: 10, OutputTokens: 5, TotalTokens: 15},
+		RawLogDir: filepath.Join("/logs/jobs", fmt.Sprint(req.JobID), "run-"+t.ExerciseID)}, nil
 }
 
 type env struct {
@@ -225,6 +227,14 @@ func (e *env) steps(id int64) map[string]string {
 	return out
 }
 
+func (e *env) usage(id int64) (usage, logDir string) {
+	e.t.Helper()
+	if err := e.db.Writer().QueryRow(`SELECT COALESCE(usage, ''), COALESCE(log_dir, '') FROM jobs WHERE id = ?`, id).Scan(&usage, &logDir); err != nil {
+		e.t.Fatal(err)
+	}
+	return
+}
+
 func (e *env) calls() map[string]int {
 	e.ad.mu.Lock()
 	defer e.ad.mu.Unlock()
@@ -261,6 +271,11 @@ func TestEvaluateOneCallPerExercise(t *testing.T) {
 	if e.ad.maxInFlight != 2 {
 		t.Errorf("max in flight = %d, want 2 (parallelism)", e.ad.maxInFlight)
 	}
+	// T10.1: usage is summed over the parallel steps; log_dir is the job's dir, not a step's.
+	if u, dir := e.usage(id); u != `{"input_tokens":20,"output_tokens":10,"thinking_tokens":0,"cache_read_tokens":0,"total_tokens":30}` ||
+		dir != filepath.Join("/logs/jobs", fmt.Sprint(id)) {
+		t.Errorf("usage = %s, log_dir = %s", u, dir)
+	}
 }
 
 func TestEvaluateSequentialByDefault(t *testing.T) {
@@ -296,6 +311,11 @@ func TestEvaluateRetryRunsOnlyUnfinished(t *testing.T) {
 	}
 	if c := e.calls(); c["q01"] != 1 || c["q02"] != 2 {
 		t.Errorf("calls = %v, want q01=1 (inherited) q02=2", c)
+	}
+	// T10.1: the inherited q01 adds no usage to the retry; only q02 ran.
+	if u, dir := e.usage(retry); u != `{"input_tokens":10,"output_tokens":5,"thinking_tokens":0,"cache_read_tokens":0,"total_tokens":15}` ||
+		dir != filepath.Join("/logs/jobs", fmt.Sprint(retry)) {
+		t.Errorf("retry usage = %s, log_dir = %s", u, dir)
 	}
 	if s := e.steps(retry); s["exercise:q01"] != "done" || s["exercise:q02"] != "done" {
 		t.Errorf("retry steps = %v", s)
