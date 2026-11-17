@@ -18,6 +18,7 @@ import (
 	"learninghub/internal/domain"
 	"learninghub/internal/fsx"
 	"learninghub/internal/jobs"
+	"learninghub/internal/render"
 	"learninghub/internal/roadmap"
 	"learninghub/internal/services/roadmaps"
 	"learninghub/internal/services/syncsvc"
@@ -70,6 +71,7 @@ type pageData struct {
 	Panel   *topics.Panel
 	Viewing *topics.LessonVersion // lesson version shown; nil = none
 	Lesson  template.HTML         // sanitized by render.Markdown; also the chapter text on the source tab
+	TOC     []render.Heading      // level 2–3 headings of the lesson (T9.10)
 	Job     *jobs.Info            // latest job of the topic; nil = none
 	Notice  string                // job action feedback inside the job area
 

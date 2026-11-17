@@ -35,6 +35,9 @@
     </ul>
   </details>
   {{with .Viewing}}{{if not .Current}}<p class="note">در حال مشاهده نسخه قدیمی {{.Version}}. <a href="/topics/{{$.Panel.ID}}/lesson">نسخه جاری</a></p>{{end}}{{end}}
+  {{if ge (len .TOC) 3}}<details class="toc"><summary>فهرست مطالب</summary>
+    <ul>{{range .TOC}}<li class="toc-{{.Level}}"><a href="#{{.ID}}"><bdi>{{.Text}}</bdi></a></li>{{end}}</ul>
+  </details>{{end}}
   <article class="md" dir="auto">{{.Lesson}}</article>
 {{else}}
   <p class="note empty">هنوز درسی برای این موضوع ساخته نشده است.</p>

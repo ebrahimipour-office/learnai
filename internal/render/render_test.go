@@ -12,7 +12,7 @@ func TestGolden(t *testing.T) {
 		"| الف | b |\n|---|:-:|\n| ۱ | x |\n\n" +
 		"```go\nfmt.Println(\"<b>\")\n```\n\n" +
 		"[بیرونی](https://go.dev) [داخلی](/topics) ![img](https://e.com/a.png)\n\n> نقل\n"
-	want := `<h1 dir="auto">سلام Go</h1>
+	want := `<h1 id="h-سلام-go" dir="auto">سلام Go</h1>
 <p dir="auto">متن فارسی با <code dir="ltr">fmt.Println</code> و کلمه English.</p>
 <ul>
 <li dir="auto">یک</li>
@@ -102,6 +102,8 @@ func TestStripBidi(t *testing.T) {
 	}
 }
 
+var headingID = regexp.MustCompile(` id="[^"]*"`)
+
 // T9.2: a Latin label like "[q01]" must not make a Persian heading LTR.
 func TestLabelledBlockDir(t *testing.T) {
 	for src, want := range map[string]string{
@@ -112,8 +114,32 @@ func TestLabelledBlockDir(t *testing.T) {
 		"## q01 مقایسه":            `<h2 dir="auto">q01 مقایسه</h2>`,
 		"## [q 1] مقایسه":          `<h2 dir="auto">[q 1] مقایسه</h2>`,
 	} {
-		if got := strings.TrimSpace(string(Markdown([]byte(src)))); got != want {
+		got := headingID.ReplaceAllString(strings.TrimSpace(string(Markdown([]byte(src)))), "") // ids are TestHeadingIDsAndTOC's
+		if got != want {
 			t.Errorf("%q:\n got %s\nwant %s", src, got, want)
 		}
+	}
+}
+
+// T9.10: Persian headings get non-empty, unique, sanitizer-proof ids that TOC links to.
+func TestHeadingIDsAndTOC(t *testing.T) {
+	src := []byte("# درس\n\n## مقدمه\n\nمتن\n\n### نوع `int`\n\n## مقدمه\n\n## !!!\n\n#### عمیق\n")
+	got := TOC(src)
+	want := []Heading{{2, "h-مقدمه", "مقدمه"}, {3, "h-نوع-int", "نوع int"}, {2, "h-مقدمه-1", "مقدمه"}, {2, "h-heading", "!!!"}}
+	if len(got) != len(want) {
+		t.Fatalf("TOC = %+v, want %+v", got, want)
+	}
+	html := string(Markdown(src))
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("TOC[%d] = %+v, want %+v", i, got[i], want[i])
+		}
+		if !strings.Contains(html, `id="`+want[i].ID+`"`) {
+			t.Errorf("rendered HTML lacks id %q:\n%s", want[i].ID, html)
+		}
+	}
+	// an explicit id attribute from Markdown must not reach the page unprefixed
+	if h := string(Markdown([]byte("## x {#job-area}\n"))); strings.Contains(h, `id="job-area"`) {
+		t.Errorf("unprefixed id leaked: %s", h)
 	}
 }

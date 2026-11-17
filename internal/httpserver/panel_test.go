@@ -122,7 +122,7 @@ func TestLessonGenerateFlow(t *testing.T) {
 		t.Fatalf("job status %s", st)
 	}
 	page := e.get("/topics/1").Body.String()
-	for _, want := range []string{`<h2 dir="auto">مقدمه</h2>`, `<pre dir="ltr"><code class="language-go">`, "موفق", "نسخه 1"} {
+	for _, want := range []string{`<h2 id="h-مقدمه" dir="auto">مقدمه</h2>`, `<pre dir="ltr"><code class="language-go">`, "موفق", "نسخه 1"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("panel missing %q", want)
 		}
@@ -324,5 +324,24 @@ func TestTopicPagerAndNextStep(t *testing.T) {
 	}
 	if body := e.get("/topics/1/reports").Body.String(); strings.Contains(body, `class="next-step"`) {
 		t.Error("next step must be hidden on the tab it points to")
+	}
+}
+
+// T9.10: a lesson with three or more level 2–3 headings shows a TOC linking to their ids.
+func TestLessonTOC(t *testing.T) {
+	e := newEnv(t)
+	e.seedTopics()
+	e.ad.Output = lessonOutput("## مقدمه\n\nمتن\n\n### جزئیات\n\nمتن\n\n## جمع‌بندی")
+	if rec := e.post("/topics/1/jobs/lesson", nil, true); rec.Code != http.StatusAccepted {
+		t.Fatalf("enqueue lesson: %d", rec.Code)
+	}
+	id, _ := e.lastJob()
+	e.pollUntilDone(id)
+	body := e.get("/topics/1").Body.String()
+	if !strings.Contains(body, `<details class="toc">`) || !strings.Contains(body, `<li class="toc-3"><a href="#h-`) {
+		t.Fatalf("TOC missing:\n%s", body)
+	}
+	if !strings.Contains(body, `<h2 id="h-مقدمه" dir="auto">مقدمه</h2>`) {
+		t.Error("lesson heading lacks its anchor id")
 	}
 }

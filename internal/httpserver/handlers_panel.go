@@ -116,7 +116,7 @@ func (a *app) fillLesson(r *http.Request, d *pageData) {
 		d.Error = "فایل درس روی دیسک پیدا نشد: " + d.Viewing.RelPath
 		return
 	}
-	d.Lesson = render.Markdown(b)
+	d.Lesson, d.TOC = render.Markdown(b), render.TOC(b)
 }
 
 // respond answers a job action: htmx gets the job-area fragment with status; a plain form

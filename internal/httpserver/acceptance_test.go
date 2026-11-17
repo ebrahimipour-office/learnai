@@ -142,7 +142,7 @@ func TestAcceptanceR11_2(t *testing.T) {
 		t.Errorf("R11.2-2: keywords must close lesson.md:\n%s", lesson)
 	}
 	page := e.get(topicURL).Body.String()
-	if i, k := strings.Index(page, `<h2 dir="auto">مقدمه</h2>`), strings.Index(page, "کلیدواژه"); i < 0 || k < i {
+	if i, k := strings.Index(page, `<h2 id="h-مقدمه" dir="auto">مقدمه</h2>`), strings.Index(page, "کلیدواژه"); i < 0 || k < i {
 		t.Error("R11.2-2: panel must render the lesson with keywords after it")
 	}
 

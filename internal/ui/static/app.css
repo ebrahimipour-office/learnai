@@ -182,6 +182,9 @@ pre, pre code { unicode-bidi: isolate; }
 .md ol > li[dir=auto], .md ul > li[dir=auto] { direction: rtl; text-align: start; }
 details.versions { margin: .75rem 0; }
 details.versions ul { margin: .25rem 0; }
+details.toc { margin: .75rem 0; }
+details.toc ul { margin: .25rem 0; }
+details.toc .toc-3 { margin-inline-start: 1.25rem; }
 details.regen { margin: .5rem 0; }
 details.regen > summary { cursor: pointer; color: var(--muted); }
 
