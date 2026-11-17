@@ -65,6 +65,13 @@ func parse(src []byte) (ast.Node, []byte) {
 func Markdown(src []byte) template.HTML {
 	var buf bytes.Buffer
 	doc, src := parse(src)
+	// T10.2: the page owns the only <h1>, so Markdown headings go one level down (TOC keeps Markdown levels).
+	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if h, ok := n.(*ast.Heading); ok && entering {
+			h.Level = min(h.Level+1, 6)
+		}
+		return ast.WalkContinue, nil
+	})
 	if err := md.Renderer().Render(&buf, src, doc); err != nil {
 		return template.HTML(template.HTMLEscapeString(string(src)))
 	}

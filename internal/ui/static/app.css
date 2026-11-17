@@ -179,8 +179,11 @@ progress::-moz-progress-bar { background: var(--accent); }
 .md { overflow-wrap: anywhere; direction: rtl; }
 /* blocks carry their own dir=auto, so pin each to its own reading-start edge */
 .md > :not(pre, table) { max-width: var(--measure); margin-inline: 0 auto; }
-.md h1, .md h2, .md h3 { margin-top: 2rem; }
-.md h1 { font-size: 1.6rem; }
+.md h2, .md h3, .md h4 { margin-top: 2rem; line-height: 1.35; }
+/* Markdown headings render one level down (T10.2); keep the sizes they had */
+.md h2 { font-size: 1.6rem; font-weight: 900; }
+.md h3 { font-size: 1.3rem; font-weight: 800; }
+.md h4 { font-size: 1.05rem; font-weight: 700; }
 .md blockquote { margin: 1rem 0; padding: .25rem 1rem; border-inline-start: 3px solid var(--line); color: var(--muted); }
 pre { overflow-x: auto; padding: .75rem 1rem; background: var(--surface-2); border-inline-start: 3px solid var(--line); line-height: 1.6; }
 /* T9.11: copy button sits on the code block's top right (the code is LTR); margin-left: auto pushes it there in either direction */

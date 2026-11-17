@@ -126,7 +126,7 @@ func TestLessonGenerateFlow(t *testing.T) {
 		t.Fatalf("job status %s", st)
 	}
 	page := e.get("/topics/1").Body.String()
-	for _, want := range []string{`<h2 id="h-مقدمه" dir="auto">مقدمه</h2>`, `<pre dir="ltr"><code class="language-go">`, "موفق", "نسخه 1"} {
+	for _, want := range []string{`<h3 id="h-مقدمه" dir="auto">مقدمه</h3>`, `<pre dir="ltr"><code class="language-go">`, "موفق", "نسخه 1"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("panel missing %q", want)
 		}
@@ -345,7 +345,7 @@ func TestLessonTOC(t *testing.T) {
 	if !strings.Contains(body, `<details class="toc">`) || !strings.Contains(body, `<li class="toc-3"><a href="#h-`) {
 		t.Fatalf("TOC missing:\n%s", body)
 	}
-	if !strings.Contains(body, `<h2 id="h-مقدمه" dir="auto">مقدمه</h2>`) {
+	if !strings.Contains(body, `<h3 id="h-مقدمه" dir="auto">مقدمه</h3>`) {
 		t.Error("lesson heading lacks its anchor id")
 	}
 }

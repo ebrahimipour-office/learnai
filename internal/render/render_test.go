@@ -12,7 +12,7 @@ func TestGolden(t *testing.T) {
 		"| الف | b |\n|---|:-:|\n| ۱ | x |\n\n" +
 		"```go\nfmt.Println(\"<b>\")\n```\n\n" +
 		"[بیرونی](https://go.dev) [داخلی](/topics) ![img](https://e.com/a.png)\n\n> نقل\n"
-	want := `<h1 id="h-سلام-go" dir="auto">سلام Go</h1>
+	want := `<h2 id="h-سلام-go" dir="auto">سلام Go</h2>
 <p dir="auto">متن فارسی با <code dir="ltr">fmt.Println</code> و کلمه English.</p>
 <ul>
 <li dir="auto">یک</li>
@@ -107,12 +107,12 @@ var headingID = regexp.MustCompile(` id="[^"]*"`)
 // T9.2: a Latin label like "[q01]" must not make a Persian heading LTR.
 func TestLabelledBlockDir(t *testing.T) {
 	for src, want := range map[string]string{
-		"## [q01] مقایسه var و :=": `<h2 dir="rtl">[q01] مقایسه var و :=</h2>`,
-		"## [q01] Compare vars":    `<h2 dir="auto">[q01] Compare vars</h2>`,
+		"## [q01] مقایسه var و :=": `<h3 dir="rtl">[q01] مقایسه var و :=</h3>`,
+		"## [q01] Compare vars":    `<h3 dir="auto">[q01] Compare vars</h3>`,
 		"[q02] متن پاراگراف":       `<p dir="rtl">[q02] متن پاراگراف</p>`,
-		"## [q01]":                 `<h2 dir="auto">[q01]</h2>`,
-		"## q01 مقایسه":            `<h2 dir="auto">q01 مقایسه</h2>`,
-		"## [q 1] مقایسه":          `<h2 dir="auto">[q 1] مقایسه</h2>`,
+		"## [q01]":                 `<h3 dir="auto">[q01]</h3>`,
+		"## q01 مقایسه":            `<h3 dir="auto">q01 مقایسه</h3>`,
+		"## [q 1] مقایسه":          `<h3 dir="auto">[q 1] مقایسه</h3>`,
 	} {
 		got := headingID.ReplaceAllString(strings.TrimSpace(string(Markdown([]byte(src)))), "") // ids are TestHeadingIDsAndTOC's
 		if got != want {
@@ -130,6 +130,15 @@ func TestHeadingIDsAndTOC(t *testing.T) {
 		t.Fatalf("TOC = %+v, want %+v", got, want)
 	}
 	html := string(Markdown(src))
+	// T10.2: the page has the only <h1>; every Markdown heading renders one level down.
+	for _, tag := range []string{`<h2 id="h-درس"`, `<h3 id="h-مقدمه"`, `<h4 id="h-نوع-int"`, `<h5 id="h-عمیق"`} {
+		if !strings.Contains(html, tag) {
+			t.Errorf("rendered HTML lacks %s:\n%s", tag, html)
+		}
+	}
+	if strings.Contains(html, "<h1") || !strings.Contains(string(Markdown([]byte("###### شش"))), "<h6") {
+		t.Errorf("want no <h1> and ###### capped at <h6>")
+	}
 	for i := range want {
 		if got[i] != want[i] {
 			t.Errorf("TOC[%d] = %+v, want %+v", i, got[i], want[i])
