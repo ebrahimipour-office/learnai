@@ -101,3 +101,19 @@ func TestStripBidi(t *testing.T) {
 		t.Fatalf("bidi not stripped or ZWNJ lost: %q", got)
 	}
 }
+
+// T9.2: a Latin label like "[q01]" must not make a Persian heading LTR.
+func TestLabelledBlockDir(t *testing.T) {
+	for src, want := range map[string]string{
+		"## [q01] مقایسه var و :=": `<h2 dir="rtl">[q01] مقایسه var و :=</h2>`,
+		"## [q01] Compare vars":    `<h2 dir="auto">[q01] Compare vars</h2>`,
+		"[q02] متن پاراگراف":       `<p dir="rtl">[q02] متن پاراگراف</p>`,
+		"## [q01]":                 `<h2 dir="auto">[q01]</h2>`,
+		"## q01 مقایسه":            `<h2 dir="auto">q01 مقایسه</h2>`,
+		"## [q 1] مقایسه":          `<h2 dir="auto">[q 1] مقایسه</h2>`,
+	} {
+		if got := strings.TrimSpace(string(Markdown([]byte(src)))); got != want {
+			t.Errorf("%q:\n got %s\nwant %s", src, got, want)
+		}
+	}
+}

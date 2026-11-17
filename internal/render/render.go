@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/microcosm-cc/bluemonday"
 	"github.com/yuin/goldmark"
@@ -66,7 +67,8 @@ func Markdown(src []byte) template.HTML {
 // dirTransformer marks generated text blocks dir="auto" and drops images.
 type dirTransformer struct{}
 
-func (dirTransformer) Transform(doc *ast.Document, _ text.Reader, _ parser.Context) {
+func (dirTransformer) Transform(doc *ast.Document, reader text.Reader, _ parser.Context) {
+	src := reader.Source()
 	var images []ast.Node
 	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
@@ -74,7 +76,7 @@ func (dirTransformer) Transform(doc *ast.Document, _ text.Reader, _ parser.Conte
 		}
 		switch n.(type) {
 		case *ast.Paragraph, *ast.Heading, *ast.ListItem, *ast.Blockquote, *east.TableCell:
-			n.SetAttributeString("dir", []byte("auto"))
+			n.SetAttributeString("dir", []byte(blockDir(n, src)))
 		case *ast.Image:
 			images = append(images, n)
 		}
@@ -83,4 +85,30 @@ func (dirTransformer) Transform(doc *ast.Document, _ text.Reader, _ parser.Conte
 	for _, img := range images {
 		img.Parent().RemoveChild(img.Parent(), img)
 	}
+}
+
+// tagPrefix matches a leading ASCII label such as "[q01] " in exercise headings.
+var tagPrefix = regexp.MustCompile(`^\[[A-Za-z0-9_-]+\]\s`)
+
+// blockDir is "auto", except a block opening with a Latin label like "[q01]" takes
+// its direction from the text after the label, so "[q01] مقایسه" stays RTL.
+func blockDir(n ast.Node, src []byte) string {
+	if n.Type() != ast.TypeBlock || n.Lines().Len() == 0 {
+		return "auto"
+	}
+	first := n.Lines().At(0)
+	line := first.Value(src)
+	loc := tagPrefix.FindIndex(line)
+	if loc == nil {
+		return "auto"
+	}
+	for _, r := range string(line[loc[1]:]) {
+		if unicode.In(r, unicode.Arabic, unicode.Hebrew, unicode.Syriac, unicode.Thaana, unicode.Nko) {
+			return "rtl"
+		}
+		if unicode.IsLetter(r) {
+			return "auto"
+		}
+	}
+	return "auto"
 }
