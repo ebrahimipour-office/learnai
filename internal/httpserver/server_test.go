@@ -764,3 +764,57 @@ fn(document, navigator, () => {}, () => 1, () => ({}));
 		t.Fatalf("node DOM test failed (%v): %s", err, out)
 	}
 }
+
+// T9.14: a header button picks auto/light/dark; theme.js runs in <head> (no flash) and remembers the choice.
+func TestThemeToggle(t *testing.T) {
+	e := newEnv(t)
+	page := e.do(httptest.NewRequest(http.MethodGet, "/topics", nil)).Body.String() // full page, not an htmx fragment
+	head, _, _ := strings.Cut(page, "</head>")
+	if !strings.Contains(head, `<script src="/static/theme.js"></script>`) || !strings.Contains(page, `<button type="button" class="theme-toggle" data-theme-toggle`) {
+		t.Fatal("layout must load theme.js in <head> without defer and render the theme button")
+	}
+	css := e.do(httptest.NewRequest(http.MethodGet, "/static/app.css", nil)).Body.String()
+	for _, want := range []string{`:root:not([data-theme="light"])`, `:root[data-theme="dark"]`, `:root[data-theme="light"]`} {
+		if !strings.Contains(css, want) {
+			t.Errorf("app.css missing %s", want)
+		}
+	}
+	rec := e.do(httptest.NewRequest(http.MethodGet, "/static/theme.js", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("theme.js: %d", rec.Code)
+	}
+	nodePath, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node not available on host; skipping node DOM test")
+	}
+	script := `
+const code = process.argv[1];
+function run(stored, blocked) {
+  const attrs = {}, store = stored ? { theme: stored } : {}, listeners = {};
+  const btn = { textContent: "", closest: (s) => (s === "button[data-theme-toggle]" ? btn : null) };
+  const document = {
+    documentElement: { setAttribute(k, v) { attrs[k] = v; }, removeAttribute(k) { delete attrs[k]; } },
+    querySelector: (s) => (s === "button[data-theme-toggle]" ? btn : null),
+    addEventListener(evt, fn) { listeners[evt] = fn; },
+  };
+  const localStorage = blocked ? { getItem() { throw 1; }, setItem() { throw 1; }, removeItem() { throw 1; } }
+    : { getItem: (k) => store[k] ?? null, setItem(k, v) { store[k] = v; }, removeItem(k) { delete store[k]; } };
+  new Function("document", "localStorage", code)(document, localStorage);
+  return { attrs, store, btn, click: () => listeners.click({ target: btn }) };
+}
+let r = run("dark");
+if (r.attrs["data-theme"] !== "dark" || r.btn.textContent !== "تم: تاریک") process.exit(2);
+r.click(); // dark → auto
+if ("data-theme" in r.attrs || "theme" in r.store || r.btn.textContent !== "تم: خودکار") process.exit(3);
+r.click(); // auto → light
+if (r.attrs["data-theme"] !== "light" || r.store.theme !== "light") process.exit(4);
+r = run("bogus");
+if ("data-theme" in r.attrs) process.exit(5);
+r = run(null, true); // storage blocked: still works for this page
+r.click();
+if (r.attrs["data-theme"] !== "light") process.exit(6);
+`
+	if out, err := exec.Command(nodePath, "-e", script, rec.Body.String()).CombinedOutput(); err != nil {
+		t.Fatalf("node theme test failed (%v): %s", err, out)
+	}
+}
