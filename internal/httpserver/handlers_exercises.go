@@ -17,7 +17,6 @@ import (
 	"learninghub/internal/domain"
 	"learninghub/internal/fsx"
 	"learninghub/internal/jobs"
-	"learninghub/internal/render"
 	"learninghub/internal/services/topics"
 )
 
@@ -123,13 +122,13 @@ func (a *app) fillSet(r *http.Request, d *pageData) error {
 		d.Exercises = append(d.Exercises, row)
 	}
 	if d.Tab == "exercises" {
-		b, err := a.root.ReadFile(d.Set.ExercisesRel)
+		m, err := a.md.get(d.Set.ExercisesRel)
 		if err != nil {
 			slog.Warn("reading exercises file", "path", d.Set.ExercisesRel, "error", err)
-			d.Error = "فایل تمرین‌ها روی دیسک پیدا نشد: " + d.Set.ExercisesRel
+			d.Error = fileError(err, "فایل تمرین‌ها روی دیسک پیدا نشد: ", d.Set.ExercisesRel)
 			return nil
 		}
-		d.ExercisesMD = render.Markdown(b)
+		d.ExercisesMD = m.HTML
 	}
 	return nil
 }
@@ -155,13 +154,13 @@ func (a *app) fillReports(r *http.Request, d *pageData) error {
 	for i := range d.AttemptItems {
 		if x := &d.AttemptItems[i]; ex != "" && x.ExID == ex && x.ReportRel != "" {
 			d.ReportItem = x
-			b, err := a.root.ReadFile(x.ReportRel)
+			m, err := a.md.get(x.ReportRel)
 			if err != nil {
 				slog.Warn("reading report file", "path", x.ReportRel, "error", err)
-				d.Error = "فایل گزارش روی دیسک پیدا نشد: " + x.ReportRel
+				d.Error = fileError(err, "فایل گزارش روی دیسک پیدا نشد: ", x.ReportRel)
 				return nil
 			}
-			d.ReportMD = render.Markdown(b)
+			d.ReportMD = m.HTML
 		}
 	}
 	return nil

@@ -9,7 +9,6 @@ import (
 
 	"learninghub/internal/domain"
 	"learninghub/internal/jobs"
-	"learninghub/internal/render"
 	"learninghub/internal/services/topics"
 )
 
@@ -97,12 +96,11 @@ func (a *app) showSource(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
 		return
 	}
-	b, err := a.root.ReadFile(d.Panel.Source.RelPath)
-	if err != nil {
+	if m, err := a.md.get(d.Panel.Source.RelPath); err != nil {
 		slog.Warn("reading chapter source", "path", d.Panel.Source.RelPath, "error", err)
-		d.Error = "فایل متن فصل روی دیسک پیدا نشد: " + d.Panel.Source.RelPath
+		d.Error = fileError(err, "فایل متن فصل روی دیسک پیدا نشد: ", d.Panel.Source.RelPath)
 	} else {
-		d.Lesson = render.Markdown(b)
+		d.Lesson = m.HTML
 	}
 	a.render(w, http.StatusOK, "topic", "layout", d)
 }
@@ -120,13 +118,13 @@ func (a *app) fillLesson(r *http.Request, d *pageData) {
 	if d.Viewing == nil {
 		return
 	}
-	b, err := a.root.ReadFile(d.Viewing.RelPath)
+	m, err := a.md.get(d.Viewing.RelPath)
 	if err != nil {
 		slog.Warn("reading lesson file", "path", d.Viewing.RelPath, "error", err)
-		d.Error = "فایل درس روی دیسک پیدا نشد: " + d.Viewing.RelPath
+		d.Error = fileError(err, "فایل درس روی دیسک پیدا نشد: ", d.Viewing.RelPath)
 		return
 	}
-	d.Lesson, d.TOC = render.Markdown(b), render.TOC(b)
+	d.Lesson, d.TOC = m.HTML, m.TOC
 }
 
 // respond answers a job action: htmx gets the job-area fragment with status; a plain form

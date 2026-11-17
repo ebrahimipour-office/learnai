@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"fmt"
 	"html/template"
@@ -35,6 +36,7 @@ type app struct {
 	root   *fsx.Root
 	sync   *syncsvc.Service
 	pages  map[string]*template.Template
+	md     *mdCache // rendered lesson/source/exercises/report files (T10.6)
 
 	settings  Settings
 	probeMu   sync.Mutex
@@ -129,7 +131,8 @@ type treeNode struct {
 
 func newApp(sm *SecurityManager, drafts *roadmaps.Service, topicList *topics.Service, runner *jobs.Runner, root *fsx.Root, settings Settings) *app {
 	a := &app{sm: sm, drafts: drafts, topics: topicList, runner: runner, root: root, settings: settings, pages: map[string]*template.Template{},
-		sync: &syncsvc.Service{DB: settings.DB, Root: root}}
+		sync: &syncsvc.Service{DB: settings.DB, Root: root},
+		md:   &mdCache{root: root, max: cmp.Or(settings.MaxViewBytes, 1<<20), entries: map[mdKey]rendered{}}}
 	funcs := template.FuncMap{
 		"statusLabel": func(s string) string { return statusLabels[s] },
 		"jobStatus":   func(s string) string { return jobStatusLabels[s] },

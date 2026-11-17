@@ -148,6 +148,13 @@ func TestChapterSourceTab(t *testing.T) {
 		t.Errorf("source tab: unsanitized, has a job card, or tab not current:\n%s", body)
 	}
 
+	// T10.6: a file over the display cap (default 1 MB) gets a notice, not a 500 or a full read.
+	if err := os.WriteFile(filepath.Join(e.base, filepath.FromSlash(rel)), []byte(strings.Repeat("a", 1<<20+1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if rec := e.do(httptest.NewRequest(http.MethodGet, src, nil)); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "فایل بزرگ‌تر از حد نمایش است: "+rel) {
+		t.Errorf("oversized source.md: want 200 with notice, got %d", rec.Code)
+	}
 	if err := os.Remove(filepath.Join(e.base, filepath.FromSlash(rel))); err != nil {
 		t.Fatal(err)
 	}
