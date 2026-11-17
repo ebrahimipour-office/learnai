@@ -287,12 +287,7 @@ func TestCR43_DoctorProbesSelectedAdapterAndPreservesExistingTestFile(t *testing
 	}
 
 	dir := t.TempDir()
-	appDir := filepath.Join(dir, ".app")
-	if err := os.MkdirAll(appDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	dbPath := filepath.Join(appDir, "app.db")
-	db, err := store.Open(dbPath)
+	db, err := store.Open(filepath.Join(dir, "app.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

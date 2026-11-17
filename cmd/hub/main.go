@@ -143,7 +143,7 @@ func runDoctor(args []string) {
 	defer cancel()
 
 	kind := cfg.Adapter.Kind
-	dbPath := filepath.Join(cfg.BaseDir, ".app", "app.db")
+	dbPath := dbFile(cfg)
 	if db, err := store.OpenReadOnly(dbPath); err == nil {
 		kind = httpserver.SavedAdapter(ctx, db, cfg.Adapter.Kind)
 		db.Close()
@@ -224,7 +224,7 @@ func runMigrate(args []string) {
 	}
 	defer lock.Unlock()
 
-	dbPath := filepath.Join(cfg.BaseDir, "app.db")
+	dbPath := dbFile(cfg)
 	fmt.Printf("Opening database and applying migrations at: %s\n", dbPath)
 
 	db, err := store.Open(dbPath)
@@ -262,7 +262,7 @@ func runRebuild(args []string) {
 		os.Exit(1)
 	}
 	if *dbPath == "" {
-		*dbPath = filepath.Join(cfg.BaseDir, "app.db")
+		*dbPath = dbFile(cfg)
 	}
 	root, err := fsx.OpenRoot(cfg.BaseDir)
 	if err != nil {
@@ -365,7 +365,7 @@ func runServe(args []string) error {
 	defer cancel()
 
 	// Initialize database
-	dbPath := filepath.Join(cfg.BaseDir, "app.db")
+	dbPath := dbFile(cfg)
 	db, err := store.Open(dbPath)
 	if err != nil {
 		slog.Error("Failed to initialize database", "path", dbPath, "error", err)
@@ -475,6 +475,9 @@ func serve(args []string) {
 		os.Exit(1)
 	}
 }
+
+// dbFile is the one place the database location is defined; every subcommand uses it.
+func dbFile(cfg config.Config) string { return filepath.Join(cfg.BaseDir, "app.db") }
 
 // newAdapter builds every configured AI tool behind one switch, starting with kind.
 func newAdapter(cfg config.Config, logs *fsx.Root, kind string) *ai.Switch {
