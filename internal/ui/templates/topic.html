@@ -150,8 +150,11 @@
     <button type="submit"{{if $busy}} disabled{{end}} class="primary">ارزیابی</button>
   </form>
   {{else}}<p class="note">برای ارزیابی ابتدا تمرین‌های این موضوع را بسازید.</p>{{end}}
+  {{else if eq .Tab "answers"}}
+  {{if not .Sets}}<p class="note">هنوز مجموعه تمرینی نیست؛ از <a href="/topics/{{.Panel.ID}}/exercises">تب تمرین‌ها</a> بسازید.</p>{{end}}
   {{else if .Tab}}
   {{if .Panel.Lessons}}
+  {{if .Sets}}<details class="regen"><summary>مجموعه جدید…</summary>{{end}}
   <form method="post" action="/topics/{{.Panel.ID}}/jobs/exercises" hx-post="/topics/{{.Panel.ID}}/jobs/exercises" hx-target="#job-area" hx-swap="outerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="csrf_token" value="{{.CSRF}}"><input type="hidden" name="tab" value="{{.Tab}}">
     <label>تعداد تمرین <input type="number" name="count" min="{{.CountMin}}" max="{{.CountMax}}" placeholder="پیش‌فرض"{{if $busy}} disabled{{end}}></label>
@@ -163,8 +166,10 @@
     <button type="submit"{{if $busy}} disabled{{end}} class="primary">تولید تمرین</button>
     {{end}}
   </form>
+  {{if .Sets}}</details>{{end}}
   {{else}}<p class="note">برای ساخت تمرین ابتدا درس این موضوع را تولید کنید.</p>{{end}}
   {{else}}
+  {{if .Panel.Lessons}}<details class="regen"><summary>بازتولید درس…</summary>{{end}}
   <form method="post" action="/topics/{{.Panel.ID}}/jobs/lesson" hx-post="/topics/{{.Panel.ID}}/jobs/lesson" hx-target="#job-area" hx-swap="outerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="csrf_token" value="{{.CSRF}}">
     {{if .Panel.Lessons}}
@@ -175,8 +180,9 @@
     <button type="submit"{{if $busy}} disabled{{end}} class="primary">تولید درس</button>
     {{end}}
   </form>
+  {{if .Panel.Lessons}}</details>{{end}}
   {{end}}
-  {{with .Job}}
+  {{with .Job}}{{if .ShowCard}}
   <div class="job-card job-{{.Status}}">
     <strong>{{jobKind .Kind}}</strong> <span class="badge">{{jobStatus .Status}}</span>
     {{if .Active}}{{with .Phase}}<span>مرحله: {{jobPhase .}}</span>{{end}}{{end}}
@@ -193,6 +199,6 @@
       <input type="hidden" name="csrf_token" value="{{$.CSRF}}"><input type="hidden" name="tab" value="{{$.Tab}}"><button type="submit" class="danger"{{if .CancelRequested}} disabled{{end}}>{{if .CancelRequested}}در حال لغو…{{else}}لغو{{end}}</button>
     </form>{{end}}
   </div>
-  {{end}}
+  {{end}}{{end}}
 </div>
 {{end}}

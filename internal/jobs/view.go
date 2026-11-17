@@ -24,6 +24,19 @@ func (i *Info) Active() bool {
 	return i.Status == string(domain.JobStatusQueued) || i.Status == string(domain.JobStatusRunning)
 }
 
+// cardTTL is how long a finished, non-failed job's card stays on its panel.
+const cardTTL = 10 * time.Minute
+
+// ShowCard reports whether the panel shows this job's card: active or failed jobs
+// always, others only shortly after they finish (so a just-finished one is seen).
+func (i *Info) ShowCard() bool {
+	if i.Active() || i.Status == string(domain.JobStatusFailed) {
+		return true
+	}
+	t, err := time.Parse(time.RFC3339Nano, i.FinishedAt)
+	return err == nil && time.Since(t) < cardTTL
+}
+
 // Duration is the run time so far (or in total once finished), rounded to seconds; 0 if not started.
 func (i *Info) Duration() time.Duration {
 	start, err := time.Parse(time.RFC3339Nano, i.StartedAt)

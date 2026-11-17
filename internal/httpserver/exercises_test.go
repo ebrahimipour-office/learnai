@@ -465,3 +465,39 @@ func TestOpenFileBatchShim(t *testing.T) {
 		}
 	}
 }
+
+// T9.4: generate forms sit only on their own tab, regenerate forms are collapsed,
+// and an old successful job's card is dropped.
+func TestPanelFormsPlacement(t *testing.T) {
+	e := newEnv(t)
+	e.exerciseSet() // topic 1 gets a lesson and a set; topic 2 has neither
+	if ans := e.get("/topics/2/answers").Body.String(); strings.Contains(ans, `name="count"`) || !strings.Contains(ans, `href="/topics/2/exercises"`) {
+		t.Error("answers tab without a set: no exercises form, only a link to the exercises tab")
+	}
+	if ans := e.get("/topics/1/answers").Body.String(); strings.Contains(ans, `name="count"`) {
+		t.Error("answers tab must not carry the new-set form")
+	}
+	ex := e.get("/topics/1/exercises").Body.String()
+	if !strings.Contains(ex, `name="count"`) || !strings.Contains(ex, `<details class="regen"><summary>مجموعه جدید…`) {
+		t.Error("exercises tab: new-set form must be collapsed in details.regen")
+	}
+	lesson := e.get("/topics/1").Body.String()
+	if !strings.Contains(lesson, `<details class="regen"><summary>بازتولید درس…`) {
+		t.Error("existing lesson: regenerate form must be collapsed")
+	}
+	if !strings.Contains(lesson, `class="job-card job-succeeded"`) {
+		t.Error("a just-finished job's card must show")
+	}
+	if _, err := e.db.Writer().Exec(`UPDATE jobs SET finished_at = '2026-01-01T00:00:00Z'`); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(e.get("/topics/1").Body.String(), "job-card") {
+		t.Error("an old successful job's card must not render")
+	}
+	if _, err := e.db.Writer().Exec(`UPDATE jobs SET status = 'failed', error_code = 'x', error_message = 'boom' WHERE kind = 'lesson'`); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(e.get("/topics/1").Body.String(), "job-failed") {
+		t.Error("a failed job's card must always render")
+	}
+}
