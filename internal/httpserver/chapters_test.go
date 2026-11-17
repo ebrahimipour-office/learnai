@@ -133,11 +133,14 @@ func TestChapterSourceTab(t *testing.T) {
 		t.Fatal(err)
 	}
 	src := fmt.Sprintf("/topics/%d/source", id)
-	if body := e.get(fmt.Sprintf("/topics/%d", id)).Body.String(); !strings.Contains(body, `href="`+src+`"`) {
-		t.Error("panel has no chapter text tab")
+	if body := e.get(fmt.Sprintf("/topics/%d", id)).Body.String(); !strings.Contains(body, `href="`+src+`"`) || !strings.Contains(body, "<title>درس · One · Learning Hub</title>") {
+		t.Error("panel has no chapter text tab or no tab name in <title>")
 	}
 	rec := e.do(httptest.NewRequest(http.MethodGet, src, nil))
 	body := rec.Body.String()
+	if !strings.Contains(body, "<title>متن فصل · One · Learning Hub</title>") { // T10.3
+		t.Error("source tab must name itself in <title>")
+	}
 	if rec.Code != http.StatusOK || !strings.Contains(body, "text of chapter one") || strings.Contains(body, "chapter two") {
 		t.Fatalf("source tab: %d %s", rec.Code, body)
 	}

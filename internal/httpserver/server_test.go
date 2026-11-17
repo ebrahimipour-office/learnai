@@ -773,6 +773,10 @@ func TestThemeToggle(t *testing.T) {
 	if !strings.Contains(head, `<script src="/static/theme.js"></script>`) || !strings.Contains(page, `<button type="button" class="theme-toggle" data-theme-toggle`) {
 		t.Fatal("layout must load theme.js in <head> without defer and render the theme button")
 	}
+	// T10.3: skip link first in <body>, targeting a focusable <main>; the theme button announces its new state.
+	if _, body, _ := strings.Cut(page, "<body"); !strings.Contains(body, `<a class="skip" href="#main">`) || !strings.Contains(page, `<main id="main" tabindex="-1">`) || !strings.Contains(page, `aria-live="polite">تم:`) {
+		t.Error("layout must render the skip link, main#main and a live theme button")
+	}
 	css := e.do(httptest.NewRequest(http.MethodGet, "/static/app.css", nil)).Body.String()
 	for _, want := range []string{`:root:not([data-theme="light"])`, `:root[data-theme="dark"]`, `:root[data-theme="light"]`} {
 		if !strings.Contains(css, want) {

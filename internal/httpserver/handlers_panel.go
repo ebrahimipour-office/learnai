@@ -35,6 +35,11 @@ var tabJobKind = map[string]domain.JobKind{
 	"": domain.JobKindLesson, "exercises": domain.JobKindExercises, "answers": domain.JobKindExercises, "reports": domain.JobKindEvaluate,
 }
 
+// tabTitles names each tab in the page <title> so browser tabs and history tell them apart (T10.3).
+var tabTitles = map[string]string{
+	"": "درس", "source": "متن فصل", "exercises": "تمرین‌ها", "answers": "فایل‌های پاسخ", "reports": "گزارش‌ها", "suggestions": "پیشنهادها",
+}
+
 // panelData loads the topic and its tab's latest job; job overrides the latest one when non-nil.
 func (a *app) panelData(r *http.Request, id int64, tab string, job *jobs.Info) (*pageData, error) {
 	p, err := a.topics.Panel(r.Context(), id)
@@ -47,7 +52,7 @@ func (a *app) panelData(r *http.Request, id int64, tab string, job *jobs.Info) (
 		}
 	}
 	c := a.settings.Exercises
-	return &pageData{Title: p.Title, Panel: p, Job: job, Tab: tab, CountMin: c.CountMin, CountMax: c.CountMax}, nil
+	return &pageData{Title: tabTitles[tab] + " · " + p.Title, Panel: p, Job: job, Tab: tab, CountMin: c.CountMin, CountMax: c.CountMax}, nil
 }
 
 func (a *app) showTopic(w http.ResponseWriter, r *http.Request) {
