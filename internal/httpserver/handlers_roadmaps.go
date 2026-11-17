@@ -148,6 +148,7 @@ func newApp(sm *SecurityManager, drafts *roadmaps.Service, topicList *topics.Ser
 		"sugKind":     func(s string) string { return suggestionKindLabels[s] },
 		"sugStatus":   func(s string) string { return suggestionStatusLabels[s] },
 		"fileKind":    func(s string) string { return fileKindLabels[s] },
+		"scoreTrend":  scoreTrend,
 	}
 	for _, p := range []string{"new", "draft", "topics", "topic", "settings", "sync"} {
 		a.pages[p] = template.Must(template.New(p).Funcs(funcs).ParseFS(ui.FS, "templates/layout.html", "templates/"+p+".html"))

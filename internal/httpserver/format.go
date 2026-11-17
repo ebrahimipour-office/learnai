@@ -4,6 +4,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"learninghub/internal/services/topics"
 )
 
 var faDigits = strings.NewReplacer("0", "۰", "1", "۱", "2", "۲", "3", "۳", "4", "۴", "5", "۵", "6", "۶", "7", "۷", "8", "۸", "9", "۹")
@@ -42,4 +44,40 @@ func faDuration(d time.Duration) string {
 		return "۰ ثانیه"
 	}
 	return strings.Join(parts, " و ")
+}
+
+// trendPoint is one attempt on the score chart, in viewBox units.
+type trendPoint struct {
+	X, Y  string
+	No    int64
+	Score float64
+}
+
+// trend is the score chart: Line feeds an SVG polyline, Points its markers.
+type trend struct {
+	Points []trendPoint
+	Line   string
+}
+
+// scoreTrend lays attempts (newest first, as topics.Attempts returns them) out in a 300×110 viewBox:
+// score 0–100 maps to y 105–5, and time runs right to left so attempt 1 sits on the right (RTL).
+// Fewer than two attempts ⇒ nil: one point is not a trend.
+func scoreTrend(as []topics.Attempt) *trend {
+	if len(as) < 2 {
+		return nil
+	}
+	t := &trend{}
+	step := 280 / float64(len(as)-1)
+	var b strings.Builder
+	for k, a := range as {
+		s := min(max(a.Score, 0), 100)
+		x, y := strconv.FormatFloat(10+float64(k)*step, 'f', 1, 64), strconv.FormatFloat(105-s, 'f', 1, 64)
+		t.Points = append(t.Points, trendPoint{X: x, Y: y, No: a.No, Score: a.Score})
+		if k > 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteString(x + "," + y)
+	}
+	t.Line = b.String()
+	return t
 }

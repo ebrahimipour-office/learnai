@@ -343,6 +343,9 @@ func TestReportsTab(t *testing.T) {
 	if strings.Contains(page, "RAW-ANSWER") {
 		t.Error("report body must show only on the exercise report page")
 	}
+	if strings.Contains(page, `class="trend"`) {
+		t.Error("one attempt must not draw a trend chart")
+	}
 
 	// B7: each tab shows only its own job kind's card; B8: one score format on every page.
 	if strings.Contains(e.get("/topics/1/lesson").Body.String(), `<strong>ارزیابی</strong>`) {
@@ -359,6 +362,13 @@ func TestReportsTab(t *testing.T) {
 	}
 	if strings.Contains(e.get("/topics/1/reports?attempt=1&ex=q02").Body.String(), `id="report"`) {
 		t.Error("unanswered exercise has no report")
+	}
+
+	// T9.13: a second attempt draws the score trend.
+	e.evaluate() // attempt 2, score 50
+	if trend := e.get("/topics/1/reports").Body.String(); !strings.Contains(trend, `<polyline points="`) ||
+		strings.Count(trend, "<circle ") != 2 || !strings.Contains(trend, "<title>تلاش 2: 50.00</title>") {
+		t.Error("two attempts must draw the score trend with one titled point each")
 	}
 }
 

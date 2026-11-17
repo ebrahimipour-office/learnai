@@ -1,8 +1,11 @@
 package httpserver
 
 import (
+	"reflect"
 	"testing"
 	"time"
+
+	"learninghub/internal/services/topics"
 )
 
 func TestFaDuration(t *testing.T) {
@@ -26,5 +29,20 @@ func TestLocalTime(t *testing.T) {
 	}
 	if got := localTime("not a time"); got != "not a time" {
 		t.Errorf("unparsable input must pass through, got %q", got)
+	}
+}
+
+// TestScoreTrend: under two attempts no chart; otherwise one point per attempt, 0–100 on y 105–5, attempt 1 rightmost (T9.13).
+func TestScoreTrend(t *testing.T) {
+	if scoreTrend(nil) != nil || scoreTrend([]topics.Attempt{{No: 1, Score: 80}}) != nil {
+		t.Fatal("fewer than two attempts must give no chart")
+	}
+	tr := scoreTrend([]topics.Attempt{{No: 3, Score: 100}, {No: 2, Score: 50}, {No: 1, Score: 0}}) // newest first
+	want := []trendPoint{{"10.0", "5.0", 3, 100}, {"150.0", "55.0", 2, 50}, {"290.0", "105.0", 1, 0}}
+	if !reflect.DeepEqual(tr.Points, want) || tr.Line != "10.0,5.0 150.0,55.0 290.0,105.0" {
+		t.Errorf("got %+v %q", tr.Points, tr.Line)
+	}
+	if tr := scoreTrend([]topics.Attempt{{No: 2, Score: 120}, {No: 1, Score: -5}}); tr.Points[0].Y != "5.0" || tr.Points[1].Y != "105.0" {
+		t.Errorf("out-of-range scores must clamp to the chart: %+v", tr.Points)
 	}
 }

@@ -128,6 +128,16 @@
       <td data-label="پاسخ‌داده‌شده">{{if .Partial}}<span class="badge warn">ناقص ({{.Answered}} از {{.Total}} پاسخ‌داده‌شده)</span>{{else}}{{.Answered}} از {{.Total}}{{end}}</td>
     </tr>{{end}}</tbody>
   </table>
+  {{with scoreTrend .Attempts}}
+  <figure class="trend">
+    <svg viewBox="0 0 300 110" role="img" aria-label="روند نمره موضوع در تلاش‌ها؛ تلاش ۱ در سمت راست">
+      <line x1="10" y1="5" x2="290" y2="5"/><line x1="10" y1="55" x2="290" y2="55"/><line x1="10" y1="105" x2="290" y2="105"/>
+      <polyline points="{{.Line}}"/>
+      {{range .Points}}<circle cx="{{.X}}" cy="{{.Y}}" r="4"><title>تلاش {{.No}}: {{num .Score}}</title></circle>{{end}}
+    </svg>
+    <figcaption class="note">روند نمره موضوع (۰ تا ۱۰۰)</figcaption>
+  </figure>
+  {{end}}
   {{with .Attempt}}
   <h2>تلاش {{.No}} — نمره موضوع <span class="score">{{num .Score}}</span>
     {{if .Partial}}<span class="badge warn">ناقص ({{.Answered}} از {{.Total}} پاسخ‌داده‌شده)</span>{{end}}</h2>
