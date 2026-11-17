@@ -3,10 +3,9 @@
 > **Autonomous, Local-First AI Learning Assistant for Software Engineers and Developers**  
 > Transform standard Markdown roadmaps into interactive, personalized curriculum with autonomous lesson generation, starter code templates, automated evaluation, and rigorous academic scoring.
 
-[![Go Version](https://img.shields.io/badge/Go-1.24%2B-00ADD8?style=flat&logo=go)](https://go.dev/)
+[![Go Version](https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![SQLite](https://img.shields.io/badge/SQLite-WAL%20(No--CGO)-003B57?style=flat&logo=sqlite)](https://modernc.org/sqlite)
 [![UI](https://img.shields.io/badge/Frontend-SSR%20%2B%20HTMX-3366CC?style=flat&logo=htmx)](https://htmx.org/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)](#installation-guide)
 
 ---
@@ -44,7 +43,7 @@ Unlike conventional AI tools that unsafely mutate your disk files or execute arb
 
 ## ✨ Key Features
 
-- 🗺️ **Roadmap Ingestion & AST Parsing:** Upload any Markdown roadmap (GitHub READMEs, personal notes, syllabi). The engine parses AST with `goldmark` using flexible rules (`deepest`, `level`, `items`, `chapters`, or `tree`).
+- 🗺️ **Roadmap Ingestion & AST Parsing:** Upload any Markdown roadmap (GitHub READMEs, personal notes, syllabi). The engine parses AST with `goldmark` using selection rules (`deepest`, `level`, `items`, or `tree`); the AI can also suggest a rule or detect chapters.
 - 🔄 **Intelligent Re-import Diff Engine:** Update your syllabus at any time without losing study history. Fuzzy Levenshtein diffing highlights new, changed, archived, and unchanged topics.
 - 📚 **Comprehensive Lesson Publishing:** Generates deep, contextual lessons in Persian with bi-directional (`<bdi>`) isolation for English code and terms, complete with automated XSS sanitization (`bluemonday`) and revision history (`lesson.NNNN.md`).
 - ✍️ **Structured Exercise Sets & Starter Code:** Decomposes lessons into structured practical exercises (`q01`..`qNN`) with language-specific comment headers (`@hub`), starter code, manifest contracts, and evaluation rubrics.
@@ -128,7 +127,7 @@ Learning Hub executes AI CLI tools in **headless mode**. At least **one** of the
 
 ### Option A: Pre-compiled Single Binary (Recommended)
 
-1. Download the release binary for your platform from the [Releases](https://github.com/your-org/learnai/releases) page:
+1. Get the release binary for your platform (`make release` writes them to `dist/`, together with `INSTALL.md`):
    - **Windows:** `hub.exe`
    - **Linux:** `hub`
 2. Create a dedicated directory for your learning hub (e.g., `C:\LearningHub` or `~/learninghub`).
@@ -144,21 +143,21 @@ Learning Hub executes AI CLI tools in **headless mode**. At least **one** of the
 
 ### Option B: Building from Source
 
-**Requirements:** Go 1.24 or higher and Make (optional).
+**Requirements:** Go 1.26 or higher and Make (optional).
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/your-org/learnai.git
+git clone <repository-url> learnai
 cd learnai
 
 # 2. Run the automated test suite
 go test ./cmd/... ./internal/... ./skills/...
 
 # 3. Build single binary
-go build -o hub cmd/hub/main.go          # On Linux/macOS
-go build -o hub.exe cmd/hub/main.go      # On Windows
+CGO_ENABLED=0 go build -o hub ./cmd/hub        # On Linux/macOS
+CGO_ENABLED=0 go build -o hub.exe ./cmd/hub    # On Windows
 
-# Or build verified reproducible release binaries
+# Or build release binaries for Windows and Linux into dist/ (needs a clean git tree)
 make release
 ```
 
@@ -183,29 +182,30 @@ By default, the server binds exclusively to the local loopback interface: **[htt
 2. On initial startup, review and accept the Privacy Notice in **Settings**.
 3. Click **"ورود نقشه راه" (Import Roadmap)**.
 4. Upload any Markdown file containing syllabus headings.
-5. Select a parsing strategy:
-   - `deepest` (Default): Extracts the deepest nested headings as curriculum topics.
-   - `chapters`: Segregates topics into distinct chronological chapters.
-   - `tree`: Retains full parent-child hierarchy.
-   - `items`: Converts markdown lists into study topics.
+5. Select a selection rule:
+   - `deepest` (Default): Leaf headings (headings with no sub-heading) become topics.
+   - `level`: Headings at one chosen level become topics.
+   - `items`: Top-level list items under headings become topics.
+   - `tree`: Every selected heading at any depth becomes a topic (optionally limited to chosen chapters).
+   - Or let the AI suggest a rule or detect chapters for you.
 6. Review the interactive preview and click **Confirm**.
 
 ### 4. Study Lessons
 1. Navigate to any topic in your library.
 2. Click **"تولید درس" (Generate Lesson)**. The Job Runner will enqueue and execute the task in the background.
 3. The lesson is rendered with syntax-highlighted code blocks, clear terminology, and automatic RTL/LTR isolation.
-4. Regenerating a lesson archives the previous version safely in `lesson/history/lesson.0001.md`.
+4. Regenerating a lesson (**"بازتولید درس"**) archives the previous version safely in `lesson/history/lesson.0001.md`.
 
 ### 5. Practice with Exercises
 1. Open the **"تمرین‌ها" (Exercises)** tab.
-2. Click **"تولید تمرین‌ها" (Generate Exercises)**. The AI produces 3–12 modular tasks (`q01`, `q02`, ...) with starter code templates and a grading rubric.
+2. Click **"تولید تمرین" (Generate Exercises)**. The AI produces 3–12 modular tasks (6 by default) (`q01`, `q02`, ...) with starter code templates and a grading rubric.
 3. Switch to the **"فایل‌های پاسخ" (Answer Files)** tab.
 4. Click **"کپی مسیر" (Copy Path)** next to any exercise.
 5. Open the file in your preferred code editor (VS Code, GoLand, PyCharm, Neovim) and implement your solution beneath the `@hub` comment header.
 
 ### 6. Evaluate and Review Reports
 1. In the topic panel, open the **"گزارش‌ها" (Reports)** tab.
-2. Select **Incremental Evaluation** (recommended) or **Full Evaluation**, and click **"شروع ارزیابی"**.
+2. Select **"افزایشی" (Incremental)** (recommended) or **"کامل" (Full)**, and click **"ارزیابی" (Evaluate)**.
 3. Review your grade breakdown:
    - Detailed feedback per question (`q01-report.md`) with criteria breakdown, strengths, and actionable educational tips.
    - Overall topic summary score (`summary.md`).
@@ -219,16 +219,16 @@ By default, the server binds exclusively to the local loopback interface: **[htt
 Usage: hub <command> [flags]
 
 Commands:
-  serve       Start the local web application server (Default)
+  serve       Start the local web application server (default when no command is given)
   doctor      Probe AI CLI readiness, model availability, and disk permissions
-  migrate     Execute database schema migrations up to target version
-  rebuild     Reconstruct SQLite database from on-disk markdown and asset files
-  version     Display application version, VCS git revision, and build metadata
+  migrate     Apply database schema migrations (the server must be stopped)
+  rebuild     Reconstruct the SQLite database from on-disk markdown and JSON files
+  version     Display application version, VCS git revision, and build date
 
 Flags:
-  --config    Path to custom config.toml (overrides default search paths)
-  --base-dir  Override working base directory (defaults to current working directory)
-  --json      Output doctor diagnostics or version information in JSON format
+  --config    Path to a custom config.toml (serve, doctor, migrate, rebuild)
+  --json      Print doctor diagnostics as JSON (doctor only)
+  --db        Database file to create; must be new or empty (rebuild only)
 ```
 
 ### Examples:
@@ -247,62 +247,68 @@ hub rebuild --db app-recovered.db
 
 ## ⚙️ Configuration Reference (`config.toml`)
 
-Learning Hub automatically looks for `config.toml` in:
-- **Windows:** `%APPDATA%\LearningHub\config.toml`
-- **Linux/macOS:** `~/.config/learninghub/config.toml`
-- Or via the `--config <path>` command-line flag.
+Learning Hub uses the first config file it finds:
+1. The `--config <path>` command-line flag.
+2. `config.toml` in the current working directory.
+3. **Windows:** `%APPDATA%\LearningHub\config.toml` — **Linux/macOS:** `$XDG_CONFIG_HOME/learninghub/config.toml` or `~/.config/learninghub/config.toml`.
+
+With no file, built-in defaults apply and the current directory is the base directory. Unknown keys are rejected and durations need units (`"10m"`). The full commented example is [`config.example.toml`](config.example.toml); the values below are the defaults.
 
 ```toml
-# Learning Hub Configuration
-
-base_dir = "."                     # Base working directory for topics and data
-draft_ttl = "24h"                  # Unconfirmed roadmap draft expiration
-
-[server]
-host = "127.0.0.1"                 # Loopback only for local security
-port = 8787                        # Port to listen on
+# base_dir = "/abs/path"           # Base directory (absolute); default: current working directory
+listen = "127.0.0.1:8787"          # Must be a loopback address (127.0.0.1, ::1 or localhost)
+language = "fa"                    # UI and prompt language
+log_retention_days = 30            # Days to keep job logs
+backup_keep = 7                    # Daily database backups kept in .app/backup
+draft_ttl = "24h"                  # Unconfirmed roadmap import preview lifetime
 
 [adapter]
-kind             = "antigravity"   # Active AI engine: "antigravity" | "claude" | "codex"
-binary           = "agy"           # Binary executable name or path
+kind             = "antigravity"   # Active AI engine: "antigravity" | "claude" | "codex" (switchable in Settings)
+binary           = "agy"
 model            = "gemini-3.8-flash-medium"
 effort           = "medium"        # "low" | "medium" | "high" | "xhigh" | "max"
-sandbox          = true            # Mandatory filesystem sandboxing
-skip_permissions = true            # Non-interactive permission bypass for headless agy
-extra_args       = []              # Extra CLI arguments
+sandbox          = true
+skip_permissions = true            # Passes --dangerously-skip-permissions to agy; requires sandbox = true
+extra_args       = []              # Any argument containing "dangerously" is rejected
 
 [adapter.claude]
 binary = "claude"
-model  = "sonnet"
-effort = "medium"
+model  = ""                        # Empty uses the tool's own default
+effort = ""
+extra_args = []
 
 [adapter.codex]
 binary = "codex"
 model  = ""
+effort = ""
+extra_args = []
 
 [jobs]
-max_concurrent         = 2         # Maximum concurrent background jobs
-timeout_lesson         = "10m"     # Lesson generation timeout
-timeout_exercises      = "10m"     # Exercise generation timeout
-timeout_evaluate_item  = "5m"      # Timeout per individual exercise evaluation
-timeout_evaluate       = "30m"     # Total timeout for full evaluation jobs
-timeout_analyze        = "3m"      # Roadmap chapter/outline detection timeout
-stall_timeout          = "6m"      # Silence watchdog: kills CLI if no output received
-evaluate_parallelism   = 3         # Parallel exercise evaluations within a single job
+max_concurrent         = 1         # Maximum concurrent background jobs
+evaluate_parallelism   = 1         # Parallel exercise evaluations within one job
+timeout_lesson         = "10m"
+timeout_exercises      = "10m"
+timeout_evaluate_item  = "5m"      # Per exercise evaluation
+timeout_evaluate       = "30m"     # Whole evaluation job
+timeout_analyze        = "10m"     # Roadmap rule/chapter detection
+stall_timeout          = "6m"      # Kills the CLI if it sends no output for this long
 
 [exercises]
-count_default = 6                  # Default exercise count per set
-count_min     = 3                  # Minimum exercise count
-count_max     = 12                 # Maximum exercise count
+count_default = 6
+count_min     = 3
+count_max     = 12
+allowed_answer_exts = [".go", ".py", ".js", ".ts", ".java", ".c", ".cpp",
+                       ".rs", ".sql", ".sh", ".md", ".txt", ".json", ".yaml", ".yml"]
 
 [limits]
-max_roadmap_bytes = 1048576        # Maximum uploaded roadmap file size (1 MB)
-max_answer_bytes  = 204800         # Maximum evaluated answer file size (200 KB)
-max_lesson_bytes  = 204800         # Maximum generated lesson size (200 KB)
-log_retention_days = 30            # Days to retain job logs before cleanup
+max_roadmap_bytes = 1048576        # 1 MB uploaded roadmap
+max_answer_bytes  = 204800         # 200 KB answer file
+max_lesson_bytes  = 204800         # 200 KB generated lesson
+max_source_bytes  = 204800         # 200 KB topic source sent to the AI
+max_tree_topics   = 200            # Topics one "tree" import may create
 
 [editor]
-command = "code"                   # Preferred editor command for the "Open File" button
+command = ""                       # Optional editor template for "Open", e.g. "code -g {{file}}:{{line}}"
 ```
 
 ---
@@ -314,15 +320,14 @@ The base learning directory maintains an intuitive, human-readable structure:
 ```
 <base_dir>/
 ├── app.db                         # Primary SQLite database (WAL mode)
-├── app.db-wal                     # SQLite write-ahead log
 ├── config.toml                    # Local configuration file (optional)
 │
 ├── .app/                          # Internal system storage (hidden)
 │   ├── hub.lock                   # Single-instance file lock
-│   ├── backup/                    # Daily atomic backups (app-YYYY-MM-DD.db)
-│   ├── staging/                   # Checkpoints during multi-step evaluations
-│   ├── work/                      # Isolated AI execution sandboxes
-│   └── logs/jobs/<id>/            # Execution logs (prompt, stderr, response)
+│   ├── backup/                    # Daily backups (app-YYYY-MM-DD.db)
+│   ├── staging/<job-id>/          # Checkpoints during multi-step evaluations
+│   ├── work/<job-id>/             # Isolated AI execution sandboxes
+│   └── logs/jobs/<job-id>/        # Execution logs (prompt, stderr, response)
 │
 ├── roadmaps/                      # Archived roadmap markdown revisions
 │   └── <roadmap-slug>/
@@ -332,16 +337,18 @@ The base learning directory maintains an intuitive, human-readable structure:
 └── topics/                        # Educational curriculum topics
     └── 01-data-structures/
         ├── source.md              # Excerpt from the roadmap for this topic
-        ├── lesson.md              # Current active lesson content
-        ├── lesson/history/        # Previous versions (lesson.0001.md)
-        ├── exercises.md           # Rendered markdown of current exercise set
-        ├── manifest.json          # Machine-readable exercise specifications
+        ├── source-history/        # Previous sources after a re-import (source.0001.md)
+        ├── lesson/
+        │   ├── lesson.md          # Current lesson
+        │   └── history/           # Previous versions (lesson.0001.md)
+        ├── exercises/v1/
+        │   ├── exercises.md       # Rendered exercise set
+        │   └── manifest.json      # Machine-readable exercise specifications
         ├── .internal/
         │   └── rubric-v1.json     # Rubric criteria (confidential until graded)
         ├── answers/v1/            # Student answer files
         │   ├── q01.py
-        │   ├── q02.py
-        │   └── q03.go
+        │   └── q02.go
         └── reports/v1/            # Official grading reports
             ├── attempt-1/
             │   ├── q01-report.md  # Detailed feedback for exercise 1
@@ -368,7 +375,7 @@ When cancelling an ongoing AI job or shutting down the server:
 - No zombie or orphan AI processes are ever left lingering in the background.
 
 ### Web Security Architecture
-- **Loopback Enforcement:** Only listens on `127.0.0.1:8787`—inaccessible from external network adapters.
+- **Loopback Enforcement:** Listens on `127.0.0.1:8787` by default; `listen` may only be a loopback address, so the server is inaccessible from external network adapters.
 - **CSRF Protection with Auto-Reload:** All mutating requests require valid CSRF tokens. If the server restarts, stale tokens automatically refresh the frontend cleanly.
 - **Strict Headers:** Includes `Cross-Origin-Resource-Policy: same-origin`, restrictive `Content-Security-Policy`, and strict `Host` and `Origin` port validation.
 
@@ -382,8 +389,11 @@ Learning Hub features an extensive multi-platform automated test harness coverin
 # Run all automated tests
 go test ./cmd/... ./internal/... ./skills/...
 
-# Run concurrency and race detection tests
-go test -race ./internal/jobs ./internal/httpserver ./internal/ai
+# Format check, vet and tests (what CI runs)
+make test
+
+# Race detection (needs cgo for the test binary only; shipped builds stay CGO_ENABLED=0)
+CGO_ENABLED=1 go test -race ./cmd/... ./internal/... ./skills/...
 
 # Run formatting and static code analysis
 make lint
@@ -393,10 +403,10 @@ make vuln
 ```
 
 ### GitHub Actions CI
-All commits and pull requests are validated across a dual-platform matrix (**Ubuntu Latest** & **Windows Latest**) running `gofmt`, `go vet`, `staticcheck`, `go test -race`, and `govulncheck`.
+Pushes to `main` and pull requests run on **Ubuntu Latest** (`gofmt`, `go vet`, `go test`, `go test -race`, `staticcheck`, `govulncheck`) and **Windows Latest** (`gofmt`, `go vet`, `go test`).
 
 ---
 
 ## 📄 License
 
-This project is licensed under the [MIT License](LICENSE).
+No license file is included in this repository yet.
