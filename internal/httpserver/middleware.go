@@ -67,7 +67,8 @@ func (sm *SecurityManager) SecurityMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("Referrer-Policy", "same-origin")
 		w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
 		if strings.HasPrefix(r.URL.Path, "/static/") {
-			w.Header().Set("Cache-Control", "public, max-age=3600")
+			// no-cache, not max-age: after an upgrade a cached app.css/js would not match the new pages (T9.14 seen in a browser).
+			w.Header().Set("Cache-Control", "no-cache")
 		} else {
 			w.Header().Set("Cache-Control", "no-store")
 		}

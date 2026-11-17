@@ -489,3 +489,29 @@ func TestCR52_ApplyMovesRefusesConcurrentlyChangedDBRow(t *testing.T) {
 		t.Errorf("err = %v, want ErrStale", err)
 	}
 }
+
+// T9.15: a lesson.md edited by hand becomes searchable at the next scan; an unchanged one is not rewritten.
+func TestScanReindexesEditedLesson(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	hits := func(phrase string) (n int) {
+		t.Helper()
+		if err := e.db.Writer().QueryRow(`SELECT COUNT(*) FROM lesson_fts WHERE lesson_fts MATCH ?`, `"`+phrase+`"`).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	if _, err := e.svc.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if n := hits("http"); n != 0 {
+		t.Fatalf("unchanged lesson indexed by scan: %d", n)
+	}
+	e.write(lessonRel, "# HTTP\nmiddleware chains\n")
+	if _, err := e.svc.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if hits("middleware") != 1 {
+		t.Error("edited lesson not reindexed")
+	}
+}

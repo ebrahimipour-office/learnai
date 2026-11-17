@@ -198,8 +198,8 @@ func TestSecurityMiddleware(t *testing.T) {
 		reqStatic := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8787/static/app.css", nil)
 		recStatic := httptest.NewRecorder()
 		handler.ServeHTTP(recStatic, reqStatic)
-		if cc := recStatic.Header().Get("Cache-Control"); !strings.Contains(cc, "max-age=") {
-			t.Errorf("Expected max-age Cache-Control for /static/, got %q", cc)
+		if cc := recStatic.Header().Get("Cache-Control"); cc != "no-cache" {
+			t.Errorf("Expected no-cache (revalidate) for /static/, got %q", cc)
 		}
 
 		reqDynamic := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8787/topics", nil)

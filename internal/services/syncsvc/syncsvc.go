@@ -14,10 +14,12 @@ import (
 	"regexp"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"learninghub/internal/domain"
 	"learninghub/internal/fsx"
+	"learninghub/internal/services/lessons"
 	"learninghub/internal/services/status"
 	"learninghub/internal/store"
 )
@@ -105,6 +107,7 @@ func (s *Service) Scan(ctx context.Context) (*Run, error) {
 	var seen []observed
 	rep := Report{Missing: []Item{}, Moved: []Move{}, New: []string{}, Modified: []Item{}, Skipped: []string{}}
 	var missing []row
+	reindex := map[int64][]byte{}
 	for _, r := range rows {
 		sha, mtime, err := s.observe(r.RelPath)
 		if errors.Is(err, fs.ErrNotExist) {
@@ -115,6 +118,14 @@ func (s *Service) Scan(ctx context.Context) (*Run, error) {
 			return nil, fmt.Errorf("reading %s: %w", r.RelPath, err)
 		}
 		seen = append(seen, observed{r: r, obs: obs{sha, mtime}})
+		// T9.15: a current lesson edited by hand since the last look gets its search text refreshed.
+		if r.Kind == "lesson" && strings.HasSuffix(r.RelPath, "/lesson/lesson.md") && sha != r.Observed {
+			md, err := s.Root.ReadFile(r.RelPath)
+			if err != nil {
+				return nil, fmt.Errorf("reading %s: %w", r.RelPath, err)
+			}
+			reindex[r.TopicID] = md
+		}
 		if sha != r.SHA && r.Kind != "answer" {
 			rep.Modified = append(rep.Modified, r.Item)
 		}
@@ -154,6 +165,11 @@ func (s *Service) Scan(ctx context.Context) (*Run, error) {
 		}
 		for _, r := range missing {
 			if _, err := tx.ExecContext(ctx, `UPDATE files SET presence = 'missing', observed_at = `+nowSQL+` WHERE id = ? AND rel_path = ? AND sha256 = ?`, r.FileID, r.RelPath, r.SHA); err != nil {
+				return err
+			}
+		}
+		for topicID, md := range reindex {
+			if err := lessons.IndexText(ctx, tx, topicID, md); err != nil {
 				return err
 			}
 		}

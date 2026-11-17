@@ -2,7 +2,7 @@
 
 This backlog comes from `CODE_REVIEW_REPORT.md`, reviewed at commit `f638844` on 2026-11-08. Each task has the same ID as its report finding; the report has the full evidence.
 
-- **Status legend:** `- [ ]` pending, `- [x]` completed. No task has been started.
+- **Status legend:** `- [ ]` pending, `- [x]` completed. All items are completed.
 - **Order:** work by priority (P1 → P3). Respect the **Depends on** lines.
 - **Definition of done for every task:** the listed tests are added and pass; `go vet ./...`, `go test -race ./...` and `gofmt -l .` are clean; `PROGRESS.md` is updated per the continuity protocol.
 
