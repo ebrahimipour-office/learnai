@@ -28,7 +28,7 @@ type AttemptItem struct {
 
 // Attempts returns the attempts of a set, newest first.
 func (s *Service) Attempts(ctx context.Context, setID int64) ([]Attempt, error) {
-	rows, err := s.db.Writer().QueryContext(ctx, `
+	rows, err := s.db.Reader().QueryContext(ctx, `
 		SELECT id, attempt_no, mode, finished_at, topic_score, answered_count, total_count, is_partial, result_file, summary_file
 		FROM attempts WHERE set_id = ? ORDER BY attempt_no DESC`, setID)
 	if err != nil {
@@ -49,7 +49,7 @@ func (s *Service) Attempts(ctx context.Context, setID int64) ([]Attempt, error) 
 
 // AttemptItems returns the items of an attempt in exercise order.
 func (s *Service) AttemptItems(ctx context.Context, attemptID int64) ([]AttemptItem, error) {
-	rows, err := s.db.Writer().QueryContext(ctx, `
+	rows, err := s.db.Reader().QueryContext(ctx, `
 		SELECT e.ex_id, e.title, i.status, i.score, COALESCE(c.attempt_no, 0), COALESCE(f.id, 0), COALESCE(f.rel_path, ''), i.flags
 		FROM attempt_items i JOIN exercises e ON e.id = i.exercise_id
 			LEFT JOIN attempts c ON c.id = i.carried_from_attempt

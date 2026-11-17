@@ -399,13 +399,13 @@ func TestArchiveTopic(t *testing.T) {
 		t.Error("archived=1 must show the archived topic")
 	}
 
-	if _, err := e.db.Writer().Exec(`INSERT INTO jobs (kind, scope_key, topic_id, adapter, status) VALUES ('lesson', 'topic:1', 1, 'fake', 'queued')`); err != nil {
+	if _, err := e.db.Writer().Exec(`INSERT INTO jobs (kind, scope_key, topic_id, adapter, status) VALUES ('lesson', 'topic:1', 1, 'fake', 'running')`); err != nil { // running, not queued: the live runner must not claim it
 		t.Fatal(err)
 	}
 	if rec := e.post("/topics/1/unarchive", nil, false); rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "در جریان است") {
 		t.Errorf("busy: want 409 with message, got %d", rec.Code)
 	}
-	if _, err := e.db.Writer().Exec(`DELETE FROM jobs WHERE status = 'queued'`); err != nil {
+	if _, err := e.db.Writer().Exec(`DELETE FROM jobs WHERE status = 'running'`); err != nil {
 		t.Fatal(err)
 	}
 	if rec := e.post("/topics/1/unarchive", nil, false); rec.Code != http.StatusSeeOther {

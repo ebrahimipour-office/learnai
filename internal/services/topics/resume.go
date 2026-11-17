@@ -22,7 +22,7 @@ func (s *Service) Touch(ctx context.Context, id int64) error {
 // Resume returns the most recently opened active topic, or nil when none was ever opened.
 func (s *Service) Resume(ctx context.Context) (*Resume, error) {
 	r := &Resume{Counts: map[string]int{}}
-	err := s.db.Writer().QueryRowContext(ctx, `SELECT id, title, status FROM topics
+	err := s.db.Reader().QueryRowContext(ctx, `SELECT id, title, status FROM topics
 		WHERE state = 'active' AND last_opened_at IS NOT NULL ORDER BY last_opened_at DESC, id LIMIT 1`).Scan(&r.ID, &r.Title, &r.Status)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -30,7 +30,7 @@ func (s *Service) Resume(ctx context.Context) (*Resume, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.db.Writer().QueryContext(ctx, `SELECT status, COUNT(*) FROM topics WHERE state = 'active' GROUP BY status`)
+	rows, err := s.db.Reader().QueryContext(ctx, `SELECT status, COUNT(*) FROM topics WHERE state = 'active' GROUP BY status`)
 	if err != nil {
 		return nil, err
 	}

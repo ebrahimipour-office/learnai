@@ -54,7 +54,7 @@ func (s *Service) Panel(ctx context.Context, id int64) (*Panel, error) {
 	var roadmapID int64
 	var ord float64
 	src := Source{}
-	err := s.db.Writer().QueryRowContext(ctx, `
+	err := s.db.Reader().QueryRowContext(ctx, `
 		SELECT t.title, COALESCE(g.title, ''), r.title, t.status, t.state, t.origin,
 		       EXISTS (SELECT 1 FROM jobs j WHERE j.topic_id = t.id AND j.status IN ('queued','running')),
 		       f.id, COALESCE(f.rel_path, ''), COALESCE(t.source_start_line, 0), COALESCE(t.source_end_line, 0),
@@ -94,7 +94,7 @@ func (s *Service) Panel(ctx context.Context, id int64) (*Panel, error) {
 		ORDER BY ord LIMIT 1`, roadmapID, ord); err != nil {
 		return nil, err
 	}
-	rows, err := s.db.Writer().QueryContext(ctx, `
+	rows, err := s.db.Reader().QueryContext(ctx, `
 		SELECT v.version, f.rel_path, v.is_current, COALESCE(v.model, ''), v.created_at
 		FROM lesson_versions v JOIN files f ON f.id = v.file_id
 		WHERE v.topic_id = ? ORDER BY v.version DESC`, id)
@@ -113,7 +113,7 @@ func (s *Service) Panel(ctx context.Context, id int64) (*Panel, error) {
 }
 
 func (s *Service) refs(ctx context.Context, dst *[]Ref, query string, id int64) error {
-	rows, err := s.db.Writer().QueryContext(ctx, query, id)
+	rows, err := s.db.Reader().QueryContext(ctx, query, id)
 	if err != nil {
 		return err
 	}
@@ -131,7 +131,7 @@ func (s *Service) refs(ctx context.Context, dst *[]Ref, query string, id int64) 
 // neighbour returns the one topic query finds, or nil when there is none.
 func (s *Service) neighbour(ctx context.Context, query string, args ...any) (*Ref, error) {
 	r := &Ref{}
-	err := s.db.Writer().QueryRowContext(ctx, query, args...).Scan(&r.ID, &r.Title)
+	err := s.db.Reader().QueryRowContext(ctx, query, args...).Scan(&r.ID, &r.Title)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

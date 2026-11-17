@@ -18,6 +18,7 @@ var migrationsFS embed.FS
 // DB encapsulates the single-writer SQLite connection pool and schema migrations (D2, Section 4.1).
 type DB struct {
 	writer *sql.DB
+	reader *sql.DB // T10.5: read-only pool so page reads do not queue behind the single writer
 	path   string
 	mu     sync.Mutex
 }
@@ -75,6 +76,13 @@ func Open(dbPath string) (*DB, error) {
 		return nil, fmt.Errorf("running database migrations: %w", err)
 	}
 
+	// Opened after migrate so the file and WAL exist; WAL lets these read while the writer writes.
+	if s.reader, err = sql.Open("sqlite", dsnReadOnly(absPath)); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("opening read-only pool: %w", err)
+	}
+	s.reader.SetMaxOpenConns(4)
+	s.reader.SetMaxIdleConns(4)
 	return s, nil
 }
 
@@ -100,18 +108,28 @@ func OpenReadOnly(dbPath string) (*DB, error) {
 
 	return &DB{
 		writer: db,
+		reader: db,
 		path:   absPath,
 	}, nil
 }
 
 // Close closes the database connection.
 func (d *DB) Close() error {
+	if d.reader != nil && d.reader != d.writer {
+		d.reader.Close()
+	}
 	return d.writer.Close()
 }
 
 // Writer returns the underlying sql.DB instance.
 func (d *DB) Writer() *sql.DB {
 	return d.writer
+}
+
+// Reader returns the read-only pool. It sees every committed write but never an open
+// transaction's, so reads that must agree with a write in progress stay on Writer().
+func (d *DB) Reader() *sql.DB {
+	return d.reader
 }
 
 // Path returns the absolute path to the database file.

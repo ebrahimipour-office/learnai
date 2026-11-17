@@ -413,12 +413,6 @@ func runServe(args []string) error {
 	}
 	runner.Register(domain.JobKindRoadmapAnalyze, analyzer.Handle)
 	runner.Register(domain.JobKindChapterDetect, analyzer.DetectChapters)
-	// T9.15: lessons committed before the search index existed become searchable.
-	if n, err := lessons.IndexMissing(ctx, db, root); err != nil {
-		slog.Error("Failed to index lesson text for search", "error", err)
-	} else if n > 0 {
-		slog.Info("Indexed lesson text for search", "count", n)
-	}
 	srv := httpserver.NewServer(cfg.Listen, sm, drafts, topics.NewService(db, root), runner, root,
 		httpserver.Settings{DB: db, Adapter: adapter, Switch: adapter, Model: cfg.Adapter.Model, SkipPermissions: cfg.Adapter.SkipPermissions, Exercises: cfg.Exercises, MaxAnswerBytes: cfg.Limits.MaxAnswerBytes, Editor: cfg.Editor.Command})
 	// Maintenance at startup and hourly: expired job dirs/logs, daily DB backup, expired import drafts.
@@ -426,6 +420,13 @@ func runServe(args []string) error {
 	maintDone := make(chan struct{})
 	go func() {
 		defer close(maintDone)
+		// T9.15: lessons committed before the search index existed become searchable. Runs here, not
+		// before ListenAndServe, so a large backfill does not delay startup (T10.5); shutdown waits on maintDone.
+		if n, err := lessons.IndexMissing(ctx, db, root); err != nil {
+			slog.Error("Failed to index lesson text for search", "error", err)
+		} else if n > 0 {
+			slog.Info("Indexed lesson text for search", "count", n)
+		}
 		for t := time.NewTicker(time.Hour); ; {
 			if res, err := maint.Run(ctx, time.Now()); err != nil {
 				slog.Error("Maintenance failed", "error", err)

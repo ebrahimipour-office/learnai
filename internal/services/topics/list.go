@@ -60,7 +60,7 @@ func NewService(db *store.DB, root *fsx.Root) *Service { return &Service{db: db,
 // topic. total is the number of topics before filtering, so the page can tell "no match" from "empty".
 func (s *Service) List(ctx context.Context, f Filter) (tree []*Node, matched, total int, err error) {
 	q := roadmap.Normalize(f.Query)
-	if err = s.db.Writer().QueryRowContext(ctx, `SELECT COUNT(*) FROM topics`).Scan(&total); err != nil {
+	if err = s.db.Reader().QueryRowContext(ctx, `SELECT COUNT(*) FROM topics`).Scan(&total); err != nil {
 		return nil, 0, 0, err
 	}
 
@@ -70,7 +70,7 @@ func (s *Service) List(ctx context.Context, f Filter) (tree []*Node, matched, to
 		node   *Node
 	}
 	groups := map[int64]*group{}
-	grows, err := s.db.Writer().QueryContext(ctx, `SELECT id, parent_id, title FROM groups`)
+	grows, err := s.db.Reader().QueryContext(ctx, `SELECT id, parent_id, title FROM groups`)
 	if err != nil {
 		return nil, 0, 0, err
 	}
@@ -163,7 +163,7 @@ func (s *Service) List(ctx context.Context, f Filter) (tree []*Node, matched, to
 	}
 	baseQuery += "ORDER BY r.id, t.ord"
 
-	rows, err := s.db.Writer().QueryContext(ctx, strings.Replace(baseQuery, "IN_LESSON", inLesson, 1), append(selArgs, args...)...)
+	rows, err := s.db.Reader().QueryContext(ctx, strings.Replace(baseQuery, "IN_LESSON", inLesson, 1), append(selArgs, args...)...)
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("listing topics: %w", err)
 	}
@@ -220,7 +220,7 @@ func (s *Service) progress(ctx context.Context, roadmaps map[int64]*Node) error 
 	if len(roadmaps) == 0 {
 		return nil
 	}
-	rows, err := s.db.Writer().QueryContext(ctx, latestAttempt+`,
+	rows, err := s.db.Reader().QueryContext(ctx, latestAttempt+`,
 		next AS (
 		  SELECT roadmap_id, id, title, ROW_NUMBER() OVER (PARTITION BY roadmap_id ORDER BY status = 'created', ord) AS rn
 		  FROM topics WHERE state = 'active' AND status <> 'evaluated')

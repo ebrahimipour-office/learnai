@@ -55,7 +55,7 @@ func (x *Exercise) AnswerStatus(diskSHA string) string {
 
 // Sets returns the exercise sets of a topic, newest first.
 func (s *Service) Sets(ctx context.Context, topicID int64) ([]SetVersion, error) {
-	rows, err := s.db.Writer().QueryContext(ctx, `
+	rows, err := s.db.Reader().QueryContext(ctx, `
 		SELECT x.id, x.version, x.is_current, COALESCE(x.model, ''), x.created_at, f.rel_path
 		FROM exercise_sets x JOIN files f ON f.id = x.exercises_file
 		WHERE x.topic_id = ? ORDER BY x.version DESC`, topicID)
@@ -76,7 +76,7 @@ func (s *Service) Sets(ctx context.Context, topicID int64) ([]SetVersion, error)
 
 // Exercises returns the exercises of a set in order.
 func (s *Service) Exercises(ctx context.Context, setID int64) ([]Exercise, error) {
-	rows, err := s.db.Writer().QueryContext(ctx, `
+	rows, err := s.db.Reader().QueryContext(ctx, `
 		SELECT e.ex_id, e.title, e.type, e.difficulty, e.weight, f.id, f.rel_path, f.presence, e.template_sha256, COALESCE(e.template_norm_sha256, ''), e.external_deps,
 			COALESCE((SELECT i.answer_sha256 FROM attempt_items i JOIN attempts a ON a.id = i.attempt_id
 				WHERE i.exercise_id = e.id AND i.status = 'evaluated' AND i.answer_sha256 IS NOT NULL
@@ -112,7 +112,7 @@ type File struct {
 // File returns file id or domain.ErrNotFound.
 func (s *Service) File(ctx context.Context, id int64) (*File, error) {
 	f := &File{}
-	err := s.db.Writer().QueryRowContext(ctx, `
+	err := s.db.Reader().QueryRowContext(ctx, `
 		SELECT f.rel_path, f.kind, f.kind = 'rubric' AND (
 			NOT EXISTS (SELECT 1 FROM exercise_sets x WHERE x.rubric_file = f.id)
 			OR EXISTS (SELECT 1 FROM exercise_sets x JOIN exercises e ON e.set_id = x.id

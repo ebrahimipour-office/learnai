@@ -96,7 +96,7 @@ func (a *app) probe(ctx context.Context) {
 
 func (a *app) privacyAck(ctx context.Context) (string, error) {
 	var v string
-	err := a.settings.DB.Writer().QueryRowContext(ctx, `SELECT value FROM meta WHERE key = 'privacy_ack'`).Scan(&v)
+	err := a.settings.DB.Reader().QueryRowContext(ctx, `SELECT value FROM meta WHERE key = 'privacy_ack'`).Scan(&v)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	}

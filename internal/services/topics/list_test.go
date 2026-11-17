@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"learninghub/internal/fsx"
 	"learninghub/internal/services/lessons"
@@ -309,5 +310,30 @@ func TestResume(t *testing.T) {
 	}
 	if r, err := s.Resume(ctx); err != nil || r == nil || r.ID != b {
 		t.Fatalf("archived topic must be skipped: want %d, got %+v %v", b, r, err)
+	}
+}
+
+// T10.5: page reads use the read-only pool, so an open write transaction does not block them.
+func TestListDoesNotWaitForWriter(t *testing.T) {
+	s, db := setup(t, md)
+	tx, err := db.Writer().BeginTx(context.Background(), nil) // holds the single writer connection
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`UPDATE topics SET title = 'دیده‌نشده'`); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	tree, _, total, err := s.List(ctx, topics.Filter{})
+	if err != nil || total != 3 {
+		t.Fatalf("List during an open write: total=%d err=%v", total, err)
+	}
+	if got := strings.Join(titles(tree), ","); strings.Contains(got, "دیده‌نشده") {
+		t.Errorf("uncommitted write must not be visible: %s", got)
+	}
+	if _, err := s.Panel(ctx, tree[0].Items[0].Items[0].ID); err != nil {
+		t.Errorf("Panel during an open write: %v", err)
 	}
 }

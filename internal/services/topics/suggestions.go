@@ -23,7 +23,7 @@ type Suggestion struct {
 
 // Suggestions returns the suggestions of a topic, pending first, then newest first.
 func (s *Service) Suggestions(ctx context.Context, topicID int64) ([]Suggestion, error) {
-	rows, err := s.db.Writer().QueryContext(ctx, `
+	rows, err := s.db.Reader().QueryContext(ctx, `
 		SELECT id, kind, title, reason, status, COALESCE(accepted_topic_id, 0), created_at FROM suggestions
 		WHERE topic_id = ? ORDER BY status <> 'pending', id DESC`, topicID)
 	if err != nil {
@@ -44,7 +44,7 @@ func (s *Service) Suggestions(ctx context.Context, topicID int64) ([]Suggestion,
 // SuggestionTopic returns the source topic of suggestion id, or domain.ErrNotFound.
 func (s *Service) SuggestionTopic(ctx context.Context, id int64) (int64, error) {
 	var topicID int64
-	err := s.db.Writer().QueryRowContext(ctx, `SELECT topic_id FROM suggestions WHERE id = ?`, id).Scan(&topicID)
+	err := s.db.Reader().QueryRowContext(ctx, `SELECT topic_id FROM suggestions WHERE id = ?`, id).Scan(&topicID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, domain.ErrNotFound
 	}
