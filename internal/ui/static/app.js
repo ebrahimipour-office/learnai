@@ -1,21 +1,39 @@
-// Copy-path buttons (T4.5, CR-47): CSP forbids inline handlers, so one delegated listener.
+// Copy buttons (T4.5, CR-47, T9.11): CSP forbids inline handlers, so one delegated listener.
+// data-copy buttons copy their path; .copy-code buttons copy the code block right after them.
 document.addEventListener("click", async (ev) => {
-  const btn = ev.target.closest("button[data-copy]");
+  const btn = ev.target.closest("button[data-copy], button.copy-code");
   if (!btn) return;
+  const code = btn.dataset.copy === undefined ? btn.nextElementSibling?.querySelector("code") : null;
   btn.dataset.label ??= btn.textContent;
   clearTimeout(btn._copyTimeout);
   try {
-    await navigator.clipboard.writeText(btn.dataset.copy);
+    await navigator.clipboard.writeText(code ? code.textContent : btn.dataset.copy);
     btn.textContent = "کپی شد";
   } catch {
-    // clipboard blocked: select the path so Ctrl+C works
-    btn.parentElement?.querySelector("input")?.select();
+    // clipboard blocked: select the text so Ctrl+C works
+    if (code) getSelection().selectAllChildren(code);
+    else btn.parentElement?.querySelector("input")?.select();
     btn.textContent = "Ctrl+C";
   }
   btn._copyTimeout = setTimeout(() => {
     btn.textContent = btn.dataset.label;
   }, 1500);
 });
+
+// T9.11: a copy button before each rendered code block, on load and after htmx swaps.
+function addCodeButtons(root) {
+  for (const pre of root.querySelectorAll(".md pre")) {
+    if (pre.previousElementSibling?.classList.contains("copy-code")) continue;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "copy-code";
+    btn.textContent = "کپی";
+    btn.setAttribute("aria-label", "کپی کد");
+    pre.before(btn);
+  }
+}
+addCodeButtons(document);
+document.body.addEventListener("htmx:afterSwap", (ev) => addCodeButtons(ev.detail.target));
 
 // CR-20: htmx drops non-swapped errors silently; surface them, and reload on a stale CSRF token (server restart).
 function htmxFailed(ev) {

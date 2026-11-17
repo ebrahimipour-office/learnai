@@ -672,7 +672,7 @@ async function run() {
     dataset: { copy: "/path/to/ex01.go" },
     textContent: "کپی مسیر",
     parentElement: null,
-    closest(sel) { if (sel === "button[data-copy]") return this; return null; }
+    closest(sel) { return sel.includes("button[data-copy]") ? this : null; }
   };
   const ev = { target: btn };
 
@@ -705,5 +705,62 @@ run();
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("node DOM regression test failed (exit code %v): %s", err, string(out))
+	}
+}
+
+// T9.11: each rendered code block gets one copy button that copies the code, also after an htmx swap.
+func TestCodeBlockCopyButton(t *testing.T) {
+	e := newEnv(t)
+	appJS := e.do(httptest.NewRequest(http.MethodGet, "/static/app.js", nil)).Body.String()
+	if !strings.Contains(appJS, `querySelectorAll(".md pre")`) || !strings.Contains(appJS, "htmx:afterSwap") {
+		t.Fatal("app.js must add code copy buttons on load and after htmx swaps")
+	}
+	nodePath, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node not available on host; skipping node DOM test")
+	}
+	script := `
+const code = process.argv[1];
+const listeners = {};
+let swap;
+let copied = null;
+const codeEl = { textContent: 'fmt.Println("hi")\n' };
+const pre = {
+  previousElementSibling: null,
+  querySelector(sel) { return sel === "code" ? codeEl : null; },
+  before(btn) { this.previousElementSibling = btn; btn.nextElementSibling = this; created.push(btn); },
+};
+const created = [];
+function makeButton() {
+  const classes = new Set();
+  return {
+    dataset: {}, attrs: {},
+    set className(v) { classes.add(v); },
+    classList: { contains: (c) => classes.has(c) },
+    setAttribute(k, v) { this.attrs[k] = v; },
+    closest(sel) { return sel.includes("button.copy-code") && classes.has("copy-code") ? this : null; },
+  };
+}
+const document = {
+  addEventListener(evt, fn) { listeners[evt] = fn; },
+  querySelectorAll(sel) { return sel === ".md pre" ? [pre] : []; },
+  createElement(tag) { if (tag !== "button") process.exit(10); return makeButton(); },
+  body: { addEventListener(evt, fn) { if (evt === "htmx:afterSwap") swap = fn; } },
+};
+const navigator = { clipboard: { async writeText(s) { copied = s; } } };
+const fn = new Function("document", "navigator", "clearTimeout", "setTimeout", "getSelection", code);
+fn(document, navigator, () => {}, () => 1, () => ({}));
+
+(async () => {
+  if (created.length !== 1 || created[0].textContent !== "کپی" || created[0].type !== "button") process.exit(2);
+  swap({ detail: { target: document } }); // a swap must not add a second button
+  if (created.length !== 1) process.exit(3);
+  await listeners["click"]({ target: created[0] });
+  if (copied !== codeEl.textContent || created[0].textContent !== "کپی شد") process.exit(4);
+  process.exit(0);
+})();
+`
+	if out, err := exec.Command(nodePath, "-e", script, appJS).CombinedOutput(); err != nil {
+		t.Fatalf("node DOM test failed (%v): %s", err, out)
 	}
 }
