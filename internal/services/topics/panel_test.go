@@ -231,3 +231,39 @@ func TestPanelPrevNext(t *testing.T) {
 	check("جزئیات", "نوع‌ها", "گوروتین")             // archived topics are skipped
 	check("کتابخانه استاندارد", "جزئیات", "گوروتین") // an archived topic still links to its active neighbours
 }
+
+// T9.12: manual archive/restore changes only state; a busy topic is refused.
+func TestSetArchived(t *testing.T) {
+	s, db := setup(t, md)
+	ctx := context.Background()
+	var id int64
+	if err := db.Writer().QueryRow(`SELECT id FROM topics WHERE title = 'نوع‌ها'`).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	state := func() string {
+		t.Helper()
+		p, err := s.Panel(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p.State
+	}
+	for _, archived := range []bool{true, true, false} { // archiving twice is a no-op
+		if err := s.SetArchived(ctx, id, archived); err != nil {
+			t.Fatal(err)
+		}
+		if want := map[bool]string{true: "archived", false: "active"}[archived]; state() != want {
+			t.Fatalf("state %q, want %q", state(), want)
+		}
+	}
+	if err := s.SetArchived(ctx, 9999, true); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("unknown topic: %v", err)
+	}
+	if _, err := db.Writer().Exec(`INSERT INTO jobs (kind, scope_key, topic_id, adapter, status) VALUES ('lesson', ?, ?, 'fake', 'queued')`,
+		topics.Scope(id), id); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetArchived(ctx, id, true); !errors.Is(err, domain.ErrScopeBusy) || state() != "active" {
+		t.Errorf("busy topic: err %v, state %s", err, state())
+	}
+}

@@ -3,9 +3,13 @@ package httpserver_test
 import (
 	"encoding/json"
 	"html"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -343,5 +347,77 @@ func TestLessonTOC(t *testing.T) {
 	}
 	if !strings.Contains(body, `<h2 id="h-مقدمه" dir="auto">مقدمه</h2>`) {
 		t.Error("lesson heading lacks its anchor id")
+	}
+}
+
+// T9.12: archive/unarchive touch no file, are refused while busy or without CSRF, and the list hides
+// archived topics unless asked.
+func TestArchiveTopic(t *testing.T) {
+	e := newEnv(t)
+	e.seedTopics()
+	e.ad.Output = lessonOutput("درس")
+	e.post("/topics/1/jobs/lesson", nil, true)
+	id, _ := e.lastJob()
+	e.pollUntilDone(id)
+	snapshot := func() map[string]string {
+		m := map[string]string{}
+		dir := filepath.Join(e.base, "topics", "01-http")
+		if err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			b, err := os.ReadFile(p)
+			m[p] = string(b)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	before := snapshot()
+	if len(before) == 0 {
+		t.Fatal("no lesson files to compare")
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/topics/1/archive", nil)
+	if rec := e.do(req); rec.Code != http.StatusForbidden {
+		t.Errorf("no CSRF: want 403, got %d", rec.Code)
+	}
+	if rec := e.post("/topics/1/archive", nil, false); rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/topics/1" {
+		t.Fatalf("archive: %d %s", rec.Code, rec.Header().Get("Location"))
+	}
+	if !reflect.DeepEqual(before, snapshot()) {
+		t.Error("archiving changed the topic folder")
+	}
+	if page := e.get("/topics/1").Body.String(); !strings.Contains(page, `action="/topics/1/unarchive"`) {
+		t.Error("archived topic must offer restore")
+	}
+	if list := e.get("/topics").Body.String(); strings.Contains(list, `href="/topics/1"`) || !strings.Contains(list, `href="/topics/2"`) {
+		t.Error("list must hide the archived topic by default")
+	}
+	if list := e.do(httptest.NewRequest(http.MethodGet, "/topics?archived=1", nil)).Body.String(); !strings.Contains(list, `href="/topics/1"`) || !strings.Contains(list, `name="archived" value="1" checked`) {
+		t.Error("archived=1 must show the archived topic")
+	}
+
+	if _, err := e.db.Writer().Exec(`INSERT INTO jobs (kind, scope_key, topic_id, adapter, status) VALUES ('lesson', 'topic:1', 1, 'fake', 'queued')`); err != nil {
+		t.Fatal(err)
+	}
+	if rec := e.post("/topics/1/unarchive", nil, false); rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "در جریان است") {
+		t.Errorf("busy: want 409 with message, got %d", rec.Code)
+	}
+	if _, err := e.db.Writer().Exec(`DELETE FROM jobs WHERE status = 'queued'`); err != nil {
+		t.Fatal(err)
+	}
+	if rec := e.post("/topics/1/unarchive", nil, false); rec.Code != http.StatusSeeOther {
+		t.Fatalf("unarchive: %d", rec.Code)
+	}
+	if page := e.get("/topics/1").Body.String(); !strings.Contains(page, `action="/topics/1/archive"`) {
+		t.Error("restored topic must offer archive")
+	}
+	if rec := e.post("/topics/999/archive", nil, false); rec.Code != http.StatusNotFound {
+		t.Errorf("unknown topic: want 404, got %d", rec.Code)
+	}
+	if !reflect.DeepEqual(before, snapshot()) {
+		t.Error("restoring changed the topic folder")
 	}
 }

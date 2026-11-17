@@ -64,6 +64,7 @@ type pageData struct {
 	TreeCap         int          // >0: the ticked tree records exceed this cap and confirm will fail (R12)
 
 	Query, Status       string
+	Archived            bool // topic list: archived topics shown (T9.12)
 	Statuses            []ruleOption
 	Topics              []*topics.Node
 	Matched, TopicTotal int

@@ -137,3 +137,29 @@ func (s *Service) neighbour(ctx context.Context, query string, args ...any) (*Re
 	}
 	return r, err
 }
+
+// SetArchived archives or restores topic id by hand (T9.12). Only topics.state changes: no file is
+// touched. A topic with a queued or running job gives domain.ErrScopeBusy; an unknown id ErrNotFound.
+func (s *Service) SetArchived(ctx context.Context, id int64, archived bool) error {
+	state := "active"
+	if archived {
+		state = "archived"
+	}
+	return s.db.WithTx(ctx, func(tx *sql.Tx) error {
+		var busy bool
+		err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM jobs WHERE topic_id = ? AND status IN ('queued','running'))
+			FROM topics WHERE id = ?`, id, id).Scan(&busy)
+		if errors.Is(err, sql.ErrNoRows) {
+			return domain.ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if busy {
+			return domain.ErrScopeBusy
+		}
+		_, err = tx.ExecContext(ctx, `UPDATE topics SET state = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+			WHERE id = ? AND state <> ?`, state, id, state)
+		return err
+	})
+}

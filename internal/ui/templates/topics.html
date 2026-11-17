@@ -12,6 +12,7 @@
       {{range .Statuses}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}
     </select>
   </label>
+  <label><input type="checkbox" name="archived" value="1"{{if .Archived}} checked{{end}}> نمایش بایگانی‌شده</label>
   <noscript><button type="submit">اعمال</button></noscript>
 </form>
 {{template "topic-results" .}}

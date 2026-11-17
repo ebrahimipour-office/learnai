@@ -14,8 +14,9 @@ import (
 
 // Filter narrows the list. Empty fields match everything.
 type Filter struct {
-	Query  string // matched against title_norm after roadmap.Normalize
-	Status string // topics.status
+	Query    string // matched against title_norm after roadmap.Normalize
+	Status   string // topics.status
+	Archived bool   // also list archived topics (T9.12); hidden by default
 }
 
 // Node is a roadmap, a group or a topic. A topic's Items are its tree-rule children (§13.6).
@@ -134,6 +135,9 @@ func (s *Service) List(ctx context.Context, f Filter) (tree []*Node, matched, to
 			whereClauses = append(whereClauses, "instr(t.title_norm, ?) > 0")
 			args = append(args, q)
 		}
+	}
+	if !f.Archived {
+		whereClauses = append(whereClauses, "t.state = 'active'")
 	}
 	if f.Status != "" {
 		whereClauses = append(whereClauses, "t.status = ?")

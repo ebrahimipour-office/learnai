@@ -119,7 +119,10 @@ func TestListSearchAndFilters(t *testing.T) {
 	if _, err := db.Writer().Exec(`UPDATE topics SET status = 'content_ready', state = 'archived', origin = 'suggested' WHERE title = 'گوروتین'`); err != nil {
 		t.Fatal(err)
 	}
-	tree, matched, _ := list(t, s, topics.Filter{Status: "content_ready"})
+	if _, matched, _ := list(t, s, topics.Filter{Status: "content_ready"}); matched != 0 {
+		t.Fatalf("archived topics are hidden by default (T9.12), got %d", matched)
+	}
+	tree, matched, _ := list(t, s, topics.Filter{Status: "content_ready", Archived: true})
 	if matched != 1 {
 		t.Fatalf("status filter: want 1, got %d", matched)
 	}
