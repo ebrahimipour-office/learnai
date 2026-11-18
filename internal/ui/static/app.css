@@ -12,7 +12,7 @@
   --accent: #1d3fae; --accent-fg: #fff; --accent-soft: #e4eafa;
   --mark: #c8261c; /* margin line and the marking pen: scores, flags, errors */
   --danger: var(--mark); --danger-soft: #fbe9e7; --ok: #17683c; --ok-soft: #e1f2e8; --warn: #855000; --warn-soft: #fbf0dc;
-  --radius: 3px; --gap: 1rem; --page: min(64rem, 100% - 1.5rem); --measure: 46rem;
+  --radius: 3px; --gap: 1rem; --page: min(64rem, 100% - 1.5rem); --measure: 52rem;
   --mono: ui-monospace, "Cascadia Code", Consolas, "DejaVu Sans Mono", monospace;
 }
 /* T9.14: dark follows the system unless data-theme (set by theme.js) forces a choice; keep both copies in sync. */
@@ -63,6 +63,9 @@ main { width: var(--page); min-height: calc(100dvh - 3.2rem); margin: 0 auto; pa
 
 /* sections are stretches of the same sheet, parted by a rule, not boxed cards */
 main > section, #topic-results > section, .ai-suggestion, #draft-form { border-top: 1px solid var(--line); padding: .25rem 0 1rem; margin: 1.5rem 0; }
+.meta { margin: 0 0 .5rem; }
+/* T10.10: the tab bar already draws the rule above a topic's section */
+main > .tabs ~ section { border-top: 0; margin-top: 0; }
 main > section > h2:first-child, #topic-results > section > h2:first-child, .ai-suggestion > h2:first-child { margin-top: 1rem; }
 #topic-results > section > h2 { font-size: 1.6rem; font-weight: 900; } /* the book's title above its contents */
 
@@ -105,6 +108,8 @@ button:hover, .button:hover { background: var(--surface-2); }
 .danger { color: var(--danger); border-color: currentColor; }
 .danger:hover { background: var(--danger-soft); }
 button:disabled { opacity: .5; cursor: not-allowed; filter: none; }
+button.link { border: 0; padding: .1rem .25rem; font-weight: 400; font-size: .92em; color: var(--muted); text-decoration: underline; }
+button.link:hover { color: var(--fg); background: transparent; }
 form.inline, #job-area form, .ai-suggestion form { display: inline-block; margin: 0; margin-inline-end: .5rem; }
 
 /* status words: plain coloured text with a square bullet, like a note in the margin */
@@ -183,7 +188,11 @@ progress::-moz-progress-bar { background: var(--accent); }
 /* dir=auto on the article skips children that have their own dir and falls back to LTR; the app is Persian */
 .md { overflow-wrap: anywhere; direction: rtl; }
 /* blocks carry their own dir=auto, so pin each to its own reading-start edge */
-.md > :not(pre, table) { max-width: var(--measure); margin-inline: 0 auto; }
+.md { font-size: 1.0625rem; }
+/* T10.10: code and tables share the text's measure and scroll sideways only when a line is too long */
+.md > * { max-width: var(--measure); margin-inline: 0 auto; }
+.md > pre { margin-left: auto; margin-right: 0; } /* pre is LTR; pin it to the RTL text's edge */
+.md > table { display: block; overflow-x: auto; }
 .md h2, .md h3, .md h4 { margin-top: 2rem; line-height: 1.35; }
 /* Markdown headings render one level down (T10.2); keep the sizes they had */
 .md h2 { font-size: 1.6rem; font-weight: 900; }
@@ -208,6 +217,10 @@ details.toc ul { margin: .25rem 0; }
 details.toc .toc-3 { margin-inline-start: 1.25rem; }
 details.regen { margin: .5rem 0; }
 details.regen > summary { cursor: pointer; color: var(--muted); }
+/* T10.10: lesson tool row; anything opened or holding a message takes the full width */
+.tools { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem 1.25rem; margin: .75rem 0; }
+.tools > *, .tools #job-area, .tools details { margin: 0; }
+.tools > details[open], .tools > #job-area:has([open], p, .job-card) { flex-basis: 100%; }
 
 /* settings */
 .adapter-form { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center; margin: 1rem 0; }
@@ -228,6 +241,9 @@ dd code { white-space: nowrap; }
   h1 { font-size: 1.6rem; }
   main { padding-inline-start: .75rem; }
   header nav { gap: 1rem; }
+  /* T10.10: the two-row header no longer sticks on phones; it took ~94px of every screen */
+  header { position: static; }
+  html { scroll-padding-top: 0; }
   /* T10.3: 44px touch targets */
   header nav a, header .theme-toggle, .md .copy-code, .stepper a { min-height: 44px; display: inline-flex; align-items: center; }
   .md .copy-code { display: flex; }
@@ -259,6 +275,7 @@ dd code { white-space: nowrap; }
 .stepper a.primary { color: var(--accent-fg); font-weight: 700; }
 .stepper .done a { color: var(--ok); border-color: var(--ok); }
 .stepper .done a::after { content: " ✓" / ""; }
+@media (max-width: 40rem) { .stepper { gap: .35rem; } .stepper a { padding-inline: .5rem; } } /* T10.10: one row at 390px */
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 #job-area:not(:has(*)) { display: none; } /* whitespace-only, so :empty never matches */
 .pager { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin: 2rem 0 0; padding-top: 1rem; border-top: 1px solid var(--line); }
