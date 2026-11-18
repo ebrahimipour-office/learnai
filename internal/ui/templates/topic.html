@@ -7,6 +7,7 @@
   {{if eq .Panel.Origin "suggested"}}<span class="badge suggested">پیشنهادی</span>{{end}}
   {{if eq .Panel.State "archived"}}<form method="post" action="/topics/{{.Panel.ID}}/unarchive" class="inline"><input type="hidden" name="csrf_token" value="{{.CSRF}}"><button type="submit"{{if .Panel.Busy}} disabled{{end}}>بازگردانی</button></form>
   {{else}}<form method="post" action="/topics/{{.Panel.ID}}/archive" class="inline"><input type="hidden" name="csrf_token" value="{{.CSRF}}"><button type="submit" title="فقط از فهرست پنهان می‌شود؛ هیچ فایلی حذف نمی‌شود"{{if .Panel.Busy}} disabled{{end}}>بایگانی</button></form>{{end}}</p>
+{{template "stepper" .}}
 {{with .Panel.Children}}<details class="children" open><summary>زیررکوردها ({{len .}})</summary>
   <ul>{{range .}}<li><a href="/topics/{{.ID}}"><bdi>{{.Title}}</bdi></a>{{if .Archived}} <span class="badge">بایگانی‌شده</span>{{end}}</li>{{end}}</ul>
 </details>{{end}}
@@ -46,20 +47,31 @@
 {{end}}
 </section>
 {{end}}{{end}}
-{{template "next-step" .}}
+{{if not .Tab}}{{template "next-step" .}}{{end}}
 {{if or .Panel.Prev .Panel.Next}}<nav class="pager" aria-label="فصل قبل و بعد">
   {{with .Panel.Prev}}<a href="/topics/{{.ID}}" rel="prev">→ فصل قبل: <bdi>{{.Title}}</bdi></a>{{else}}<span></span>{{end}}
   {{with .Panel.Next}}<a href="/topics/{{.ID}}" rel="next">فصل بعد: <bdi>{{.Title}}</bdi> ←</a>{{end}}
 </nav>{{end}}
 {{end}}
 
-{{/* next-step (T9.9) points to the tab that moves the topic's status forward; hidden on that tab itself. */}}
+{{/* next-step (T9.9) points to the tab that moves the topic's status forward; shown only under the lesson (T10.9). */}}
 {{define "next-step"}}{{$s := .Panel.Status}}{{$id := .Panel.ID}}
-{{if and (eq $s "content_ready") (ne .Tab "exercises")}}<p class="next-step">گام بعدی: <a href="/topics/{{$id}}/exercises">ساخت تمرین</a></p>
-{{else if and (eq $s "exercises_ready") (ne .Tab "answers")}}<p class="next-step">گام بعدی: <a href="/topics/{{$id}}/answers">نوشتن پاسخ‌ها</a></p>
-{{else if and (eq $s "answered") (ne .Tab "reports")}}<p class="next-step">گام بعدی: <a href="/topics/{{$id}}/reports">ارزیابی پاسخ‌ها</a></p>
+{{if eq $s "content_ready"}}<p class="next-step">گام بعدی: <a href="/topics/{{$id}}/exercises">ساخت تمرین</a></p>
+{{else if eq $s "exercises_ready"}}<p class="next-step">گام بعدی: <a href="/topics/{{$id}}/answers">نوشتن پاسخ‌ها</a></p>
+{{else if eq $s "answered"}}<p class="next-step">گام بعدی: <a href="/topics/{{$id}}/reports">ارزیابی پاسخ‌ها</a></p>
 {{else if eq $s "evaluated"}}{{with .Panel.Next}}<p class="next-step">گام بعدی: <a href="/topics/{{.ID}}">فصل بعد: <bdi>{{.Title}}</bdi></a></p>{{end}}
 {{end}}{{end}}
+
+{{/* stepper (T10.9): the four steps of a topic; the step the status calls for next is the primary link. */}}
+{{define "stepper"}}{{$s := .Panel.Status}}{{$id := .Panel.ID}}
+{{$cur := 5}}{{if eq $s "created"}}{{$cur = 1}}{{else if eq $s "content_ready"}}{{$cur = 2}}{{else if eq $s "exercises_ready"}}{{$cur = 3}}{{else if eq $s "answered"}}{{$cur = 4}}{{end}}
+<nav aria-label="مراحل کار"><ol class="stepper">
+  <li{{if gt $cur 1}} class="done"{{end}}><a href="/topics/{{$id}}/lesson"{{if eq $cur 1}} class="primary" aria-current="step"{{end}}>{{if gt $cur 1}}<span class="sr-only">انجام‌شده: </span>{{end}}۱. درس</a></li>
+  <li{{if gt $cur 2}} class="done"{{end}}><a href="/topics/{{$id}}/exercises"{{if eq $cur 2}} class="primary" aria-current="step"{{end}}>{{if gt $cur 2}}<span class="sr-only">انجام‌شده: </span>{{end}}۲. تمرین</a></li>
+  <li{{if gt $cur 3}} class="done"{{end}}><a href="/topics/{{$id}}/answers"{{if eq $cur 3}} class="primary" aria-current="step"{{end}}>{{if gt $cur 3}}<span class="sr-only">انجام‌شده: </span>{{end}}۳. پاسخ</a></li>
+  <li{{if gt $cur 4}} class="done"{{end}}><a href="/topics/{{$id}}/reports"{{if eq $cur 4}} class="primary" aria-current="step"{{end}}>{{if gt $cur 4}}<span class="sr-only">انجام‌شده: </span>{{end}}۴. ارزیابی</a></li>
+</ol></nav>
+{{end}}
 
 {{define "set-tab"}}
 <section class="set">

@@ -331,6 +331,30 @@ func TestTopicPagerAndNextStep(t *testing.T) {
 	}
 }
 
+// T10.9: the stepper marks finished steps and makes the step the status calls for the primary link.
+func TestTopicStepper(t *testing.T) {
+	e := newEnv(t)
+	e.seedTopics()
+	steps := []string{"lesson", "exercises", "answers", "reports"}
+	for cur, status := range []string{"created", "content_ready", "exercises_ready", "answered", "evaluated"} {
+		if _, err := e.db.Writer().Exec(`UPDATE topics SET status = ? WHERE id = 1`, status); err != nil {
+			t.Fatal(err)
+		}
+		body := e.get("/topics/1/answers").Body.String()
+		for i, tab := range steps {
+			link := `<a href="/topics/1/` + tab + `"`
+			active := strings.Contains(body, link+` class="primary" aria-current="step">`)
+			done := strings.Contains(body, `<li class="done">`+link+`>`)
+			if active != (i == cur) || done != (i < cur) {
+				t.Errorf("%s: step %s active=%v done=%v", status, tab, active, done)
+			}
+		}
+		if strings.Contains(body, `class="next-step"`) {
+			t.Errorf("%s: bottom next step belongs to the lesson tab only", status)
+		}
+	}
+}
+
 // T9.10: a lesson with three or more level 2–3 headings shows a TOC linking to their ids.
 func TestLessonTOC(t *testing.T) {
 	e := newEnv(t)

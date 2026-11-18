@@ -229,7 +229,7 @@ dd code { white-space: nowrap; }
   main { padding-inline-start: .75rem; }
   header nav { gap: 1rem; }
   /* T10.3: 44px touch targets */
-  header nav a, header .theme-toggle, .md .copy-code { min-height: 44px; display: inline-flex; align-items: center; }
+  header nav a, header .theme-toggle, .md .copy-code, .stepper a { min-height: 44px; display: inline-flex; align-items: center; }
   .md .copy-code { display: flex; }
   .tabs { flex-wrap: wrap; gap: .25rem 1.25rem; }
   main table { display: block; overflow-x: auto; }
@@ -253,6 +253,14 @@ dd code { white-space: nowrap; }
 @media (prefers-reduced-motion: no-preference) { button, a, .tabs a { transition: background-color .15s, color .15s, border-color .15s; } }
 /* T9.9: next-step call-to-action and previous/next chapter links */
 .next-step { margin: 1.5rem 0 0; padding: .75rem 1rem; border: 1px solid var(--line); border-radius: var(--radius); }
+/* T10.9: topic stepper (lesson → exercises → answers → evaluation); done steps get a check, the current one the ballpoint fill. */
+.stepper { display: flex; flex-wrap: wrap; gap: .5rem; list-style: none; margin: .75rem 0; padding: 0; }
+.stepper a { display: inline-block; padding: .25rem .75rem; border: 1px solid var(--line); border-radius: var(--radius); color: var(--muted); text-decoration: none; }
+.stepper a.primary { color: var(--accent-fg); font-weight: 700; }
+.stepper .done a { color: var(--ok); border-color: var(--ok); }
+.stepper .done a::after { content: " ✓" / ""; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+#job-area:not(:has(*)) { display: none; } /* whitespace-only, so :empty never matches */
 .pager { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin: 2rem 0 0; padding-top: 1rem; border-top: 1px solid var(--line); }
 
 /* T9.13: score trend chart on the reports tab; colours from theme variables so both themes work. */
