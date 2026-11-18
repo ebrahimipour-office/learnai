@@ -289,3 +289,18 @@ dd code { white-space: nowrap; }
 /* T10.4: resume card on /topics */
 .resume h2 { margin-top: .5rem; }
 .status-counts { display: flex; flex-wrap: wrap; gap: .25rem 1.25rem; list-style: none; padding: 0; margin: 0; color: var(--muted); font-size: .9em; }
+/* T10.11: print the lesson/exercises only, black on white whatever the theme. Last in the file so it wins
+   over the equally specific theme rules above. */
+@media print {
+  :root, :root[data-theme], :root:not([data-theme="light"]) {
+    color-scheme: light; --bg: #fff; --surface: #fff; --surface-2: #fff; --fg: #000; --muted: #333; --line: #999;
+    --accent: #000; --mark: #000;
+  }
+  header, nav, form, button, .skip, #flash, #job-area, .tools, .versions, .children, .next-step, main > p:first-child { display: none !important; }
+  main { width: auto; min-height: 0; padding: 0; border: 0; }
+  .md > * { max-width: none; }
+  pre { white-space: pre-wrap; overflow: visible; }
+  .md > table { display: table; }
+  h2, h3, h4 { break-after: avoid; }
+  .md a[href^="http"]::after { content: " (" attr(href) ")"; font-size: .85em; overflow-wrap: anywhere; }
+}

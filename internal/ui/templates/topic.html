@@ -33,6 +33,7 @@
 {{/* T10.10: regenerate, versions and TOC share one tool row */}}
 <div class="tools">{{template "job-area" .}}
 {{if .Panel.Lessons}}
+  <button type="button" class="link" data-print>چاپ</button>
   <details class="versions"><summary>نسخه‌ها ({{len .Panel.Lessons}})</summary>
     <ul>{{range .Panel.Lessons}}
       <li><a href="/topics/{{$.Panel.ID}}/lesson?v={{.Version}}"{{if and $.Viewing (eq $.Viewing.Version .Version)}} aria-current="true"{{end}}>نسخه {{.Version}}</a>
@@ -91,6 +92,7 @@
   {{if not .Set.Current}}<p class="note">در حال مشاهده مجموعه قدیمی v{{.Set.Version}}. <a href="/topics/{{.Panel.ID}}/{{.Tab}}">مجموعه جاری</a></p>{{end}}
   {{if eq .Tab "reports"}}{{template "reports" .}}
   {{else if eq .Tab "exercises"}}
+  <button type="button" class="link" data-print>چاپ</button>
   <table class="grid"><thead><tr><th>شناسه</th><th>عنوان</th><th>نوع</th><th>دشواری</th><th>وزن</th></tr></thead>
     <tbody>{{range .Exercises}}<tr><td data-label="شناسه"><code>{{.ExID}}</code></td><td data-label="عنوان"><bdi>{{.Title}}</bdi>{{if .External}} <span class="badge warn">دانش خارج از درس</span>
         <ul class="note">{{range .External}}<li><bdi>{{.Topic}}</bdi> — <bdi>{{.Note}}</bdi></li>{{end}}</ul>{{end}}</td><td data-label="نوع">{{exType .Type}}</td><td data-label="دشواری">{{difficulty .Difficulty}}</td><td data-label="وزن">{{.Weight}}</td></tr>{{end}}</tbody>

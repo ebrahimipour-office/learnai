@@ -460,3 +460,26 @@ func TestResumeCard(t *testing.T) {
 		t.Errorf("resume card must show topic 2 and its next step:\n%s", card)
 	}
 }
+
+// T10.11: lesson and exercises tabs offer a print button; app.js prints via a delegated listener (CSP) and
+// app.css hides the chrome in print.
+func TestPrintView(t *testing.T) {
+	e := newEnv(t)
+	e.exerciseSet() // seeds topics and also builds the lesson
+	for _, tab := range []string{"/topics/1", "/topics/1/exercises"} {
+		if !strings.Contains(e.get(tab).Body.String(), `<button type="button" class="link" data-print>چاپ</button>`) {
+			t.Errorf("%s: print button missing", tab)
+		}
+	}
+	if strings.Contains(e.get("/topics/1/answers").Body.String(), "data-print") {
+		t.Error("answers tab has nothing to print")
+	}
+	if js := e.get("/static/app.js").Body.String(); !strings.Contains(js, `closest("button[data-print]")) return window.print()`) {
+		t.Error("app.js must print from a delegated listener")
+	}
+	css := e.get("/static/app.css").Body.String()
+	_, print, ok := strings.Cut(css, "@media print {")
+	if !ok || !strings.Contains(print, "header, nav, form, button") || !strings.Contains(print, "white-space: pre-wrap") || !strings.Contains(print, `attr(href)`) {
+		t.Error("app.css print rules missing")
+	}
+}

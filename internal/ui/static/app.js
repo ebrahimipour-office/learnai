@@ -1,6 +1,8 @@
 // Copy buttons (T4.5, CR-47, T9.11): CSP forbids inline handlers, so one delegated listener.
 // data-copy buttons copy their path; .copy-code buttons copy the code block right after them.
+// T10.11: print buttons share this listener.
 document.addEventListener("click", async (ev) => {
+  if (ev.target.closest("button[data-print]")) return window.print();
   const btn = ev.target.closest("button[data-copy], button.copy-code");
   if (!btn) return;
   const code = btn.dataset.copy === undefined ? btn.nextElementSibling?.querySelector("code") : null;
