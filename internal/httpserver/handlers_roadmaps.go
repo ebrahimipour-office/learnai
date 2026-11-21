@@ -74,12 +74,13 @@ type pageData struct {
 	Resume              *topics.Resume // T10.4: last opened topic; nil = none
 	Review              *topics.Review // T10.17: «برای مرور»; nil = nothing evaluated yet
 
-	Panel   *topics.Panel
-	Viewing *topics.LessonVersion // lesson version shown; nil = none
-	Lesson  template.HTML         // sanitized by render.Markdown; also the chapter text on the source tab
-	TOC     []render.Heading      // level 2–3 headings of the lesson (T9.10)
-	Job     *jobs.Info            // latest job of the topic; nil = none
-	Notice  string                // job action feedback inside the job area
+	Panel     *topics.Panel
+	Viewing   *topics.LessonVersion // lesson version shown; nil = none
+	Lesson    template.HTML         // sanitized by render.Markdown; also the chapter text on the source tab
+	TOC       []render.Heading      // level 2–3 headings of the lesson (T9.10)
+	Job       *jobs.Info            // latest job of the topic; nil = none
+	Notice    string                // job action feedback inside the job area
+	Questions []qaRow               // T10.21: answered questions under the lesson, newest first
 
 	Tab         string // "" (lesson) | "source" | "exercises" | "answers" | "reports" | "suggestions"
 	Sets        []topics.SetVersion
@@ -89,6 +90,7 @@ type pageData struct {
 	Answered    int           // answers tab: exercises whose file holds an answer (answered or changed)
 	CountMin    int
 	CountMax    int
+	MaxQuestion int // T10.21: textarea maxlength
 
 	Attempts     []topics.Attempt
 	Attempt      *topics.Attempt // attempt shown; nil = none

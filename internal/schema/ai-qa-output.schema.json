@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://learninghub.local/schemas/ai-qa-output-1.json",
+  "title": "AIQAOutput",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["answer_markdown"],
+  "properties": {
+    "answer_markdown": { "type": "string", "minLength": 1, "maxLength": 20000 }
+  }
+}

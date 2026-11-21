@@ -49,6 +49,20 @@
 {{if .Panel.Lessons}}
   {{with .Viewing}}{{if not .Current}}<p class="note">در حال مشاهده نسخه قدیمی {{fa .Version}}. <a href="/topics/{{$.Panel.ID}}/lesson">نسخه جاری</a></p>{{end}}{{end}}
   <article class="md" dir="auto">{{.Lesson}}</article>
+  <section id="qa" class="qa" aria-labelledby="qa-title">
+    <h2 id="qa-title">پرسش درباره درس</h2>
+    <form method="post" action="/topics/{{.Panel.ID}}/jobs/qa" hx-post="/topics/{{.Panel.ID}}/jobs/qa" hx-target="#job-area" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+      <label for="qa-question">پرسش شما (پاسخ بر پایه نسخه جاری درس)</label>
+      <textarea id="qa-question" name="question" rows="3" maxlength="{{.MaxQuestion}}" required dir="auto"{{if .Panel.Busy}} disabled{{end}}></textarea>
+      <button type="submit"{{if .Panel.Busy}} disabled{{end}}>بپرس</button>
+      <span class="hint">پاسخ پس از پایان کار، همین‌جا نمایش داده می‌شود.</span>
+    </form>
+    {{range $i, $q := .Questions}}<details class="qa-item"{{if eq $i 0}} open{{end}}>
+      <summary><bdi>{{.Question}}</bdi> <span class="note">· نسخه {{fa .Version}} · <bdi>{{localTime .CreatedAt}}</bdi></span></summary>
+      <div class="md" dir="auto">{{.Answer}}</div>
+    </details>{{end}}
+  </section>
 {{else}}
   <p class="note empty">هنوز درسی برای این موضوع ساخته نشده است.</p>
 {{end}}
@@ -244,7 +258,7 @@
   {{with .Job}}{{if .ShowCard}}
   <div class="job-card job-{{.Status}}"{{if .Active}} aria-busy="true"{{end}}>
     <strong>{{jobKind .Kind}}</strong> <span class="badge">{{jobStatus .Status}}</span>
-    {{if eq .Status "succeeded"}}<a href="/topics/{{.TopicID}}{{if eq .Kind "exercises"}}/exercises{{else if eq .Kind "evaluate"}}/reports{{end}}">✓ انجام شد — مشاهده {{if eq .Kind "exercises"}}تمرین‌ها{{else if eq .Kind "evaluate"}}گزارش{{else}}درس{{end}}</a>{{end}}
+    {{if eq .Status "succeeded"}}<a href="/topics/{{.TopicID}}{{if eq .Kind "exercises"}}/exercises{{else if eq .Kind "evaluate"}}/reports{{else if eq .Kind "qa"}}#qa{{end}}">✓ انجام شد — مشاهده {{if eq .Kind "exercises"}}تمرین‌ها{{else if eq .Kind "evaluate"}}گزارش{{else if eq .Kind "qa"}}پاسخ{{else}}درس{{end}}</a>{{end}}
     {{if .Active}}{{with .Phase}}<span>مرحله: {{jobPhase .}}</span>{{end}}{{end}}
     {{if .Total}}<progress aria-label="پیشرفت" value="{{.Done}}" max="{{.Total}}">{{fa .Done}}/{{fa .Total}}</progress>{{end}}
     {{if .Duration}}<span class="note">{{if .Active}}زمان سپری‌شده{{else}}مدت{{end}}: {{faDuration .Duration}}</span>{{end}}

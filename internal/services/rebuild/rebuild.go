@@ -3,7 +3,7 @@
 // the answer files and reports/v<N>/attempt-<K>/result.json. Each revision's topics are re-selected
 // with the choice in rev-NNN.choice.json (CR-19; deepest when missing). It only reads files and writes into
 // an empty database in one transaction. What exists only in the database is not recoverable and
-// gets a default: lesson keywords, suggestions, jobs and the audit log.
+// gets a default: lesson keywords, suggestions, lesson questions (lesson_qa), jobs and the audit log.
 package rebuild
 
 import (

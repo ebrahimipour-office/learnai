@@ -91,6 +91,7 @@ const (
 	JobKindEvaluate       JobKind = "evaluate"
 	JobKindRoadmapAnalyze JobKind = "roadmap_analyze"
 	JobKindChapterDetect  JobKind = "chapter_detect"
+	JobKindQA             JobKind = "qa"
 )
 
 // JobStatus tracks the lifecycle state of a background job (R4).

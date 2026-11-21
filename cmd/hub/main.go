@@ -27,6 +27,7 @@ import (
 	"learninghub/internal/services/exercises"
 	"learninghub/internal/services/lessons"
 	"learninghub/internal/services/maintenance"
+	"learninghub/internal/services/qa"
 	"learninghub/internal/services/rebuild"
 	"learninghub/internal/services/roadmaps"
 	"learninghub/internal/services/topics"
@@ -408,6 +409,10 @@ func runServe(args []string) error {
 		DB: db, Root: root, Adapter: adapter, Model: cfg.Adapter.Model, Language: cfg.Language,
 		Timeout: cfg.Jobs.TimeoutEvaluateItem, JobTimeout: cfg.Jobs.TimeoutEvaluate, Stall: cfg.Jobs.StallTimeout, Parallel: cfg.Jobs.EvaluateParallelism,
 		MaxAnswerBytes: cfg.Limits.MaxAnswerBytes, MaxSource: cfg.Limits.MaxSourceBytes,
+	}).Handle)
+	runner.Register(domain.JobKindQA, (&qa.Service{
+		DB: db, Root: root, Adapter: adapter, Model: cfg.Adapter.Model, Language: cfg.Language,
+		Timeout: cfg.Jobs.TimeoutLesson, Stall: cfg.Jobs.StallTimeout, MaxSource: cfg.Limits.MaxSourceBytes,
 	}).Handle)
 	analyzer := &roadmaps.Analyzer{
 		Drafts: drafts, Adapter: adapter, Model: cfg.Adapter.Model, Timeout: cfg.Jobs.TimeoutAnalyze, Stall: cfg.Jobs.StallTimeout,

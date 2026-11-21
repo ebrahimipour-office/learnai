@@ -151,3 +151,34 @@ func TestMigrateRefusesNewerVersion(t *testing.T) {
 		t.Fatalf("err = %v, want newer schema error", err)
 	}
 }
+
+// T10.21: 0011 rebuilds jobs for kind 'qa'; rows, references, T10.8 columns and indexes survive.
+func TestMigrate0011LessonQA(t *testing.T) {
+	d := openAt(t, 10)
+	w := d.writer
+	mustExec(t, w, `INSERT INTO roadmaps (id, slug, title, select_rule) VALUES (1, 'r', 'R', '{}')`)
+	mustExec(t, w, `INSERT INTO topics (id, roadmap_id, stable_key, title, title_norm, ord, slug, dir_name) VALUES (7, 1, 'k', 'T', 't', 1, 't', '01-t')`)
+	mustExec(t, w, `INSERT INTO files (id, topic_id, kind, rel_path, sha256, size_bytes) VALUES (40, 7, 'lesson', 'topics/01-t/lesson/lesson.md', 'h', 3)`)
+	mustExec(t, w, `INSERT INTO jobs (id, kind, scope_key, topic_id, status, auto_attempt, not_before) VALUES (90, 'lesson', 'topic:7', 7, 'succeeded', 2, 'nb')`)
+	mustExec(t, w, `INSERT INTO lesson_versions (id, topic_id, version, file_id, keywords, is_current, job_id) VALUES (5, 7, 1, 40, '[]', 1, 90)`)
+	if err := d.migrateTo(11); err != nil {
+		t.Fatalf("migrate to 11: %v", err)
+	}
+	var attempt int
+	var nb string
+	if err := w.QueryRow(`SELECT j.auto_attempt, j.not_before FROM lesson_versions l JOIN jobs j ON j.id = l.job_id`).Scan(&attempt, &nb); err != nil || attempt != 2 || nb != "nb" {
+		t.Fatalf("job row: %d %q %v", attempt, nb, err)
+	}
+	mustExec(t, w, `INSERT INTO jobs (id, kind, scope_key, topic_id, status) VALUES (91, 'qa', 'topic:7', 7, 'running')`)
+	mustExec(t, w, `INSERT INTO lesson_qa (topic_id, lesson_version_id, question, answer_md, job_id) VALUES (7, 5, 'q', 'a', 91)`)
+	if _, err := w.Exec(`INSERT INTO jobs (kind, scope_key, topic_id, status) VALUES ('lesson', 'topic:7', 7, 'queued')`); err == nil || !strings.Contains(err.Error(), "UNIQUE") {
+		t.Errorf("one active job per scope must hold after the rebuild: %v", err)
+	}
+	if _, err := w.Exec(`INSERT INTO jobs (kind, scope_key, status) VALUES ('bogus', 'x', 'queued')`); err == nil {
+		t.Error("kind CHECK must still reject unknown kinds")
+	}
+	var n int
+	if err := w.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN ('uq_jobs_active_scope','idx_jobs_queue','idx_jobs_topic','idx_jobs_scope')`).Scan(&n); err != nil || n != 4 {
+		t.Errorf("jobs indexes = %d (%v), want 4", n, err)
+	}
+}

@@ -3,12 +3,16 @@ package httpserver
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"html/template"
 	"log/slog"
 	"net/http"
 	"strconv"
 
 	"learninghub/internal/domain"
 	"learninghub/internal/jobs"
+	"learninghub/internal/render"
+	"learninghub/internal/services/qa"
 	"learninghub/internal/services/topics"
 )
 
@@ -21,7 +25,7 @@ var jobPhaseLabels = map[string]string{
 }
 
 var jobKindLabels = map[string]string{
-	"lesson": "تولید درس", "exercises": "تولید تمرین", "evaluate": "ارزیابی", "roadmap_analyze": "تحلیل نقشه راه", "chapter_detect": "تشخیص فصل‌ها",
+	"lesson": "تولید درس", "exercises": "تولید تمرین", "evaluate": "ارزیابی", "roadmap_analyze": "تحلیل نقشه راه", "chapter_detect": "تشخیص فصل‌ها", "qa": "پرسش درباره درس",
 }
 
 func pathID(r *http.Request) (int64, bool) {
@@ -49,6 +53,15 @@ func (a *app) panelData(r *http.Request, id int64, tab string, job *jobs.Info) (
 		if job, err = a.runner.Latest(r.Context(), topics.Scope(id), kind); err != nil {
 			return nil, err
 		}
+		if tab == "" { // T10.21: a question's job card shows under the lesson too, whichever ran last
+			q, err := a.runner.Latest(r.Context(), topics.Scope(id), domain.JobKindQA)
+			if err != nil {
+				return nil, err
+			}
+			if q != nil && (job == nil || q.ID > job.ID) {
+				job = q
+			}
+		}
 	}
 	if job == nil && r.Method == http.MethodGet { // a page view, not a job response
 		if err := a.topics.Touch(r.Context(), id); err != nil {
@@ -60,7 +73,7 @@ func (a *app) panelData(r *http.Request, id int64, tab string, job *jobs.Info) (
 		title = "⏳ " + title // T10.13: visible on a background browser tab
 	}
 	c := a.settings.Exercises
-	return &pageData{Title: title, Panel: p, Job: job, Tab: tab, CountMin: c.CountMin, CountMax: c.CountMax}, nil
+	return &pageData{Title: title, Panel: p, Job: job, Tab: tab, CountMin: c.CountMin, CountMax: c.CountMax, MaxQuestion: qa.MaxQuestion}, nil
 }
 
 func (a *app) showTopic(w http.ResponseWriter, r *http.Request) {
@@ -121,6 +134,13 @@ func (a *app) fillLesson(r *http.Request, d *pageData) {
 	}
 	if d.Viewing == nil {
 		return
+	}
+	qs, err := a.topics.Questions(r.Context(), d.Panel.ID)
+	if err != nil {
+		slog.Error("loading lesson questions", "topic", d.Panel.ID, "error", err) // the lesson still shows
+	}
+	for _, q := range qs {
+		d.Questions = append(d.Questions, qaRow{q.Question, q.CreatedAt, q.Version, render.Markdown([]byte(q.AnswerMD))})
 	}
 	m, err := a.md.get(d.Viewing.RelPath)
 	if err != nil {
@@ -187,6 +207,44 @@ func (a *app) generateLesson(w http.ResponseWriter, r *http.Request) {
 	}
 	params, _ := json.Marshal(map[string]bool{"confirm_regenerate": confirm})
 	_, err = a.runner.Enqueue(r.Context(), jobs.Job{Kind: domain.JobKindLesson, Scope: topics.Scope(id), TopicID: id, Params: params})
+	a.afterEnqueue(w, r, id, err)
+}
+
+// qaRow is one answered question under the lesson; Answer is sanitized by render.Markdown.
+type qaRow struct {
+	Question, CreatedAt string
+	Version             int64
+	Answer              template.HTML
+}
+
+// askQuestion queues a qa job about the current lesson (T10.21).
+func (a *app) askQuestion(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	p, err := a.topics.Panel(r.Context(), id)
+	if errors.Is(err, domain.ErrNotFound) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		slog.Error("loading topic", "topic", id, "error", err)
+		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
+		return
+	}
+	q, err := qa.CheckQuestion(r.FormValue("question"))
+	if err != nil {
+		a.respond(w, r, http.StatusBadRequest, id, nil, "پرسش باید بین ۱ تا "+faDigits.Replace(fmt.Sprint(qa.MaxQuestion))+" نویسه باشد.")
+		return
+	}
+	if len(p.Lessons) == 0 {
+		a.respond(w, r, http.StatusConflict, id, nil, "برای پرسیدن ابتدا درس این موضوع را تولید کنید.")
+		return
+	}
+	params, _ := json.Marshal(qa.Params{Question: q})
+	_, err = a.runner.Enqueue(r.Context(), jobs.Job{Kind: domain.JobKindQA, Scope: topics.Scope(id), TopicID: id, Params: params})
 	a.afterEnqueue(w, r, id, err)
 }
 

@@ -81,15 +81,15 @@ main > .empty { border: 1px dashed var(--line); }
 
 /* forms */
 label { display: block; margin: .75rem 0; }
-input[type=text], input[type=number], input[type=search], select {
+input[type=text], input[type=number], input[type=search], select, textarea {
   font: inherit; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-bottom-color: var(--muted); border-radius: var(--radius);
   padding: .35rem .6rem; margin-inline-start: .5rem; max-width: 100%;
 }
 input[type=text], input[type=search] { min-width: min(20rem, 100%); }
 input[type=file] { font: inherit; margin-inline-start: .5rem; max-width: 100%; }
 input[type=checkbox] { accent-color: var(--accent); width: 1.05em; height: 1.05em; vertical-align: middle; }
-input:hover, select:hover { border-color: var(--muted); }
-input:disabled, select:disabled { opacity: .6; }
+input:hover, select:hover, textarea:hover { border-color: var(--muted); }
+input:disabled, select:disabled, textarea:disabled { opacity: .6; }
 form[role=search] { display: flex; flex-wrap: wrap; gap: 0 1.5rem; }
 form[role=search] label { display: flex; align-items: center; gap: .5rem; }
 form[role=search] label:first-child { flex: 1 1 16rem; }
@@ -235,6 +235,12 @@ details.toc { margin: .75rem 0; }
 details.toc ul { margin: .25rem 0; }
 details.toc .toc-3 { margin-inline-start: 1.25rem; }
 details.regen { margin: .5rem 0; }
+/* T10.21: lesson questions */
+.qa { margin-top: 2rem; border-top: 1px solid var(--line); }
+.qa label { display: block; margin: .5rem 0 .25rem; }
+.qa textarea { display: block; width: 100%; box-sizing: border-box; margin: 0 0 .5rem; }
+.qa-item { margin: .75rem 0; }
+.qa-item > summary { cursor: pointer; }
 details.regen > summary { cursor: pointer; color: var(--muted); }
 /* T10.10: lesson tool row; anything opened or holding a message takes the full width */
 .tools { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem 1.25rem; margin: .75rem 0; }
@@ -321,7 +327,7 @@ kbd { font-family: var(--mono); border: 1px solid var(--line); border-radius: va
     color-scheme: light; --bg: #fff; --surface: #fff; --surface-2: #fff; --fg: #000; --muted: #333; --line: #999;
     --accent: #000; --mark: #000;
   }
-  header, nav, form, button, .skip, #flash, #job-area, .tools, .versions, .children, .next-step, main > p:first-child { display: none !important; }
+  header, nav, form, button, .skip, .qa, #flash, #job-area, .tools, .versions, .children, .next-step, main > p:first-child { display: none !important; }
   main { width: auto; min-height: 0; padding: 0; border: 0; }
   .md > * { max-width: none; }
   pre { white-space: pre-wrap; overflow: visible; }
