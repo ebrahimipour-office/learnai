@@ -184,6 +184,9 @@
 {{end}}
 {{end}}
 
+{{/* T10.13: htmx takes a top-level <title> from a fragment, so the ⏳ prefix follows the job */}}
+{{define "job-response"}}<title>{{.Title}} · Learning Hub</title>{{template "job-area" .}}{{end}}
+
 {{define "job-area"}}
 <div id="job-area" aria-live="polite"{{if and .Job .Job.Active}} hx-get="/jobs/{{.Job.ID}}/card?poll=1&amp;tab={{.Tab}}" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
   {{with .Notice}}<p class="error" role="alert">{{.}}</p>{{end}}
@@ -233,11 +236,12 @@
   {{if .Panel.Lessons}}</details>{{end}}
   {{end}}
   {{with .Job}}{{if .ShowCard}}
-  <div class="job-card job-{{.Status}}">
+  <div class="job-card job-{{.Status}}"{{if .Active}} aria-busy="true"{{end}}>
     <strong>{{jobKind .Kind}}</strong> <span class="badge">{{jobStatus .Status}}</span>
+    {{if eq .Status "succeeded"}}<a href="/topics/{{.TopicID}}{{if eq .Kind "exercises"}}/exercises{{else if eq .Kind "evaluate"}}/reports{{end}}">✓ انجام شد — مشاهده {{if eq .Kind "exercises"}}تمرین‌ها{{else if eq .Kind "evaluate"}}گزارش{{else}}درس{{end}}</a>{{end}}
     {{if .Active}}{{with .Phase}}<span>مرحله: {{jobPhase .}}</span>{{end}}{{end}}
     {{if .Total}}<progress aria-label="پیشرفت" value="{{.Done}}" max="{{.Total}}">{{.Done}}/{{.Total}}</progress>{{end}}
-    {{if .Duration}}<span class="note">مدت: {{faDuration .Duration}}</span>{{end}}
+    {{if .Duration}}<span class="note">{{if .Active}}زمان سپری‌شده{{else}}مدت{{end}}: {{faDuration .Duration}}</span>{{end}}
     {{if .AutoAttempt}}<span class="note">تلاش خودکار {{.AutoAttempt}} از {{.AutoMax}}{{with .Waiting}}؛ شروع تا {{faDuration .}} دیگر{{end}}</span>{{end}}
     {{if eq .Status "failed"}}{{$msg := aiMessage .ErrorCode}}<p class="error">{{if $msg}}{{$msg}}{{else}}<bdi>{{.ErrorMessage}}</bdi>{{end}}
       {{if or (eq .ErrorCode "auth_required") (eq .ErrorCode "adapter_missing")}}<a href="/settings">تنظیمات</a>{{end}}</p>

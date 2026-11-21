@@ -55,8 +55,12 @@ func (a *app) panelData(r *http.Request, id int64, tab string, job *jobs.Info) (
 			slog.Warn("recording topic open", "topic", id, "error", err) // the card is a convenience; still show the page
 		}
 	}
+	title := tabTitles[tab] + " · " + p.Title
+	if job != nil && job.Active() {
+		title = "⏳ " + title // T10.13: visible on a background browser tab
+	}
 	c := a.settings.Exercises
-	return &pageData{Title: tabTitles[tab] + " · " + p.Title, Panel: p, Job: job, Tab: tab, CountMin: c.CountMin, CountMax: c.CountMax}, nil
+	return &pageData{Title: title, Panel: p, Job: job, Tab: tab, CountMin: c.CountMin, CountMax: c.CountMax}, nil
 }
 
 func (a *app) showTopic(w http.ResponseWriter, r *http.Request) {
@@ -142,7 +146,7 @@ func (a *app) respond(w http.ResponseWriter, r *http.Request, status int, topicI
 	}
 	d.Notice = notice
 	if r.Header.Get("HX-Request") == "true" {
-		a.render(w, status, "topic", "job-area", d)
+		a.render(w, status, "topic", "job-response", d)
 		return
 	}
 	d.Error = notice

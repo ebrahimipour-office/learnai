@@ -91,7 +91,7 @@ func TestLessonGenerateFlow(t *testing.T) {
 	e := newEnv(t)
 	e.seedTopics()
 	e.ad.Scenario, e.ad.Output = fake.Slow, lessonOutput("## مقدمه\n\nمتن درس با `GET /` و کد:\n\n```go\nhttp.ListenAndServe()\n```\n")
-	e.ad.Delay = 300 * time.Millisecond
+	e.ad.Delay = 1500 * time.Millisecond // long enough to see the running card's elapsed time
 
 	rec := e.get("/topics/1")
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "تولید درس") {
@@ -102,6 +102,14 @@ func TestLessonGenerateFlow(t *testing.T) {
 	body := rec.Body.String()
 	if rec.Code != http.StatusAccepted || !strings.Contains(body, `hx-trigger="every 2s"`) || !strings.Contains(body, `type="submit" disabled`) {
 		t.Fatalf("enqueue: want 202 polling card with disabled button, got %d\n%s", rec.Code, body)
+	}
+	// T10.13: the fragment retitles the browser tab and marks the card busy
+	if !strings.HasPrefix(body, "<title>⏳ درس · ") || !strings.Contains(body, `aria-busy="true"`) {
+		t.Errorf("active job: want ⏳ title and aria-busy card\n%s", body)
+	}
+	time.Sleep(1100 * time.Millisecond) // past the first second so elapsed time is non-zero
+	if card := e.get("/topics/1").Body.String(); !strings.Contains(card, "زمان سپری‌شده: ") || !strings.Contains(card, "<title>⏳ ") {
+		t.Errorf("running card must show elapsed time and ⏳ title\n%s", card)
 	}
 
 	// UI is not blocked: another topic opens with its button enabled, the list shows the running job.
@@ -126,13 +134,17 @@ func TestLessonGenerateFlow(t *testing.T) {
 		t.Fatalf("job status %s", st)
 	}
 	page := e.get("/topics/1").Body.String()
-	for _, want := range []string{`<h3 id="h-مقدمه" dir="auto">مقدمه</h3>`, `<pre dir="ltr"><code class="language-go">`, "موفق", "نسخه 1"} {
+	for _, want := range []string{`<h3 id="h-مقدمه" dir="auto">مقدمه</h3>`, `<pre dir="ltr"><code class="language-go">`, "موفق", "نسخه 1",
+		`<a href="/topics/1">✓ انجام شد — مشاهده درس</a>`, "مدت: "} {
 		if !strings.Contains(page, want) {
 			t.Errorf("panel missing %q", want)
 		}
 	}
 	if i, k := strings.Index(page, "مقدمه"), strings.Index(page, "کلیدواژه"); k < 0 || k < i {
 		t.Error("keywords section must follow the lesson body")
+	}
+	if strings.Contains(page, "⏳") || strings.Contains(page, "aria-busy") {
+		t.Error("finished job: no ⏳ title or busy card")
 	}
 	if !strings.Contains(page, "بازتولید درس") || strings.Contains(page, `type="submit" disabled`) {
 		t.Error("finished: regenerate button must be enabled")

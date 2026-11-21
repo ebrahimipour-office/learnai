@@ -184,6 +184,14 @@ ol.tree-rows .depth-5 { padding-inline-start: 5rem; }
 .job-card.job-failed { border-inline-start-color: var(--danger); }
 .job-card > p, .job-card > details { flex-basis: 100%; margin: 0; }
 .job-card form { margin: 0; }
+/* T10.13: a sweeping bar while the job runs; 2s matches the poll, so each swap restarts it at a cycle edge */
+.job-card[aria-busy="true"]::after {
+  content: ""; flex-basis: 100%; height: .2rem; background: linear-gradient(90deg, transparent, var(--accent), transparent) no-repeat;
+  background-size: 40% 100%; animation: job-busy 2s linear infinite;
+}
+@keyframes job-busy { from { background-position: -70% 0; } to { background-position: 170% 0; } }
+@media (prefers-reduced-motion: reduce) { .job-card[aria-busy="true"]::after { animation: none; background: var(--accent); opacity: .4; } }
+form.htmx-request button { cursor: progress; opacity: .7; }
 progress { appearance: none; flex: 1 1 10rem; height: .4rem; border: 0; background: var(--surface-2); overflow: hidden; }
 progress::-webkit-progress-bar { background: var(--surface-2); }
 progress::-webkit-progress-value { background: var(--accent); }
