@@ -120,13 +120,6 @@ func (a *app) renderSettings(w http.ResponseWriter, r *http.Request, status int,
 		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
 		return
 	}
-	if ack != "" {
-		if t, err := time.Parse(time.RFC3339Nano, ack); err == nil {
-			ack = t.Local().Format("2006-01-02 15:04:05")
-		} else if t, err := time.Parse(time.RFC3339, ack); err == nil {
-			ack = t.Local().Format("2006-01-02 15:04:05")
-		}
-	}
 	ups, err := skills.Outdated(a.root)
 	if err != nil {
 		slog.Error("checking skill versions", "error", err)
@@ -150,7 +143,7 @@ func (a *app) renderSettings(w http.ResponseWriter, r *http.Request, status int,
 	a.render(w, status, "settings", "layout", &pageData{Title: "تنظیمات", Error: msg, Doctor: a.doctor(),
 		Backups: backups, BackupsOn: a.settings.Maintenance != nil, BackupNote: backupNotes[r.URL.Query().Get("backup")],
 		Model: ai.ModelFor(a.settings.Adapter, a.settings.Model), Adapter: a.settings.Adapter.Name(), SkipPermissions: a.settings.SkipPermissions,
-		Adapters: a.adapterNames(), PrivacyAck: ack, Privacy: PrivacyNotice, SkillUpdates: ups, Usage: usage,
+		Adapters: a.adapterNames(), PrivacyAck: ack, Jalali: a.jalali.Load(), Privacy: PrivacyNotice, SkillUpdates: ups, Usage: usage,
 		NeedAck: r.URL.Query().Has("need_ack")})
 }
 
@@ -258,6 +251,23 @@ func (a *app) ackPrivacy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/topics", http.StatusSeeOther)
+}
+
+// selectCalendar stores the date display option (O7); data stays UTC/Gregorian, only localTime changes.
+func (a *app) selectCalendar(w http.ResponseWriter, r *http.Request) {
+	cal := r.FormValue("calendar")
+	if cal != "gregorian" && cal != "jalali" {
+		http.Error(w, "تقویم نامعتبر است", http.StatusBadRequest)
+		return
+	}
+	if _, err := a.settings.DB.Writer().ExecContext(r.Context(),
+		`INSERT INTO meta (key, value) VALUES ('calendar', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, cal); err != nil {
+		slog.Error("saving calendar", "error", err)
+		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
+		return
+	}
+	a.jalali.Store(cal == "jalali")
+	http.Redirect(w, r, "/settings", http.StatusSeeOther)
 }
 
 // requireAck is the first-run gate (T6.7): until the privacy notice is acknowledged, the topic

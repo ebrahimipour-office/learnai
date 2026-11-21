@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -18,13 +19,41 @@ func faSize(n int) string {
 	return faDigits.Replace(strconv.Itoa(n>>10)) + " کیلوبایت"
 }
 
-// localTime shows a stored RFC 3339 UTC timestamp in the machine's local zone (B8) in Persian digits; anything unparsable is shown as is.
-func localTime(s string) string {
+// localTime shows a stored RFC 3339 UTC timestamp in the machine's local zone (B8) in Persian digits,
+// as a Jalali date when the display option is on (O7); anything unparsable is shown as is.
+func localTime(s string, useJalali bool) string {
 	t, err := time.Parse(time.RFC3339Nano, s)
 	if err != nil {
 		return s
 	}
-	return faDigits.Replace(t.Local().Format("2006-01-02 15:04"))
+	t = t.Local()
+	if !useJalali {
+		return faDigits.Replace(t.Format("2006-01-02 15:04"))
+	}
+	jy, jm, jd := jalali(t.Year(), int(t.Month()), t.Day())
+	return faDigits.Replace(fmt.Sprintf("%04d/%02d/%02d %s", jy, jm, jd, t.Format("15:04")))
+}
+
+// jalali converts a Gregorian date to the Jalali (Solar Hijri) calendar with the standard arithmetic algorithm (33-year cycles).
+func jalali(gy, gm, gd int) (jy, jm, jd int) {
+	cum := [...]int{0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334}
+	gy2 := gy
+	if gm > 2 {
+		gy2++
+	}
+	days := 355666 + 365*gy + (gy2+3)/4 - (gy2+99)/100 + (gy2+399)/400 + gd + cum[gm-1]
+	jy = -1595 + 33*(days/12053)
+	days %= 12053
+	jy += 4 * (days / 1461)
+	days %= 1461
+	if days > 365 {
+		jy += (days - 1) / 365
+		days = (days - 1) % 365
+	}
+	if days < 186 {
+		return jy, 1 + days/31, 1 + days%31
+	}
+	return jy, 7 + (days-186)/30, 1 + (days-186)%30
 }
 
 // faDuration spells d in Persian, e.g. 2m57s ⇒ «۲ دقیقه و ۵۷ ثانیه»; zero parts are left out.

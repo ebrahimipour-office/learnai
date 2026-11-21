@@ -3,6 +3,7 @@ package httpserver
 import (
 	"bytes"
 	"cmp"
+	"database/sql"
 	"errors"
 	"fmt"
 	"html/template"
@@ -14,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"learninghub/internal/ai"
 	"learninghub/internal/domain"
@@ -42,6 +44,7 @@ type app struct {
 	settings  Settings
 	probeMu   sync.Mutex
 	lastProbe *Doctor
+	jalali    atomic.Bool // meta.calendar == "jalali" (O7); cached so localTime never queries per render
 }
 
 // pageData is shared by all pages; each template uses the fields it needs.
@@ -107,6 +110,7 @@ type pageData struct {
 	SkipPermissions     bool                 // settings: agy runs with --dangerously-skip-permissions
 	Adapters            []string             // selectable AI tools on the settings page
 	Privacy, PrivacyAck string               // notice text; RFC3339 time of acknowledgement or ""
+	Jalali              bool                 // calendar display option (O7)
 	NeedAck             bool                 // settings: reached via the first-run gate (T9.7)
 	SkillUpdates        []skills.Update      // settings: installed skills older than the embedded ones (§13.2)
 	Usage               []jobs.UsageRow      // settings: token totals of the last 30 days by job kind and tool (T10.19)
@@ -158,7 +162,7 @@ func newApp(sm *SecurityManager, drafts *roadmaps.Service, topicList *topics.Ser
 		"evalMode":    func(s string) string { return evalModeLabels[s] },
 		"num":         func(f float64) string { return faDigits.Replace(strconv.FormatFloat(f, 'f', 2, 64)) },
 		"fa":          func(v any) string { return faDigits.Replace(fmt.Sprint(v)) }, // display counts only; ids, paths and attribute values stay Latin
-		"localTime":   localTime,
+		"localTime":   func(s string) string { return localTime(s, a.jalali.Load()) },
 		"faDuration":  faDuration,
 		"sugKind":     func(s string) string { return suggestionKindLabels[s] },
 		"sugStatus":   func(s string) string { return suggestionStatusLabels[s] },
@@ -169,6 +173,11 @@ func newApp(sm *SecurityManager, drafts *roadmaps.Service, topicList *topics.Ser
 	for _, p := range []string{"new", "draft", "topics", "topic", "settings", "sync"} {
 		a.pages[p] = template.Must(template.New(p).Funcs(funcs).ParseFS(ui.FS, "templates/layout.html", "templates/"+p+".html"))
 	}
+	var cal string
+	if err := settings.DB.Reader().QueryRow(`SELECT value FROM meta WHERE key = 'calendar'`).Scan(&cal); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		slog.Error("reading calendar preference", "error", err) // display only: fall back to Gregorian
+	}
+	a.jalali.Store(cal == "jalali")
 	return a
 }
 

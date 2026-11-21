@@ -59,6 +59,7 @@ func NewServer(addr string, sm *SecurityManager, drafts *roadmaps.Service, topic
 	mux.HandleFunc("POST /settings/doctor", a.rerunDoctor)
 	mux.HandleFunc("POST /settings/privacy", a.ackPrivacy)
 	mux.HandleFunc("POST /settings/adapter", a.selectAdapter)
+	mux.HandleFunc("POST /settings/calendar", a.selectCalendar)
 	mux.HandleFunc("POST /settings/skills/{name}/upgrade", a.upgradeSkill)
 	mux.HandleFunc("POST /settings/backup", a.backupNow)
 	mux.HandleFunc("GET /settings/backups/{name}", a.downloadBackup)

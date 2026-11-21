@@ -95,9 +95,25 @@ func TestSettingsPrivacyAck(t *testing.T) {
 	if b := e.settingsPage(false); !strings.Contains(b, "تأییدشده") || strings.Contains(b, `name="ack"`) {
 		t.Fatalf("ack not shown:\n%s", b)
 	}
-	// Localized date format YYYY-MM-DD HH:MM:SS (CR-61)
-	if !regexp.MustCompile(`تأییدشده در <bdi>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}</bdi>`).MatchString(e.settingsPage(false)) {
+	// Local time in Persian digits through localTime (CR-61, O7)
+	if !regexp.MustCompile(`تأییدشده در <bdi>[۰-۹]{4}-[۰-۹]{2}-[۰-۹]{2} [۰-۹]{2}:[۰-۹]{2}</bdi>`).MatchString(e.settingsPage(false)) {
 		t.Errorf("expected localized date in privacy ack, got:\n%s", e.settingsPage(false))
+	}
+
+	// O7: the calendar option switches every date to Jalali; anything else is rejected.
+	if rec := e.post("/settings/calendar", url.Values{"calendar": {"julian"}}, false); rec.Code != http.StatusBadRequest {
+		t.Fatalf("invalid calendar: %d", rec.Code)
+	}
+	if rec := e.post("/settings/calendar", url.Values{"calendar": {"jalali"}}, false); rec.Code != http.StatusSeeOther {
+		t.Fatalf("select jalali: %d", rec.Code)
+	}
+	b := e.settingsPage(false)
+	if !regexp.MustCompile(`تأییدشده در <bdi>۱۴[۰-۹]{2}/[۰-۹]{2}/[۰-۹]{2} [۰-۹]{2}:[۰-۹]{2}</bdi>`).MatchString(b) || !strings.Contains(b, `value="jalali" selected`) {
+		t.Errorf("expected Jalali date after switching, got:\n%s", b)
+	}
+	var cal string
+	if err := e.db.Writer().QueryRow(`SELECT value FROM meta WHERE key = 'calendar'`).Scan(&cal); err != nil || cal != "jalali" {
+		t.Errorf("calendar not stored: %q %v", cal, err)
 	}
 }
 
