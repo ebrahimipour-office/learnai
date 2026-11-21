@@ -24,10 +24,10 @@ func TestInstallKeepsUserFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n != 8 { // AGENTS.md + .gitignore + 6 skills; profile.md already there
-		t.Errorf("installed %d files, want 8", n)
+	if n != 9 { // AGENTS.md + .gitignore + 7 skills; profile.md already there
+		t.Errorf("installed %d files, want 9", n)
 	}
-	for _, rel := range []string{"AGENTS.md", ".gitignore", SkillRel("lesson-generator"), SkillRel("exercise-generator"), SkillRel("answer-evaluator"), SkillRel("chapter-detector"), SkillRel("lesson-qa")} {
+	for _, rel := range []string{"AGENTS.md", ".gitignore", SkillRel("lesson-generator"), SkillRel("exercise-generator"), SkillRel("answer-evaluator"), SkillRel("chapter-detector"), SkillRel("lesson-qa"), SkillRel("flashcard-generator")} {
 		if !root.Exists(rel) {
 			t.Errorf("%s not installed", rel)
 		}

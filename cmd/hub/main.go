@@ -25,6 +25,7 @@ import (
 	"learninghub/internal/jobs"
 	"learninghub/internal/services/evaluation"
 	"learninghub/internal/services/exercises"
+	"learninghub/internal/services/flashcards"
 	"learninghub/internal/services/lessons"
 	"learninghub/internal/services/maintenance"
 	"learninghub/internal/services/qa"
@@ -411,6 +412,10 @@ func runServe(args []string) error {
 		MaxAnswerBytes: cfg.Limits.MaxAnswerBytes, MaxSource: cfg.Limits.MaxSourceBytes,
 	}).Handle)
 	runner.Register(domain.JobKindQA, (&qa.Service{
+		DB: db, Root: root, Adapter: adapter, Model: cfg.Adapter.Model, Language: cfg.Language,
+		Timeout: cfg.Jobs.TimeoutLesson, Stall: cfg.Jobs.StallTimeout, MaxSource: cfg.Limits.MaxSourceBytes,
+	}).Handle)
+	runner.Register(domain.JobKindFlashcards, (&flashcards.Service{
 		DB: db, Root: root, Adapter: adapter, Model: cfg.Adapter.Model, Language: cfg.Language,
 		Timeout: cfg.Jobs.TimeoutLesson, Stall: cfg.Jobs.StallTimeout, MaxSource: cfg.Limits.MaxSourceBytes,
 	}).Handle)

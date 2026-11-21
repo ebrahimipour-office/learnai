@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"learninghub/internal/domain"
 	"learninghub/internal/jobs"
@@ -25,7 +26,7 @@ var jobPhaseLabels = map[string]string{
 }
 
 var jobKindLabels = map[string]string{
-	"lesson": "تولید درس", "exercises": "تولید تمرین", "evaluate": "ارزیابی", "roadmap_analyze": "تحلیل نقشه راه", "chapter_detect": "تشخیص فصل‌ها", "qa": "پرسش درباره درس",
+	"lesson": "تولید درس", "exercises": "تولید تمرین", "evaluate": "ارزیابی", "roadmap_analyze": "تحلیل نقشه راه", "chapter_detect": "تشخیص فصل‌ها", "qa": "پرسش درباره درس", "flashcards": "ساخت کارت‌های مرور",
 }
 
 func pathID(r *http.Request) (int64, bool) {
@@ -43,6 +44,8 @@ var tabTitles = map[string]string{
 	"": "درس", "source": "متن فصل", "exercises": "تمرین‌ها", "answers": "فایل‌های پاسخ", "reports": "گزارش‌ها", "suggestions": "پیشنهادها",
 }
 
+var lessonTabKinds = map[string][]domain.JobKind{"": {domain.JobKindQA, domain.JobKindFlashcards}}
+
 // panelData loads the topic and its tab's latest job; job overrides the latest one when non-nil.
 func (a *app) panelData(r *http.Request, id int64, tab string, job *jobs.Info) (*pageData, error) {
 	p, err := a.topics.Panel(r.Context(), id)
@@ -53,8 +56,9 @@ func (a *app) panelData(r *http.Request, id int64, tab string, job *jobs.Info) (
 		if job, err = a.runner.Latest(r.Context(), topics.Scope(id), kind); err != nil {
 			return nil, err
 		}
-		if tab == "" { // T10.21: a question's job card shows under the lesson too, whichever ran last
-			q, err := a.runner.Latest(r.Context(), topics.Scope(id), domain.JobKindQA)
+		// T10.21, T11.3: question and card jobs show under the lesson too, whichever ran last
+		for _, k := range lessonTabKinds[tab] {
+			q, err := a.runner.Latest(r.Context(), topics.Scope(id), k)
 			if err != nil {
 				return nil, err
 			}
@@ -146,6 +150,14 @@ func (a *app) fillLesson(r *http.Request, d *pageData) {
 	}
 	for _, q := range qs {
 		d.Questions = append(d.Questions, qaRow{q.Question, q.CreatedAt, q.Version, render.Markdown([]byte(q.AnswerMD))})
+	}
+	if d.Deck, err = a.topics.Deck(r.Context(), d.Panel.ID, time.Now()); err != nil {
+		slog.Error("loading flashcards", "topic", d.Panel.ID, "error", err)
+	}
+	if d.Deck != nil {
+		for _, c := range d.Deck.Due {
+			d.Cards = append(d.Cards, cardRow{c.ID, c.Box, render.Markdown([]byte(c.Front)), render.Markdown([]byte(c.Back))})
+		}
 	}
 	m, err := a.md.get(d.Viewing.RelPath)
 	if err != nil {
@@ -251,6 +263,64 @@ func (a *app) askQuestion(w http.ResponseWriter, r *http.Request) {
 	params, _ := json.Marshal(qa.Params{Question: q})
 	_, err = a.runner.Enqueue(r.Context(), jobs.Job{Kind: domain.JobKindQA, Scope: topics.Scope(id), TopicID: id, Params: params})
 	a.afterEnqueue(w, r, id, err)
+}
+
+// cardRow is one due review card; Front and Back are sanitized by render.Markdown.
+type cardRow struct {
+	ID          int64
+	Box         int
+	Front, Back template.HTML
+}
+
+// buildCards queues a flashcards job from the current lesson's keywords (T11.3).
+func (a *app) buildCards(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	d, err := a.topics.Deck(r.Context(), id, time.Now())
+	if err != nil {
+		slog.Error("loading flashcards", "topic", id, "error", err)
+		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
+		return
+	}
+	switch {
+	case d.Keywords == 0:
+		a.respond(w, r, http.StatusConflict, id, nil, "درس جاری کلیدواژه‌ای ندارد؛ کارت‌ها از کلیدواژه‌ها ساخته می‌شوند.")
+		return
+	case d.Total > 0:
+		a.respond(w, r, http.StatusConflict, id, nil, "کارت‌های این نسخه درس پیش‌تر ساخته شده‌اند.")
+		return
+	}
+	_, err = a.runner.Enqueue(r.Context(), jobs.Job{Kind: domain.JobKindFlashcards, Scope: topics.Scope(id), TopicID: id, Params: []byte("{}")})
+	a.afterEnqueue(w, r, id, err)
+}
+
+// gradeCard records «بلد بودم» (knew=1) or «بلد نبودم» (knew=0) for a card and returns to the cards (T11.3).
+func (a *app) gradeCard(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	card, err := strconv.ParseInt(r.PathValue("card"), 10, 64)
+	knew := r.FormValue("knew")
+	if !ok || err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if knew != "0" && knew != "1" {
+		http.Error(w, "پاسخ نامعتبر است", http.StatusBadRequest)
+		return
+	}
+	err = a.topics.GradeCard(r.Context(), id, card, knew == "1", time.Now())
+	if errors.Is(err, domain.ErrNotFound) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		slog.Error("grading flashcard", "topic", id, "card", card, "error", err)
+		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/topics/"+strconv.FormatInt(id, 10)+"#cards", http.StatusSeeOther)
 }
 
 func (a *app) afterEnqueue(w http.ResponseWriter, r *http.Request, topicID int64, err error) {

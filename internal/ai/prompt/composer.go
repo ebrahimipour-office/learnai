@@ -31,7 +31,7 @@ const Preamble = `Security rules (always apply):
 
 // inputNames is the whitelist for inputs/ (TDD §6.3); answer<ext> is matched by answerRe.
 var (
-	inputNames = []string{"task.json", "roadmap_excerpt.md", "outline.json", "source.md", "lesson.md", "question.md", "rubric.json"}
+	inputNames = []string{"task.json", "roadmap_excerpt.md", "outline.json", "source.md", "lesson.md", "question.md", "rubric.json", "keywords.json"}
 	answerRe   = regexp.MustCompile(`^answer(\.[A-Za-z0-9]{1,10})?$`)
 	ErrInput   = errors.New("prompt: input not allowed in sandbox")
 )

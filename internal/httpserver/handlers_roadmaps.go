@@ -74,8 +74,9 @@ type pageData struct {
 	Statuses            []ruleOption
 	Topics              []*topics.Node
 	Matched, TopicTotal int
-	Resume              *topics.Resume // T10.4: last opened topic; nil = none
-	Review              *topics.Review // T10.17: «برای مرور»; nil = nothing evaluated yet
+	Resume              *topics.Resume    // T10.4: last opened topic; nil = none
+	Review              *topics.Review    // T10.17: «برای مرور»; nil = nothing evaluated yet
+	DueCards            []topics.DueTopic // T11.3: topics with due review cards
 
 	Panel     *topics.Panel
 	Viewing   *topics.LessonVersion // lesson version shown; nil = none
@@ -84,6 +85,8 @@ type pageData struct {
 	Job       *jobs.Info            // latest job of the topic; nil = none
 	Notice    string                // job action feedback inside the job area
 	Questions []qaRow               // T10.21: answered questions under the lesson, newest first
+	Deck      *topics.Deck          // T11.3: cards of the current lesson; nil = not loaded
+	Cards     []cardRow             // T11.3: due cards, rendered
 
 	Tab         string // "" (lesson) | "source" | "exercises" | "answers" | "reports" | "suggestions"
 	Sets        []topics.SetVersion

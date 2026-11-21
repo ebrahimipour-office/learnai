@@ -19,6 +19,7 @@ const (
 	TaskRoadmapAnalyze Task = "roadmap_analyze"
 	TaskChapterDetect  Task = "chapter_detect"
 	TaskQA             Task = "qa"
+	TaskFlashcards     Task = "flashcards"
 )
 
 type Adapter interface {

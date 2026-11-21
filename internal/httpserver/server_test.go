@@ -27,6 +27,7 @@ import (
 	"learninghub/internal/jobs"
 	"learninghub/internal/services/evaluation"
 	"learninghub/internal/services/exercises"
+	"learninghub/internal/services/flashcards"
 	"learninghub/internal/services/lessons"
 	"learninghub/internal/services/maintenance"
 	"learninghub/internal/services/qa"
@@ -78,6 +79,8 @@ func newEnv(t *testing.T, opts ...func(*httpserver.Settings)) *env {
 	runner.Register(domain.JobKindEvaluate, (&evaluation.Service{DB: db, Root: root, Adapter: ad, Model: "m1",
 		Language: "fa", Timeout: time.Minute, Stall: time.Minute, MaxAnswerBytes: 1024, MaxSource: 204800}).Handle)
 	runner.Register(domain.JobKindQA, (&qa.Service{DB: db, Root: root, Adapter: ad, Model: "m1",
+		Language: "fa", Timeout: time.Minute, Stall: time.Minute, MaxSource: 204800}).Handle)
+	runner.Register(domain.JobKindFlashcards, (&flashcards.Service{DB: db, Root: root, Adapter: ad, Model: "m1",
 		Language: "fa", Timeout: time.Minute, Stall: time.Minute, MaxSource: 204800}).Handle)
 	drafts := roadmaps.NewService(db, root)
 	analyzer := &roadmaps.Analyzer{Drafts: drafts, Adapter: ad, Model: "m1", Timeout: time.Minute, Stall: time.Minute}

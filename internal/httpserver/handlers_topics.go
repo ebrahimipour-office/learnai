@@ -52,12 +52,16 @@ func (a *app) listTopics(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
 		return
 	}
+	due, err := a.topics.DueCards(r.Context(), time.Now())
+	if err != nil {
+		slog.Error("loading due flashcards", "error", err) // the list still shows
+	}
 	opts := make([]ruleOption, len(statusOrder))
 	for i, s := range statusOrder {
 		opts[i] = ruleOption{Value: string(s), Label: statusLabels[string(s)], Selected: string(s) == f.Status}
 	}
 	data := &pageData{Title: "موضوعات", Query: f.Query, Status: f.Status, Archived: f.Archived, Statuses: opts,
-		Topics: tree, Matched: matched, TopicTotal: total, Resume: resume, Review: review}
+		Topics: tree, Matched: matched, TopicTotal: total, Resume: resume, Review: review, DueCards: due}
 	name := "layout"
 	if r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-History-Restore-Request") != "true" {
 		name = "topic-results"

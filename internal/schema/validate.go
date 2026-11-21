@@ -26,6 +26,7 @@ var (
 	aiAnalyzeSchema    *jsonschema.Schema
 	aiChaptersSchema   *jsonschema.Schema
 	aiQASchema         *jsonschema.Schema
+	aiFlashcardsSchema *jsonschema.Schema
 )
 
 func initSchemas() error {
@@ -45,6 +46,7 @@ func initSchemas() error {
 		{"https://learninghub.local/schemas/ai-roadmap-analyze-output-1.json", "ai-roadmap-analyze-output.schema.json", &aiAnalyzeSchema},
 		{"https://learninghub.local/schemas/ai-chapter-detect-output-1.json", "ai-chapter-detect-output.schema.json", &aiChaptersSchema},
 		{"https://learninghub.local/schemas/ai-qa-output-1.json", "ai-qa-output.schema.json", &aiQASchema},
+		{"https://learninghub.local/schemas/ai-flashcards-output-1.json", "ai-flashcards-output.schema.json", &aiFlashcardsSchema},
 	}
 
 	// 1. Add all resources to compiler so cross-references resolve
@@ -172,6 +174,14 @@ func ValidateAIQAOutput(data []byte) error {
 		return err
 	}
 	return validateData(aiQASchema, data)
+}
+
+// ValidateAIFlashcardsOutput validates the AI review cards of a lesson (T11.3) against its schema.
+func ValidateAIFlashcardsOutput(data []byte) error {
+	if err := ensureInitialized(); err != nil {
+		return err
+	}
+	return validateData(aiFlashcardsSchema, data)
 }
 
 // GetSchemaBytes returns the raw JSON schema bytes for a given schema filename.

@@ -70,6 +70,29 @@
       <div class="md" dir="auto">{{.Answer}}</div>
     </details>{{end}}
   </section>
+  {{with .Deck}}<section id="cards" class="qa" aria-labelledby="cards-title">
+    <h2 id="cards-title">کارت‌های مرور</h2>
+    {{if eq .Total 0}}
+    <form method="post" action="/topics/{{$.Panel.ID}}/jobs/flashcards" hx-post="/topics/{{$.Panel.ID}}/jobs/flashcards" hx-target="#job-area" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+      <button type="submit"{{if or $.Panel.Busy (eq .Keywords 0)}} disabled{{end}}>ساخت کارت‌ها</button>
+      <span class="hint">{{if eq .Keywords 0}}درس جاری کلیدواژه‌ای ندارد؛ کارت‌ها از کلیدواژه‌ها ساخته می‌شوند.{{else}}تا ۱۰ کارت از {{fa .Keywords}} کلیدواژه درس جاری.{{end}}</span>
+    </form>
+    {{else}}
+    <p class="note">{{fa (len .Due)}} کارت از {{fa .Total}} برای مرور آماده است.{{if not .Due}} کارت بعدی در روزهای آینده سررسید می‌شود.{{end}}</p>
+    {{range $.Cards}}<div class="card-item">
+      <div class="md" dir="auto">{{.Front}}</div>
+      <details><summary>نمایش پاسخ <span class="note">· جعبه {{fa .Box}}</span></summary>
+        <div class="md" dir="auto">{{.Back}}</div>
+        <form method="post" action="/topics/{{$.Panel.ID}}/cards/{{.ID}}" class="grade">
+          <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+          <button type="submit" name="knew" value="1">بلد بودم</button>
+          <button type="submit" name="knew" value="0">بلد نبودم</button>
+        </form>
+      </details>
+    </div>{{end}}
+    {{end}}
+  </section>{{end}}
 {{else}}
   <p class="note empty">هنوز درسی برای این موضوع ساخته نشده است.</p>
 {{end}}
@@ -265,7 +288,7 @@
   {{with .Job}}{{if .ShowCard}}
   <div class="job-card job-{{.Status}}"{{if .Active}} aria-busy="true"{{end}}>
     <strong>{{jobKind .Kind}}</strong> <span class="badge">{{jobStatus .Status}}</span>
-    {{if eq .Status "succeeded"}}<a href="/topics/{{.TopicID}}{{if eq .Kind "exercises"}}/exercises{{else if eq .Kind "evaluate"}}/reports{{else if eq .Kind "qa"}}#qa{{end}}">✓ انجام شد — مشاهده {{if eq .Kind "exercises"}}تمرین‌ها{{else if eq .Kind "evaluate"}}گزارش{{else if eq .Kind "qa"}}پاسخ{{else}}درس{{end}}</a>{{end}}
+    {{if eq .Status "succeeded"}}<a href="/topics/{{.TopicID}}{{if eq .Kind "exercises"}}/exercises{{else if eq .Kind "evaluate"}}/reports{{else if eq .Kind "qa"}}#qa{{else if eq .Kind "flashcards"}}#cards{{end}}">✓ انجام شد — مشاهده {{if eq .Kind "exercises"}}تمرین‌ها{{else if eq .Kind "evaluate"}}گزارش{{else if eq .Kind "qa"}}پاسخ{{else if eq .Kind "flashcards"}}کارت‌ها{{else}}درس{{end}}</a>{{end}}
     {{if .Active}}{{with .Phase}}<span>مرحله: {{jobPhase .}}</span>{{end}}{{end}}
     {{if .Total}}<progress aria-label="پیشرفت" value="{{.Done}}" max="{{.Total}}">{{fa .Done}}/{{fa .Total}}</progress>{{end}}
     {{if .Duration}}<span class="note">{{if .Active}}زمان سپری‌شده{{else}}مدت{{end}}: {{faDuration .Duration}}</span>{{end}}

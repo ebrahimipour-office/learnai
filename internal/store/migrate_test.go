@@ -182,3 +182,29 @@ func TestMigrate0011LessonQA(t *testing.T) {
 		t.Errorf("jobs indexes = %d (%v), want 4", n, err)
 	}
 }
+
+// T11.3: 0012 rebuilds jobs for kind 'flashcards'; rows and indexes survive; flashcards boxes are 1..5.
+func TestMigrate0012Flashcards(t *testing.T) {
+	d := openAt(t, 11)
+	w := d.writer
+	mustExec(t, w, `INSERT INTO roadmaps (id, slug, title, select_rule) VALUES (1, 'r', 'R', '{}')`)
+	mustExec(t, w, `INSERT INTO topics (id, roadmap_id, stable_key, title, title_norm, ord, slug, dir_name) VALUES (7, 1, 'k', 'T', 't', 1, 't', '01-t')`)
+	mustExec(t, w, `INSERT INTO files (id, topic_id, kind, rel_path, sha256, size_bytes) VALUES (40, 7, 'lesson', 'topics/01-t/lesson/lesson.md', 'h', 3)`)
+	mustExec(t, w, `INSERT INTO jobs (id, kind, scope_key, topic_id, status) VALUES (90, 'qa', 'topic:7', 7, 'succeeded')`)
+	mustExec(t, w, `INSERT INTO lesson_versions (id, topic_id, version, file_id, keywords, is_current, job_id) VALUES (5, 7, 1, 40, '[]', 1, 90)`)
+	if err := d.migrateTo(12); err != nil {
+		t.Fatalf("migrate to 12: %v", err)
+	}
+	mustExec(t, w, `INSERT INTO jobs (id, kind, scope_key, topic_id, status) VALUES (91, 'flashcards', 'topic:7', 7, 'running')`)
+	mustExec(t, w, `INSERT INTO flashcards (topic_id, lesson_version_id, front, back, job_id) VALUES (7, 5, 'f', 'b', 91)`)
+	if _, err := w.Exec(`INSERT INTO flashcards (topic_id, lesson_version_id, front, back, box, job_id) VALUES (7, 5, 'f', 'b', 6, 91)`); err == nil {
+		t.Error("box 6 must be rejected")
+	}
+	if _, err := w.Exec(`INSERT INTO jobs (kind, scope_key, topic_id, status) VALUES ('lesson', 'topic:7', 7, 'queued')`); err == nil || !strings.Contains(err.Error(), "UNIQUE") {
+		t.Errorf("one active job per scope must hold after the rebuild: %v", err)
+	}
+	var n int
+	if err := w.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN ('uq_jobs_active_scope','idx_jobs_queue','idx_jobs_topic','idx_jobs_scope')`).Scan(&n); err != nil || n != 4 {
+		t.Errorf("jobs indexes = %d (%v), want 4", n, err)
+	}
+}

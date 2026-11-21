@@ -15,8 +15,10 @@
   {{else}}<a href="/topics/{{.ID}}/reports">مرور گزارش‌ها</a>{{end}}</p>
   <ul class="status-counts">{{range $.Statuses}}<li>{{statusLabel .Value}}: <strong>{{index $.Resume.Counts .Value}}</strong></li>{{end}}</ul>
 </section>{{end}}
-{{with .Review}}<section class="resume review" aria-labelledby="review-h">
+{{if or .Review .DueCards}}<section class="resume review" aria-labelledby="review-h">
   <h2 id="review-h">برای مرور</h2>
+  {{with .DueCards}}<p class="status-counts">کارت‌های سررسید: {{range .}}<span><a href="/topics/{{.ID}}#cards"><bdi>{{.Title}}</bdi></a> <strong>{{fa .N}}</strong></span> {{end}}</p>{{end}}
+  {{with .Review}}
   {{if .Errors}}<p class="status-counts">پرتکرارترین خطاها: {{range .Errors}}<span>{{errorType .Type}} <strong>{{fa .N}}</strong></span> {{end}}</p>{{end}}
   {{if .Topics}}<ul>{{range .Topics}}
     <li><a href="/topics/{{.ID}}/reports"><bdi>{{.Title}}</bdi></a>
@@ -25,6 +27,7 @@
       {{with .Errors}}<small class="hint">— {{range $i, $e := .}}{{if $i}}، {{end}}{{errorType $e.Type}} ({{fa $e.N}}){{end}}</small>{{end}}</li>
   {{end}}</ul>
   {{else}}<p class="note">موضوعی با نمره پایین یا ارزیابی قدیمی نیست.</p>{{end}}
+  {{end}}
 </section>{{end}}
 <form method="get" action="/topics" role="search"
       hx-get="/topics" hx-trigger="input delay:300ms" hx-target="#topic-results" hx-swap="outerHTML" hx-push-url="true">

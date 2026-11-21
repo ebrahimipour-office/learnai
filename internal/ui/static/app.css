@@ -241,6 +241,10 @@ details.regen { margin: .5rem 0; }
 .qa textarea { display: block; width: 100%; box-sizing: border-box; margin: 0 0 .5rem; }
 .qa-item { margin: .75rem 0; }
 .qa-item > summary { cursor: pointer; }
+/* T11.3: review cards */
+.card-item { margin: .75rem 0; padding: .5rem .75rem; border: 1px solid var(--line); border-radius: var(--radius); }
+.card-item summary { cursor: pointer; color: var(--muted); }
+.card-item .grade { display: flex; gap: .5rem; margin: .5rem 0 0; }
 details.regen > summary { cursor: pointer; color: var(--muted); }
 /* T10.10: lesson tool row; anything opened or holding a message takes the full width */
 .tools { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem 1.25rem; margin: .75rem 0; }
