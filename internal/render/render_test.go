@@ -152,3 +152,13 @@ func TestHeadingIDsAndTOC(t *testing.T) {
 		t.Errorf("unprefixed id leaked: %s", h)
 	}
 }
+
+// T10.12: an exercise heading "[q01] ..." gets the id h-q01 so the exercise list can link to it.
+func TestLabelledHeadingID(t *testing.T) {
+	html := string(Markdown([]byte("## [q01] مقایسه\n\n## [q02]\n\n## [q01] تکرار\n\n## [q 1] x\n")))
+	for _, tag := range []string{`id="h-q01"`, `id="h-q02"`, `id="h-q01-1"`, `id="h-q-1-x"`} {
+		if !strings.Contains(html, tag) {
+			t.Errorf("rendered HTML lacks %s:\n%s", tag, html)
+		}
+	}
+}

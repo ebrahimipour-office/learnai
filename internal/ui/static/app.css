@@ -138,8 +138,13 @@ main tbody tr:hover { background: var(--surface-2); }
 .md table { width: auto; }
 .md th, .md td { border: 1px solid var(--line); padding-inline-start: .6rem; }
 .diff-gone bdi, .archived > a > bdi { color: var(--muted); text-decoration: line-through; }
-.path { min-width: 16rem; }
-.path input { width: 100%; min-width: 12rem; margin: 0 0 .25rem; font: .85em var(--mono); }
+button.small { padding: .1rem .6rem; font-size: .85em; font-weight: 600; margin: 0; }
+/* T10.12: answer file name with its actions on one line; full path only in title and the copy button */
+.path .actions { display: inline-flex; flex-wrap: wrap; gap: .25rem; margin-inline-start: .5rem; vertical-align: middle; }
+.ex-list { padding-inline-start: 0; list-style: none; margin: 1rem 0; }
+.ex-list > li { padding: .35rem 0; border-bottom: 1px solid var(--line); }
+.ex-list > li > a { margin-inline-end: .5rem; }
+.ex-list .badge { margin-inline-end: .5rem; }
 
 /* topic tree = the book's table of contents: title, dotted leader, status and mark */
 .tree, .tree ul { list-style: none; margin: 0; padding-inline-start: 1.5rem; }
@@ -255,8 +260,7 @@ dd code { white-space: nowrap; }
   table.grid tr { padding: .5rem 0; border-bottom: 1px solid var(--line); }
   main table.grid td { padding: .2rem 0; border: 0; }
   table.grid td[data-label]::before { content: attr(data-label); display: inline-block; min-width: 6rem; margin-inline-end: .5rem; color: var(--muted); font-size: .85em; }
-  .path { min-width: 0; }
-  .path input { min-width: 0; }
+  button.small { min-height: 44px; }
   input[type=text], input[type=search], select { margin-inline-start: 0; display: block; width: 100%; margin-top: .25rem; }
   .adapter-form { flex-direction: column; align-items: stretch; gap: .75rem; }
   .adapter-form label { flex-direction: column; align-items: stretch; }

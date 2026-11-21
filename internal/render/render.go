@@ -122,13 +122,20 @@ func plainText(n ast.Node, src []byte) string {
 
 // headingIDs keeps letters and digits of any script (goldmark's default drops non-ASCII, so every
 // Persian heading would be "heading"). The "h-" prefix keeps ids from clobbering the page's own.
+// A heading opening with a label like "[q01]" gets just the label ("h-q01"), so links can name it (T10.12).
 type headingIDs struct{ used map[string]bool }
+
+var labelRe = regexp.MustCompile(`^\[([A-Za-z0-9_-]+)\](?:\s|$)`)
 
 func (g *headingIDs) Generate(value []byte, _ ast.NodeKind) []byte {
 	var b strings.Builder
 	b.WriteString("h-")
 	dash := false
-	for _, r := range strings.TrimSpace(string(value)) {
+	text := strings.TrimSpace(string(value))
+	if m := labelRe.FindStringSubmatch(text); m != nil {
+		text = m[1]
+	}
+	for _, r := range text {
 		switch {
 		case unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.Is(unicode.Mn, r):
 			if dash {

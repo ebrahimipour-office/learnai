@@ -93,19 +93,22 @@
   {{if eq .Tab "reports"}}{{template "reports" .}}
   {{else if eq .Tab "exercises"}}
   <button type="button" class="link" data-print>چاپ</button>
-  <table class="grid"><thead><tr><th>شناسه</th><th>عنوان</th><th>نوع</th><th>دشواری</th><th>وزن</th></tr></thead>
-    <tbody>{{range .Exercises}}<tr><td data-label="شناسه"><code>{{.ExID}}</code></td><td data-label="عنوان"><bdi>{{.Title}}</bdi>{{if .External}} <span class="badge warn">دانش خارج از درس</span>
-        <ul class="note">{{range .External}}<li><bdi>{{.Topic}}</bdi> — <bdi>{{.Note}}</bdi></li>{{end}}</ul>{{end}}</td><td data-label="نوع">{{exType .Type}}</td><td data-label="دشواری">{{difficulty .Difficulty}}</td><td data-label="وزن">{{.Weight}}</td></tr>{{end}}</tbody>
-  </table>
+  <ol class="ex-list">{{range .Exercises}}
+    <li><a href="#h-{{.ExID}}"><code>{{.ExID}}</code> <bdi>{{.Title}}</bdi></a>
+      <span class="badge">{{exType .Type}}</span> <span class="badge">{{difficulty .Difficulty}}</span> <span class="note">وزن {{.Weight}}</span>
+      {{if .External}}<span class="badge warn">دانش خارج از درس</span>
+      <ul class="note">{{range .External}}<li><bdi>{{.Topic}}</bdi> — <bdi>{{.Note}}</bdi></li>{{end}}</ul>{{end}}</li>{{end}}
+  </ol>
   <article class="md" dir="auto">{{.ExercisesMD}}</article>
   {{else}}
-  <table class="grid"><thead><tr><th>شناسه</th><th>عنوان</th><th>فایل</th><th>مسیر کامل</th><th>وضعیت</th></tr></thead>
+  {{with .Exercises}}<p class="roadmap-progress"><progress max="{{len .}}" value="{{$.Answered}}" aria-label="پیشرفت پاسخ‌ها"></progress>
+    <span>{{$.Answered}} از {{len .}} پاسخ داده شد</span></p>{{end}}
+  <table class="grid"><thead><tr><th>تمرین</th><th>فایل</th><th>وضعیت</th></tr></thead>
     <tbody>{{range .Exercises}}<tr>
-      <td data-label="شناسه"><code>{{.ExID}}</code></td><td data-label="عنوان"><bdi>{{.Title}}</bdi></td>
-      <td data-label="فایل">{{if eq .Status "missing"}}<code>{{base .AnswerRel}}</code>{{else}}<a href="/files/{{.AnswerFileID}}"><code>{{base .AnswerRel}}</code></a>{{end}}</td>
-      <td data-label="مسیر کامل" class="path"><input type="text" readonly dir="ltr" value="{{.FullPath}}" aria-label="مسیر کامل {{.ExID}}">
-        <button type="button" data-copy="{{.FullPath}}">کپی مسیر</button>
-        {{if and $.CanOpen (ne .Status "missing")}}<form method="post" action="/files/{{.AnswerFileID}}/open" class="inline"><input type="hidden" name="csrf_token" value="{{$.CSRF}}"><button type="submit">باز کردن</button></form>{{end}}</td>
+      <td><code>{{.ExID}}</code> <bdi>{{.Title}}</bdi></td>
+      <td data-label="فایل" class="path">{{if eq .Status "missing"}}<code title="{{.FullPath}}">{{base .AnswerRel}}</code>{{else}}<a href="/files/{{.AnswerFileID}}" title="{{.FullPath}}"><code>{{base .AnswerRel}}</code></a>{{end}}
+        <span class="actions"><button type="button" class="small" data-copy="{{.FullPath}}" aria-label="کپی مسیر کامل {{.ExID}}">کپی مسیر</button>
+        {{if and $.CanOpen (ne .Status "missing")}}<form method="post" action="/files/{{.AnswerFileID}}/open" class="inline"><input type="hidden" name="csrf_token" value="{{$.CSRF}}"><button type="submit" class="small">باز کردن</button></form>{{end}}</span></td>
       <td data-label="وضعیت"><span class="badge status-{{.Status}}">{{answerLabel .Status}}</span></td>
     </tr>{{end}}</tbody>
   </table>

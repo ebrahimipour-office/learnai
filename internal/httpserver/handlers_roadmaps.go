@@ -84,6 +84,7 @@ type pageData struct {
 	Set         *topics.SetVersion // set shown; nil = none
 	Exercises   []exerciseRow
 	ExercisesMD template.HTML // sanitized by render.Markdown
+	Answered    int           // answers tab: exercises whose file holds an answer (answered or changed)
 	CountMin    int
 	CountMax    int
 

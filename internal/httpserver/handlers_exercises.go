@@ -118,6 +118,9 @@ func (a *app) fillSet(r *http.Request, d *pageData) error {
 				sha = ""
 			}
 			row.Status = x.AnswerStatus(sha)
+			if row.Status == topics.AnswerDone || row.Status == topics.AnswerChanged {
+				d.Answered++
+			}
 		}
 		d.Exercises = append(d.Exercises, row)
 	}

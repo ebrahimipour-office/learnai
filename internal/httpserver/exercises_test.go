@@ -98,10 +98,14 @@ func TestExercisesTab(t *testing.T) {
 	if strings.Count(page, "دانش خارج از درس") != 1 || !strings.Contains(page, "RFC 9110") {
 		t.Error("external knowledge badge missing or on the wrong exercises")
 	}
-	for _, want := range []string{"Hello handler", "کدنویسی", "مفهومی", "[q01]", `aria-current="page">تمرین‌ها`, "مجموعه جدید"} {
+	// T10.12: one compact list links to each exercise's heading; no table repeating the Markdown.
+	for _, want := range []string{"Hello handler", "کدنویسی", "مفهومی", "[q01]", `aria-current="page">تمرین‌ها`, "مجموعه جدید", `href="#h-q01"`, `id="h-q01"`, `href="#h-q03"`, `id="h-q03"`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("exercises tab missing %q", want)
 		}
+	}
+	if strings.Contains(page, `<table class="grid">`) {
+		t.Error("exercises tab must not repeat the exercises in a table")
 	}
 	for _, leak := range []string{".internal", "rubric", "SECRET-REF"} {
 		if strings.Contains(page, leak) {
@@ -150,8 +154,11 @@ func TestAnswersTabStatuses(t *testing.T) {
 	e.exerciseSet()
 	page := e.get("/topics/1/answers").Body.String()
 	_, abs1 := e.answerID("q01")
-	if !strings.Contains(page, `value="`+abs1+`"`) || !strings.Contains(page, `data-copy="`+abs1+`"`) {
-		t.Fatalf("answers tab must offer the full path %s", abs1)
+	if !strings.Contains(page, `title="`+abs1+`"`) || !strings.Contains(page, `data-copy="`+abs1+`"`) || strings.Contains(page, `value="`+abs1+`"`) {
+		t.Fatalf("answers tab must offer the full path %s in title and copy only", abs1)
+	}
+	if !strings.Contains(page, ">0 از 3 پاسخ داده شد<") || !strings.Contains(page, `<progress max="3" value="0"`) {
+		t.Error("answers tab must summarise progress as 0 از 3")
 	}
 	if strings.Count(page, "بدون پاسخ") != 3 || strings.Contains(page, ".internal") {
 		t.Fatal("fresh set: three unanswered files, no .internal paths")
@@ -176,6 +183,9 @@ func TestAnswersTabStatuses(t *testing.T) {
 	}
 	if strings.Contains(page, "status-unanswered") {
 		t.Error("no file is unanswered any more")
+	}
+	if !strings.Contains(page, ">2 از 3 پاسخ داده شد<") { // answered + changed count; missing does not
+		t.Error("answers tab must count answered and changed files")
 	}
 }
 
