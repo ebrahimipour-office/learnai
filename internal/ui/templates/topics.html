@@ -38,6 +38,7 @@
   {{if and (or .Query .Status) (eq .Matched 0)}}
   <p class="note empty">هیچ موضوعی با این مشخصات یافت نشد.</p>
   {{end}}
+  {{if .Topics}}<p class="tools"><button type="button" class="link" data-toggle-groups>باز/بستن همه گروه‌ها</button></p>{{end}}
   {{range .Topics}}
   <section>
     <h2><bdi>{{.Title}}</bdi></h2>
@@ -53,12 +54,12 @@
 {{end}}
 
 {{define "tnode"}}{{if eq .Kind "group"}}
-<li class="group"><details open><summary class="group-title"><bdi>{{.Title}}</bdi></summary>
+<li class="group"><details open data-group="{{.ID}}"><summary class="group-title"><bdi>{{.Title}}</bdi></summary>
   <ul>{{range .Items}}{{template "tnode" .}}{{end}}</ul>
 </details></li>{{else}}
 <li class="topic{{if eq .State "archived"}} archived{{end}}">
   <a href="/topics/{{.ID}}"><bdi>{{.Title}}</bdi></a>
-  <span class="badge status-{{.Status}}">{{statusLabel .Status}}</span>
+  {{template "mini-steps" .Status}}
   {{if .Score.Valid}}<span class="score">{{num .Score.Float64}}</span>{{if .Partial}} <span class="badge warn">ناقص</span>{{end}}{{end}}
   {{if eq .Origin "suggested"}}<span class="badge suggested">پیشنهادی</span>{{end}}
   {{if eq .State "archived"}}<span class="badge">بایگانی‌شده</span>{{end}}
@@ -67,3 +68,8 @@
   {{if .Missing}}<a class="badge warn" href="/sync">{{.Missing}} فایل گم‌شده</a>{{end}}
   {{with .Items}}<ul>{{range .}}{{template "tnode" .}}{{end}}</ul>{{end}}
 </li>{{end}}{{end}}
+
+{{/* mini-steps (T10.14): the topic stepper as four boxes, filled per finished step; the status label is for screen readers and hover. */}}
+{{define "mini-steps"}}{{$n := 4}}{{if eq . "created"}}{{$n = 0}}{{else if eq . "content_ready"}}{{$n = 1}}{{else if eq . "exercises_ready"}}{{$n = 2}}{{else if eq . "answered"}}{{$n = 3}}{{end}}
+<span class="mini-steps" title="{{statusLabel .}}"><i{{if gt $n 0}} class="on"{{end}}></i><i{{if gt $n 1}} class="on"{{end}}></i><i{{if gt $n 2}} class="on"{{end}}></i><i{{if gt $n 3}} class="on"{{end}}></i><span class="sr-only">{{statusLabel .}}</span></span>
+{{- end}}

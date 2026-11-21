@@ -443,6 +443,67 @@ func TestTopicListPage(t *testing.T) {
 	}
 }
 
+// T10.14: the tree shows a mini stepper (label for screen readers) instead of the status badge, groups carry
+// a key, and app.js remembers closed groups in localStorage and opens/closes all of them from one button.
+func TestTopicListDensity(t *testing.T) {
+	e := newEnv(t)
+	draftURL := e.upload("go.md", []byte("# Go\n## Basics\n### Types\n### Loops\n")).Header().Get("Location")
+	if rec := e.confirm(draftURL, url.Values{"csrf_token": {e.sm.CSRFToken()}, "confirm": {"1"}}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("confirm: %d", rec.Code)
+	}
+	body := e.do(httptest.NewRequest(http.MethodGet, "/topics", nil)).Body.String()
+	_, tree, _ := strings.Cut(body, `<ul class="tree">`)
+	if strings.Contains(tree, "badge status-") || strings.Count(tree, `<span class="mini-steps" title="ایجادشده"><i></i><i></i><i></i><i></i><span class="sr-only">ایجادشده</span></span>`) != 2 {
+		t.Errorf("tree must show an empty mini stepper with an sr-only label, no status badge:\n%s", tree)
+	}
+	if !strings.Contains(tree, `<details open data-group="`) || !strings.Contains(body, `data-toggle-groups>`) {
+		t.Errorf("groups need data-group and the page an open/close-all button:\n%s", body)
+	}
+	appJS := e.do(httptest.NewRequest(http.MethodGet, "/static/app.js", nil)).Body.String()
+	nodePath, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node not available on host; skipping node DOM test")
+	}
+	script := `
+const code = process.argv[1];
+function run(stored, blocked) {
+  const listeners = {}, store = stored ? { closedGroups: stored } : {};
+  const mk = (id) => { const d = { dataset: { group: id }, _open: true };
+    Object.defineProperty(d, "open", { get() { return this._open; }, set(v) { this._open = v; listeners.toggle?.({ target: this }); } });
+    return d; };
+  const groups = [mk("1"), mk("2")];
+  const btn = { closest: (s) => (s === "button[data-toggle-groups]" ? btn : null) };
+  const document = {
+    addEventListener(evt, fn) { listeners[evt] = fn; },
+    querySelectorAll: (s) => (s === "details[data-group]" ? groups : []),
+    body: { addEventListener() {} },
+  };
+  const localStorage = blocked ? { getItem() { throw 1; }, setItem() { throw 1; } }
+    : { getItem: (k) => store[k] ?? null, setItem(k, v) { store[k] = v; } };
+  new Function("document", "localStorage", code)(document, localStorage);
+  return { groups, store, click: () => listeners.click({ target: btn }) };
+}
+(async () => {
+  let r = run('["2"]');
+  if (!r.groups[0].open || r.groups[1].open) process.exit(2); // restored
+  r.groups[0].open = false; // user closes group 1
+  if (JSON.stringify(JSON.parse(r.store.closedGroups).sort()) !== '["1","2"]') process.exit(3);
+  await r.click(); // some closed → open all
+  if (!r.groups.every((d) => d.open) || r.store.closedGroups !== "[]") process.exit(4);
+  await r.click(); // all open → close all
+  if (r.groups.some((d) => d.open)) process.exit(5);
+  r = run("not json");
+  if (!r.groups.every((d) => d.open)) process.exit(6);
+  r = run(null, true); // storage blocked: toggling still works
+  await r.click();
+  if (r.groups.some((d) => d.open)) process.exit(7);
+})().catch((e) => { console.error(e); process.exit(9); });
+`
+	if out, err := exec.Command(nodePath, "-e", script, appJS).CombinedOutput(); err != nil {
+		t.Fatalf("node groups test failed (%v): %s", err, out)
+	}
+}
+
 func TestReimportFlow(t *testing.T) {
 	e := newEnv(t)
 	csrf := e.sm.CSRFToken()

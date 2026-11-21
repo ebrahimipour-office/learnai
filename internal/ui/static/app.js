@@ -1,8 +1,14 @@
 // Copy buttons (T4.5, CR-47, T9.11): CSP forbids inline handlers, so one delegated listener.
 // data-copy buttons copy their path; .copy-code buttons copy the code block right after them.
-// T10.11: print buttons share this listener.
+// T10.11: print buttons share this listener. T10.14: so does open/close-all for topic groups.
 document.addEventListener("click", async (ev) => {
   if (ev.target.closest("button[data-print]")) return window.print();
+  if (ev.target.closest("button[data-toggle-groups]")) {
+    const groups = [...document.querySelectorAll("details[data-group]")];
+    const open = groups.some((d) => !d.open);
+    for (const d of groups) d.open = open; // each fires "toggle", which saves it
+    return;
+  }
   const btn = ev.target.closest("button[data-copy], button.copy-code");
   if (!btn) return;
   const code = btn.dataset.copy === undefined ? btn.nextElementSibling?.querySelector("code") : null;
@@ -35,7 +41,34 @@ function addCodeButtons(root) {
   }
 }
 addCodeButtons(document);
-document.body.addEventListener("htmx:afterSwap", (ev) => addCodeButtons(ev.detail.target));
+// T10.14: topic groups the user closed stay closed (per browser; storage may be blocked).
+function closedGroups() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem("closedGroups")) || []);
+  } catch {
+    return new Set();
+  }
+}
+function restoreGroups(root) {
+  const closed = closedGroups();
+  for (const d of root.querySelectorAll("details[data-group]")) if (closed.has(d.dataset.group)) d.open = false;
+}
+restoreGroups(document);
+// "toggle" does not bubble: listen in the capture phase.
+document.addEventListener("toggle", (ev) => {
+  const id = ev.target.dataset?.group;
+  if (!id) return;
+  const closed = closedGroups();
+  if (ev.target.open) closed.delete(id);
+  else closed.add(id);
+  try {
+    localStorage.setItem("closedGroups", JSON.stringify([...closed]));
+  } catch {}
+}, true);
+document.body.addEventListener("htmx:afterSwap", (ev) => {
+  addCodeButtons(ev.detail.target);
+  restoreGroups(document); // the search swaps #topic-results outerHTML, so target is the removed node
+});
 
 // CR-20: htmx drops non-swapped errors silently; surface them, and reload on a stale CSRF token (server restart).
 function htmxFailed(ev) {
