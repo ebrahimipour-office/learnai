@@ -495,6 +495,34 @@ func TestEvaluateNewAttemptKeepsHistory(t *testing.T) {
 	}
 }
 
+// T10.18: only=[q02] sends just q02 (unchanged) again; q01 carries over and the score is over all exercises.
+func TestEvaluateOnlySelected(t *testing.T) {
+	e := setup(t, 1)
+	if st, _ := e.wait(e.enqueue("full")); st != "succeeded" {
+		t.Fatal(st)
+	}
+	id, err := e.runner.Enqueue(t.Context(), jobs.Job{Kind: domain.JobKindEvaluate, Scope: "topic:2", TopicID: 2,
+		Params: json.RawMessage(`{"mode":"incremental","only":["q02"]}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st, code := e.wait(id); st != "succeeded" {
+		t.Fatalf("status %s (%s)", st, code)
+	}
+	if c := e.calls(); c["q01"] != 1 || c["q02"] != 2 {
+		t.Errorf("calls = %v, want only q02 sent again", c)
+	}
+	var res schema.Result
+	json.Unmarshal(e.read(evaluation.AttemptRel("02-http", 1, 2)+"/result.json"), &res)
+	st := map[string]string{}
+	for _, it := range res.Items {
+		st[it.ExerciseID] = it.Status
+	}
+	if st["q01"] != "carried_over" || st["q02"] != "evaluated" || st["q03"] != "unanswered" || res.Aggregate.WeightedScore != 5.25 {
+		t.Errorf("attempt 2 = %v, score %v", st, res.Aggregate.WeightedScore)
+	}
+}
+
 // A name collision rejects the commit: nothing is overwritten and no attempt row is recorded.
 // CR-32: a staged output whose answer hash differs from the current pick fails the commit.
 func TestEvaluateCommitRejectsTamperedStagedOutput(t *testing.T) {

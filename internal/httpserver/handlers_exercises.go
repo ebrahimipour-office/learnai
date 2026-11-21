@@ -11,12 +11,14 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
 	"learninghub/internal/domain"
 	"learninghub/internal/fsx"
 	"learninghub/internal/jobs"
+	"learninghub/internal/services/evaluation"
 	"learninghub/internal/services/topics"
 )
 
@@ -341,6 +343,12 @@ func (a *app) evaluate(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	// T10.18: the answers-tab form always posts an empty only=, so choosing nothing is not a full run.
+	only := slices.DeleteFunc(slices.Clone(r.Form["only"]), func(s string) bool { return s == "" })
+	if len(r.Form["only"]) > 0 && len(only) == 0 {
+		a.respond(w, r, http.StatusUnprocessableEntity, id, nil, "هیچ تمرینی برای ارزیابی دوباره انتخاب نشده است.")
+		return
+	}
 	var list []topics.Exercise
 	sets, err := a.topics.Sets(r.Context(), id)
 	for _, s := range sets {
@@ -350,10 +358,17 @@ func (a *app) evaluate(w http.ResponseWriter, r *http.Request) {
 	}
 	var sel *topics.Selection
 	if err == nil {
-		sel, err = topics.SelectForEvaluation(a.root, list, mode, a.settings.MaxAnswerBytes)
+		sel, err = topics.SelectForEvaluation(a.root, list, mode, only, a.settings.MaxAnswerBytes)
+	}
+	if errors.Is(err, domain.ErrInvalidInput) {
+		a.respond(w, r, http.StatusBadRequest, id, nil, "تمرین انتخاب‌شده در مجموعه جاری نیست.")
+		return
 	}
 	if errors.Is(err, domain.ErrNothingToEvaluate) {
 		msg := "پاسخ جدید یا تغییرکرده‌ای برای ارزیابی نیست."
+		if len(only) > 0 {
+			msg = "تمرین‌های انتخاب‌شده پاسخی برای ارزیابی ندارند."
+		}
 		if n := len(sel.Review); n > 0 {
 			msg += " " + strconv.Itoa(n) + " پاسخ بزرگ‌تر از سقف یا غیرمتنی است و نیازمند بازبینی دستی است."
 		}
@@ -365,7 +380,7 @@ func (a *app) evaluate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
 		return
 	}
-	params, _ := json.Marshal(map[string]string{"mode": mode})
+	params, _ := json.Marshal(evaluation.Params{Mode: mode, Only: only})
 	_, err = a.runner.Enqueue(r.Context(), jobs.Job{Kind: domain.JobKindEvaluate, Scope: topics.Scope(id), TopicID: id, Params: params})
 	a.afterEnqueue(w, r, id, err)
 }

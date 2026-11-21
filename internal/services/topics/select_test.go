@@ -54,7 +54,7 @@ func TestSelectForEvaluation(t *testing.T) {
 		topics.ModeIncremental: {"new", "changed"},
 		topics.ModeFull:        {"new", "same", "changed"},
 	} {
-		s, err := topics.SelectForEvaluation(root, list, mode, 64)
+		s, err := topics.SelectForEvaluation(root, list, mode, nil, 64)
 		if err != nil {
 			t.Fatalf("%s: %v", mode, err)
 		}
@@ -68,11 +68,20 @@ func TestSelectForEvaluation(t *testing.T) {
 	}
 
 	// Only unanswered, unchanged and manual-review answers: nothing to evaluate.
-	s, err := topics.SelectForEvaluation(root, []topics.Exercise{ex("empty", ""), ex("same", fsx.HashBytes(done)), ex("big", "")}, topics.ModeIncremental, 64)
+	s, err := topics.SelectForEvaluation(root, []topics.Exercise{ex("empty", ""), ex("same", fsx.HashBytes(done)), ex("big", "")}, topics.ModeIncremental, nil, 64)
 	if !errors.Is(err, domain.ErrNothingToEvaluate) || len(s.Review) != 1 {
 		t.Errorf("want ErrNothingToEvaluate with big in review, got %v %+v", err, s)
 	}
-	if _, err := topics.SelectForEvaluation(root, list, "partial", 64); !errors.Is(err, domain.ErrInvalidInput) {
+	if _, err := topics.SelectForEvaluation(root, list, "partial", nil, 64); !errors.Is(err, domain.ErrInvalidInput) {
 		t.Errorf("unknown mode: want ErrInvalidInput, got %v", err)
+	}
+
+	// T10.18: only sends the chosen answered exercises, even unchanged ones in incremental mode.
+	s, err = topics.SelectForEvaluation(root, list, topics.ModeIncremental, []string{"same", "empty"}, 64)
+	if send, review := ids(s); err != nil || !slices.Equal(send, []string{"same"}) || review != nil {
+		t.Errorf("only [same empty]: send = %v review = %v err = %v, want [same]", send, review, err)
+	}
+	if _, err := topics.SelectForEvaluation(root, list, topics.ModeIncremental, []string{"q99"}, 64); !errors.Is(err, domain.ErrInvalidInput) {
+		t.Errorf("unknown only id: want ErrInvalidInput, got %v", err)
 	}
 }

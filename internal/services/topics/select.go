@@ -31,13 +31,29 @@ type Selection struct {
 }
 
 // SelectForEvaluation picks the answers to send. Unanswered files are never sent. Incremental sends
-// answers never evaluated or changed since; full sends every answered one. Nothing to send ⇒ domain.ErrNothingToEvaluate.
-func SelectForEvaluation(root *fsx.Root, list []Exercise, mode string, maxBytes int64) (*Selection, error) {
+// answers never evaluated or changed since; full sends every answered one. A non-empty only (T10.18)
+// limits the selection to those exercise IDs, each sent if answered whatever the mode; an ID not in
+// list ⇒ domain.ErrInvalidInput. Nothing to send ⇒ domain.ErrNothingToEvaluate.
+func SelectForEvaluation(root *fsx.Root, list []Exercise, mode string, only []string, maxBytes int64) (*Selection, error) {
 	if mode != ModeIncremental && mode != ModeFull {
 		return nil, domain.ErrInvalidInput
 	}
+	known := map[string]bool{}
+	for _, x := range list {
+		known[x.ExID] = true
+	}
+	pick := map[string]bool{}
+	for _, id := range only {
+		if !known[id] {
+			return nil, domain.ErrInvalidInput
+		}
+		pick[id] = true
+	}
 	sel := &Selection{}
 	for _, x := range list {
+		if len(only) > 0 && !pick[x.ExID] {
+			continue // not chosen: the commit carries it over or leaves it unanswered
+		}
 		f, err := root.Open(x.AnswerRel)
 		if errors.Is(err, fs.ErrNotExist) {
 			continue // missing
@@ -59,7 +75,7 @@ func SelectForEvaluation(root *fsx.Root, list []Exercise, mode string, maxBytes 
 		case AnswerEmpty:
 			continue
 		case AnswerDone:
-			if mode == ModeIncremental && x.EvaluatedSHA != "" {
+			if mode == ModeIncremental && len(only) == 0 && x.EvaluatedSHA != "" {
 				continue // unchanged since its last evaluation; carried over (I3)
 			}
 		}

@@ -37,7 +37,8 @@ const (
 
 // Params is jobs.params for an evaluate job.
 type Params struct {
-	Mode string `json:"mode"` // topics.ModeIncremental (default) | topics.ModeFull
+	Mode string   `json:"mode"`           // topics.ModeIncremental (default) | topics.ModeFull
+	Only []string `json:"only,omitempty"` // T10.18: re-evaluate just these exercise IDs; the rest carry over
 }
 
 type Service struct {
@@ -78,7 +79,7 @@ func (s *Service) Handle(ctx context.Context, j jobs.Job) error {
 	limit := cmp.Or(s.JobTimeout, defaultJobTimeout)
 	ctx, cancel := context.WithTimeout(ctx, limit)
 	defer cancel()
-	err := s.run(ctx, j, p.Mode)
+	err := s.run(ctx, j, p)
 	if err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		err = fmt.Errorf("%w: evaluation job exceeded %s", ai.ErrTimeout, limit)
 	}
@@ -92,7 +93,8 @@ type shared struct {
 	in          prompt.Input // Agents, Profile, Skill, Schema; Files/Step set per exercise
 }
 
-func (s *Service) run(ctx context.Context, j jobs.Job, mode string) error {
+func (s *Service) run(ctx context.Context, j jobs.Job, p Params) error {
+	mode := p.Mode
 	s.phase(ctx, j.ID, "prepare")
 	var set setInfo
 	var exRel, rubricRel, sourceRel, manifestRel, manifestSHA, rubricSHA string
@@ -113,7 +115,7 @@ func (s *Service) run(ctx context.Context, j jobs.Job, mode string) error {
 		return err
 	}
 	// Selected again at run time: answers may have changed while queued; unanswered never go out (R3.4).
-	sel, err := topics.SelectForEvaluation(s.Root, list, mode, s.MaxAnswerBytes)
+	sel, err := topics.SelectForEvaluation(s.Root, list, mode, p.Only, s.MaxAnswerBytes)
 	if err != nil {
 		return err
 	}
@@ -180,6 +182,7 @@ func (s *Service) run(ctx context.Context, j jobs.Job, mode string) error {
 	for _, pk := range sel.Send {
 		fp.WriteString(pk.ExID + "=" + pk.SHA + "\x00")
 	}
+	fp.WriteString("only=" + strings.Join(p.Only, ",") + "\x00")
 	fingerprint := fsx.HashBytes(fp.Bytes())
 	if _, err := s.DB.Writer().ExecContext(ctx, `UPDATE jobs SET inputs_fingerprint = ?, adapter = ?, model = ?, skill = ? WHERE id = ?`,
 		fingerprint, s.Adapter.Name(), ai.ModelFor(s.Adapter, s.Model), skillName, j.ID); err != nil {

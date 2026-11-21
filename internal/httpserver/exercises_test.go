@@ -254,6 +254,12 @@ func TestEvaluateEnqueue(t *testing.T) {
 	if rec := e.post("/topics/1/jobs/evaluate", url.Values{"mode": {"partial"}}, true); rec.Code != http.StatusUnprocessableEntity {
 		t.Errorf("bad mode: want 422, got %d", rec.Code)
 	}
+	if rec := e.post("/topics/1/jobs/evaluate", url.Values{"only": {"q99"}}, true); rec.Code != http.StatusBadRequest {
+		t.Errorf("unknown only id: want 400, got %d", rec.Code)
+	}
+	if rec := e.post("/topics/1/jobs/evaluate", url.Values{"only": {""}}, true); rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "انتخاب نشده") {
+		t.Errorf("nothing chosen: want 422, got %d", rec.Code)
+	}
 	if rec := e.post("/topics/99/jobs/evaluate", nil, true); rec.Code != http.StatusNotFound {
 		t.Errorf("unknown topic: want 404, got %d", rec.Code)
 	}
@@ -278,11 +284,19 @@ func TestEvaluateEnqueue(t *testing.T) {
 
 	// Evaluated and unchanged: incremental has nothing new, full re-sends it.
 	e.evaluate("q01")
+	if page := e.get("/topics/1/answers").Body.String(); !strings.Contains(page, `form="reeval" aria-label="انتخاب q01`) || !strings.Contains(page, `id="reeval"`) {
+		t.Error("answers tab: want a re-evaluate checkbox for the answered q01 and the reeval form")
+	}
 	if rec := e.post("/topics/1/jobs/evaluate", nil, true); rec.Code != http.StatusUnprocessableEntity {
 		t.Errorf("unchanged incremental: want 422, got %d", rec.Code)
 	}
-	if rec := e.post("/topics/1/jobs/evaluate", url.Values{"mode": {"full"}}, true); rec.Code != http.StatusAccepted {
-		t.Errorf("unchanged full: want 202, got %d", rec.Code)
+	if rec := e.post("/topics/1/jobs/evaluate", url.Values{"only": {"q01"}}, true); rec.Code != http.StatusAccepted {
+		t.Errorf("unchanged only=q01: want 202, got %d", rec.Code)
+	}
+	var only string
+	_ = e.db.Writer().QueryRow(`SELECT json_extract(params, '$.only') FROM jobs WHERE kind = 'evaluate' ORDER BY id DESC LIMIT 1`).Scan(&only)
+	if only != `["q01"]` {
+		t.Errorf("params.only = %q, want [\"q01\"]", only)
 	}
 }
 

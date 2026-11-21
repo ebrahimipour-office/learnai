@@ -105,7 +105,7 @@
     <span>{{fa $.Answered}} از {{fa (len .)}} پاسخ داده شد</span></p>{{end}}
   <table class="grid"><thead><tr><th>تمرین</th><th>فایل</th><th>وضعیت</th></tr></thead>
     <tbody>{{range .Exercises}}<tr>
-      <td><code>{{.ExID}}</code> <bdi>{{.Title}}</bdi></td>
+      <td>{{if or (eq .Status "answered") (eq .Status "changed")}}<input type="checkbox" name="only" value="{{.ExID}}" form="reeval" aria-label="انتخاب {{.ExID}} برای ارزیابی دوباره"> {{end}}<code>{{.ExID}}</code> <bdi>{{.Title}}</bdi></td>
       <td data-label="فایل" class="path">{{if eq .Status "missing"}}<code title="{{.FullPath}}">{{base .AnswerRel}}</code>{{else}}<a href="/files/{{.AnswerFileID}}" title="{{.FullPath}}"><code>{{base .AnswerRel}}</code></a>{{end}}
         <span class="actions"><button type="button" class="small" data-copy="{{.FullPath}}" aria-label="کپی مسیر کامل {{.ExID}}">کپی مسیر</button>
         {{if and $.CanOpen (ne .Status "missing")}}<form method="post" action="/files/{{.AnswerFileID}}/open" class="inline"><input type="hidden" name="csrf_token" value="{{$.CSRF}}"><button type="submit" class="small">باز کردن</button></form>{{end}}</span></td>
@@ -204,7 +204,12 @@
   </form>
   {{else}}<p class="note">برای ارزیابی ابتدا تمرین‌های این موضوع را بسازید.</p>{{end}}
   {{else if eq .Tab "answers"}}
-  {{if not .Sets}}<p class="note">هنوز مجموعه تمرینی نیست؛ از <a href="/topics/{{.Panel.ID}}/exercises">تب تمرین‌ها</a> بسازید.</p>{{end}}
+  {{if not .Sets}}<p class="note">هنوز مجموعه تمرینی نیست؛ از <a href="/topics/{{.Panel.ID}}/exercises">تب تمرین‌ها</a> بسازید.</p>
+  {{else}}<form id="reeval" method="post" action="/topics/{{.Panel.ID}}/jobs/evaluate" hx-post="/topics/{{.Panel.ID}}/jobs/evaluate" hx-target="#job-area" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}"><input type="hidden" name="tab" value="answers"><input type="hidden" name="only" value="">
+    <button type="submit"{{if $busy}} disabled{{end}}>ارزیابی دوباره انتخاب‌شده‌ها</button>
+    <span class="hint">بقیه تمرین‌ها از تلاش قبلی منتقل می‌شوند؛ پاسخ تغییرکرده‌ای که انتخاب نشود این بار نمره نمی‌گیرد.</span>
+  </form>{{end}}
   {{else if .Tab}}
   {{if .Panel.Lessons}}
   {{if .Sets}}<details class="regen"><summary>مجموعه جدید…</summary>{{end}}
