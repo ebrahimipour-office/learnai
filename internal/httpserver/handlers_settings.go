@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"mime"
 	"net/http"
 	"slices"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"learninghub/internal/config"
 	"learninghub/internal/domain"
 	"learninghub/internal/jobs"
+	"learninghub/internal/services/maintenance"
 	"learninghub/internal/store"
 	"learninghub/skills"
 )
@@ -31,6 +33,7 @@ type Settings struct {
 	MaxViewBytes   int64                  // largest Markdown file a page renders; 0 = 1 MB (T10.6)
 	Editor         string                 // config editor.command: program run as Editor <abs path>; "" hides «باز کردن»
 	Review         config.ReviewConfig    // «برای مرور» thresholds on /topics; zero = 70 and 14 days
+	Maintenance    *maintenance.Service   // backups on /settings (T10.20); nil hides the section
 }
 
 // Doctor is one Probe result as shown on the settings page.
@@ -136,7 +139,16 @@ func (a *app) renderSettings(w http.ResponseWriter, r *http.Request, status int,
 		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
 		return
 	}
+	var backups []maintenance.Backup
+	if a.settings.Maintenance != nil {
+		if backups, err = a.settings.Maintenance.Backups(); err != nil {
+			slog.Error("listing backups", "error", err)
+			http.Error(w, "خطای داخلی", http.StatusInternalServerError)
+			return
+		}
+	}
 	a.render(w, status, "settings", "layout", &pageData{Title: "تنظیمات", Error: msg, Doctor: a.doctor(),
+		Backups: backups, BackupsOn: a.settings.Maintenance != nil, BackupNote: backupNotes[r.URL.Query().Get("backup")],
 		Model: ai.ModelFor(a.settings.Adapter, a.settings.Model), Adapter: a.settings.Adapter.Name(), SkipPermissions: a.settings.SkipPermissions,
 		Adapters: a.adapterNames(), PrivacyAck: ack, Privacy: PrivacyNotice, SkillUpdates: ups, Usage: usage,
 		NeedAck: r.URL.Query().Has("need_ack")})
@@ -266,4 +278,56 @@ func (a *app) requireAck(h http.HandlerFunc) http.HandlerFunc {
 			http.Redirect(w, r, "/settings?need_ack=1", http.StatusSeeOther)
 		}
 	}
+}
+
+var backupNotes = map[string]string{
+	"made":   "پشتیبان امروز ساخته شد.",
+	"exists": "پشتیبان امروز از قبل وجود دارد؛ هر روز یک پشتیبان ساخته می‌شود.",
+}
+
+// backupNow runs the same maintenance pass as the hourly loop (T10.20); CSRF is checked by the middleware.
+func (a *app) backupNow(w http.ResponseWriter, r *http.Request) {
+	if a.settings.Maintenance == nil {
+		http.NotFound(w, r)
+		return
+	}
+	res, err := a.settings.Maintenance.Run(r.Context(), time.Now())
+	if err != nil {
+		slog.Error("backup from settings", "error", err)
+		a.renderSettings(w, r, http.StatusInternalServerError, "پشتیبان‌گیری ناموفق بود: "+err.Error())
+		return
+	}
+	note := "exists"
+	if res.Backup != "" {
+		note = "made"
+	}
+	http.Redirect(w, r, "/settings?backup="+note+"#backups", http.StatusSeeOther)
+}
+
+// downloadBackup serves one file of .app/backup; only names backup itself gives are accepted, so no path reaches the disk.
+func (a *app) downloadBackup(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if a.settings.Maintenance == nil || !maintenance.IsBackupName(name) {
+		http.Error(w, "نام پشتیبان نامعتبر است.", http.StatusBadRequest)
+		return
+	}
+	rel := maintenance.BackupRel(name)
+	if info, err := a.root.Lstat(rel); err != nil || !info.Mode().IsRegular() {
+		http.NotFound(w, r)
+		return
+	}
+	f, err := a.root.Open(rel)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/vnd.sqlite3")
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": name}))
+	http.ServeContent(w, r, name, info.ModTime(), f)
 }

@@ -21,6 +21,7 @@ import (
 	"learninghub/internal/jobs"
 	"learninghub/internal/render"
 	"learninghub/internal/roadmap"
+	"learninghub/internal/services/maintenance"
 	"learninghub/internal/services/roadmaps"
 	"learninghub/internal/services/syncsvc"
 	"learninghub/internal/services/topics"
@@ -101,12 +102,15 @@ type pageData struct {
 
 	Doctor              *Doctor
 	Adapter, Model      string
-	SkipPermissions     bool            // settings: agy runs with --dangerously-skip-permissions
-	Adapters            []string        // selectable AI tools on the settings page
-	Privacy, PrivacyAck string          // notice text; RFC3339 time of acknowledgement or ""
-	NeedAck             bool            // settings: reached via the first-run gate (T9.7)
-	SkillUpdates        []skills.Update // settings: installed skills older than the embedded ones (§13.2)
-	Usage               []jobs.UsageRow // settings: token totals of the last 30 days by job kind and tool (T10.19)
+	SkipPermissions     bool                 // settings: agy runs with --dangerously-skip-permissions
+	Adapters            []string             // selectable AI tools on the settings page
+	Privacy, PrivacyAck string               // notice text; RFC3339 time of acknowledgement or ""
+	NeedAck             bool                 // settings: reached via the first-run gate (T9.7)
+	SkillUpdates        []skills.Update      // settings: installed skills older than the embedded ones (§13.2)
+	Usage               []jobs.UsageRow      // settings: token totals of the last 30 days by job kind and tool (T10.19)
+	Backups             []maintenance.Backup // settings: newest first (T10.20)
+	BackupsOn           bool                 // settings: the backups section is shown
+	BackupNote          string               // settings: result of «پشتیبان‌گیری الان»
 }
 
 type ruleOption struct {
@@ -143,6 +147,7 @@ func newApp(sm *SecurityManager, drafts *roadmaps.Service, topicList *topics.Ser
 		"jobKind":     func(s string) string { return jobKindLabels[s] },
 		"aiMessage":   ai.Message,
 		"uploadLimit": func() string { return faSize(a.drafts.MaxBytes) },
+		"size":        func(n int64) string { return faSize(int(n)) },
 		"base":        path.Base,
 		"answerLabel": func(s string) string { return answerStatusLabels[s] },
 		"exType":      func(s string) string { return exerciseTypeLabels[s] },

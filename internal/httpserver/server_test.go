@@ -27,6 +27,7 @@ import (
 	"learninghub/internal/services/evaluation"
 	"learninghub/internal/services/exercises"
 	"learninghub/internal/services/lessons"
+	"learninghub/internal/services/maintenance"
 	"learninghub/internal/services/roadmaps"
 	"learninghub/internal/services/topics"
 	"learninghub/internal/store"
@@ -82,7 +83,8 @@ func newEnv(t *testing.T, opts ...func(*httpserver.Settings)) *env {
 	done := make(chan struct{})
 	go func() { defer close(done); runner.Run(ctx) }()
 	t.Cleanup(func() { cancel(); <-done })
-	settings := httpserver.Settings{DB: db, Adapter: ad, Model: "m1", Exercises: exCfg, MaxAnswerBytes: 1024}
+	settings := httpserver.Settings{DB: db, Adapter: ad, Model: "m1", Exercises: exCfg, MaxAnswerBytes: 1024,
+		Maintenance: &maintenance.Service{DB: db, Root: root}}
 	for _, o := range opts {
 		o(&settings)
 	}

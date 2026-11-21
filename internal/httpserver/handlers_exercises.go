@@ -384,3 +384,28 @@ func (a *app) evaluate(w http.ResponseWriter, r *http.Request) {
 	_, err = a.runner.Enqueue(r.Context(), jobs.Job{Kind: domain.JobKindEvaluate, Scope: topics.Scope(id), TopicID: id, Params: params})
 	a.afterEnqueue(w, r, id, err)
 }
+
+// exportTopic downloads the topic folder as a zip, without .internal/ (T10.20).
+func (a *app) exportTopic(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	dir, err := a.topics.Dir(r.Context(), id)
+	if errors.Is(err, domain.ErrNotFound) {
+		http.Error(w, "پوشه این موضوع هنوز ساخته نشده است.", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		slog.Error("finding topic dir", "topic", id, "error", err)
+		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": path.Base(dir) + ".zip"}))
+	if err := a.topics.Zip(dir, w); err != nil {
+		// Headers are sent; the client gets a truncated zip that will not open.
+		slog.Error("zipping topic", "topic", id, "error", err)
+	}
+}

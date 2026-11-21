@@ -41,6 +41,24 @@
 <p class="note">برخی ابزارها مصرف توکن را گزارش نمی‌دهند؛ آن کارها با «نامشخص» یا صفر شمرده می‌شوند.</p>
 </section>{{end}}
 
+{{if .BackupsOn}}<section id="backups">
+<h2>پشتیبان‌ها</h2>
+{{with .BackupNote}}<p class="note" role="status">{{.}}</p>{{end}}
+{{if .Backups}}<table class="grid"><thead><tr><th>فایل</th><th>تاریخ</th><th>اندازه</th></tr></thead>
+  <tbody>{{range .Backups}}<tr>
+    <td><a href="/settings/backups/{{.Name}}" download><bdi><code>{{.Name}}</code></bdi></a></td>
+    <td data-label="تاریخ"><bdi>{{fa (.ModTime.Local.Format "2006-01-02 15:04")}}</bdi></td><td data-label="اندازه">{{size .Size}}</td>
+  </tr>{{end}}</tbody>
+</table>
+<p class="note">بازیابی فقط آفلاین است: برنامه را متوقف کنید و در پوشه پایه اجرا کنید (فایل‌های WAL قدیمی باید حذف شوند):</p>
+<pre dir="ltr"><code>rm -f app.db-wal app.db-shm &amp;&amp; cp .app/backup/{{(index .Backups 0).Name}} app.db</code></pre>
+{{else}}<p class="note">هنوز پشتیبانی ساخته نشده است.</p>{{end}}
+<form method="post" action="/settings/backup">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <button type="submit">پشتیبان‌گیری الان</button>
+</form>
+</section>{{end}}
+
 <section>
 <h2>ابزار هوش مصنوعی (doctor)</h2>
 {{if .Adapters}}

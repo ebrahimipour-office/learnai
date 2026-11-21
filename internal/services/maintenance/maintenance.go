@@ -15,7 +15,7 @@ import (
 	"regexp"
 	"slices"
 	"strconv"
-	"strings"
+	"sync"
 	"time"
 
 	"learninghub/internal/fsx"
@@ -32,6 +32,8 @@ type Service struct {
 	Root         *fsx.Root
 	LogRetention time.Duration
 	KeepBackups  int // config backup_keep; 0 = defaultKeepBackups
+
+	mu sync.Mutex // the hourly loop and «پشتیبان‌گیری الان» (T10.20) must not share one VACUUM INTO temp file
 }
 
 // Result says what one Run did.
@@ -42,6 +44,8 @@ type Result struct {
 
 // Run cleans expired job dirs, then makes today's backup and keeps the newest s.KeepBackups.
 func (s *Service) Run(ctx context.Context, now time.Time) (*Result, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	res := &Result{}
 	cutoff := now.Add(-s.LogRetention).UTC().Format("2006-01-02T15:04:05.000Z") // same form as jobs.finished_at
 	for _, dir := range []string{".app/work", ".app/staging", ".app/logs/jobs"} {
@@ -158,7 +162,7 @@ func (s *Service) backup(ctx context.Context, now time.Time, res *Result) error 
 	var names []string
 	for _, e := range entries {
 		// 0-byte files are interrupted backups from before CR-36: they must not push a real one out.
-		if n := e.Name(); strings.HasPrefix(n, "app-") && strings.HasSuffix(n, ".db") && s.nonEmpty(path.Join(backupDir, n)) {
+		if n := e.Name(); IsBackupName(n) && s.nonEmpty(path.Join(backupDir, n)) {
 			names = append(names, n)
 		}
 	}
@@ -177,4 +181,43 @@ func (s *Service) backup(ctx context.Context, now time.Time, res *Result) error 
 func (s *Service) nonEmpty(rel string) bool {
 	info, err := s.Root.Lstat(rel)
 	return err == nil && info.Mode().IsRegular() && info.Size() > 0
+}
+
+var backupName = regexp.MustCompile(`^app-\d{4}-\d{2}-\d{2}\.db$`)
+
+// IsBackupName reports whether n is a name backup gives (app-YYYY-MM-DD.db); the only names served for download.
+func IsBackupName(n string) bool { return backupName.MatchString(n) }
+
+// BackupRel is the root-relative path of backup n; callers check IsBackupName first.
+func BackupRel(n string) string { return path.Join(backupDir, n) }
+
+// Backup is one complete backup file as listed on the settings page.
+type Backup struct {
+	Name    string
+	Size    int64
+	ModTime time.Time
+}
+
+// Backups lists complete backups newest first; no backup dir yet = none.
+func (s *Service) Backups() ([]Backup, error) {
+	entries, err := fs.ReadDir(s.Root.FS(), backupDir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []Backup
+	for _, e := range entries {
+		if !IsBackupName(e.Name()) {
+			continue
+		}
+		info, err := s.Root.Lstat(BackupRel(e.Name()))
+		if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
+			continue // symlink, gone, or interrupted
+		}
+		out = append(out, Backup{Name: e.Name(), Size: info.Size(), ModTime: info.ModTime()})
+	}
+	slices.Reverse(out) // ReadDir sorts by name; dated names sort oldest first
+	return out, nil
 }
