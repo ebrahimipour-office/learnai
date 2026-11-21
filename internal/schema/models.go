@@ -120,6 +120,13 @@ type ResultItem struct {
 	CarriedFromAttempt *int            `json:"carried_from_attempt,omitempty"`
 	CriteriaScores     []CriteriaScore `json:"criteria_scores,omitempty"`
 	ErrorTypes         []string        `json:"error_types,omitempty"`
+	Compile            *Compile        `json:"compile,omitempty"` // T11.4: go vet result; nil = check off or not Go
+}
+
+// Compile is the optional go vet check of a Go answer (T11.4); the code is never run.
+type Compile struct {
+	Status string `json:"status"`           // ok | failed | skipped
+	Output string `json:"output,omitempty"` // vet output (failed) or why it was skipped
 }
 
 type CriteriaScore struct {

@@ -12,6 +12,7 @@ const (
 	FlagInjection         = "injection_suspected" // the answer talks to the grader
 	FlagTemplateHighScore = "template_high_score" // template re-spaced, yet a high score
 	FlagNeedsReview       = "needs_review"        // over max_answer_bytes or binary: never sent, scored 0 (RK17, CR-09)
+	FlagCompileFailed     = "compile_failed"      // T11.4: go vet rejected the Go answer
 )
 
 // templateHighScore is the score from which an unchanged template is suspicious.
@@ -20,6 +21,7 @@ const templateHighScore = 50
 var flagText = map[string]string{
 	FlagInjection:         "پاسخ شامل متنی شبیه دستور به ارزیاب است؛ نمره فقط جمع امتیاز معیارهاست و باید بازبینی شود.",
 	FlagTemplateHighScore: "پاسخ جز فاصله‌گذاری با قالب اولیه فرقی ندارد ولی نمره بالا گرفته است.",
+	FlagCompileFailed:     "پاسخ Go با `go vet` کامپایل نشد؛ خطا در بخش «بررسی کامپایل» آمده است.",
 }
 
 // shortcut: phrase list, not a classifier; obfuscated injections pass. The answerer is the user

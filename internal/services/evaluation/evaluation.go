@@ -53,6 +53,8 @@ type Service struct {
 	Parallel       int           // config jobs.evaluate_parallelism
 	MaxAnswerBytes int64         // config limits.max_answer_bytes
 	MaxSource      int64         // config limits.max_source_bytes
+	CompileCheck   bool          // config evaluation.compile_check: go vet each Go answer first (T11.4)
+	CompileTimeout time.Duration // config evaluation.compile_timeout; 0 = 30s
 }
 
 // Output is what a done step leaves in staging for the commit (T5.5).
@@ -61,6 +63,7 @@ type Output struct {
 	AnswerSHA256 string          `json:"answer_sha256"` // hash of the exact bytes the AI saw
 	Evaluation   json.RawMessage `json:"evaluation"`    // validated ai-evaluation-output
 	SkillVersion string          `json:"skill_version"`
+	Compile      *schema.Compile `json:"compile,omitempty"` // T11.4; nil = check off or not a Go answer
 }
 
 func StepKey(exID string) string { return "exercise:" + exID }
@@ -183,6 +186,7 @@ func (s *Service) run(ctx context.Context, j jobs.Job, p Params) error {
 		fp.WriteString(pk.ExID + "=" + pk.SHA + "\x00")
 	}
 	fp.WriteString("only=" + strings.Join(p.Only, ",") + "\x00")
+	fp.WriteString(fmt.Sprintf("compile=%t\x00", s.CompileCheck)) // turning the check on re-evaluates
 	fingerprint := fsx.HashBytes(fp.Bytes())
 	if _, err := s.DB.Writer().ExecContext(ctx, `UPDATE jobs SET inputs_fingerprint = ?, adapter = ?, model = ?, skill = ? WHERE id = ?`,
 		fingerprint, s.Adapter.Name(), ai.ModelFor(s.Adapter, s.Model), skillName, j.ID); err != nil {
@@ -357,12 +361,18 @@ func (s *Service) step(ctx context.Context, j jobs.Job, sh shared, pk topics.Pic
 		oos = []schema.OutOfScopeKnowledge{}
 	}
 	answerName := "answer" + path.Ext(pk.AnswerRel)
-	task, err := json.MarshalIndent(map[string]any{
+	taskFields := map[string]any{
 		"exercise_id": pk.ExID, "title": pk.Title, "type": pk.Type, "language": s.Language,
 		"answer_file": "inputs/" + answerName,
 		// Repeated here so the evaluator cannot miss it (R3.2, T4.6): never deduct for these.
 		"out_of_scope_knowledge": oos,
-	}, "", "  ")
+	}
+	var comp *schema.Compile
+	if s.CompileCheck && path.Ext(pk.AnswerRel) == ".go" {
+		c := CompileCheck(ctx, s.Root, fmt.Sprintf("%d-%s", j.ID, pk.ExID), pk.Body, cmp.Or(s.CompileTimeout, 30*time.Second))
+		comp, taskFields["compile_check"] = &c, c
+	}
+	task, err := json.MarshalIndent(taskFields, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -390,7 +400,7 @@ func (s *Service) step(ctx context.Context, j jobs.Job, sh shared, pk topics.Pic
 	if err != nil {
 		return err
 	}
-	b, err := json.Marshal(Output{ExerciseID: pk.ExID, AnswerSHA256: pk.SHA, Evaluation: out, SkillVersion: req.Skill.Version})
+	b, err := json.Marshal(Output{ExerciseID: pk.ExID, AnswerSHA256: pk.SHA, Evaluation: out, SkillVersion: req.Skill.Version, Compile: comp})
 	if err != nil {
 		return err
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -104,7 +105,7 @@ const tpl = "// answer below\n"
 const manifestJSON = `{"schema_version":1,"topic":{"stable_key":"a3f9c2d41b7e8f06","title":"HTTP"},"set":{"version":1,"rubric_version":1},
 	"exercises":[{"id":"q01","weight":1},{"id":"q02","weight":2},{"id":"q03","weight":1}]}`
 
-func setup(t *testing.T, parallel int) *env {
+func setup(t *testing.T, parallel int, opts ...func(*evaluation.Service)) *env {
 	t.Helper()
 	dir := t.TempDir()
 	db, err := store.Open(filepath.Join(dir, "app.db"))
@@ -173,6 +174,9 @@ func setup(t *testing.T, parallel int) *env {
 	r.Poll, r.Heartbeat, r.Files = 20*time.Millisecond, time.Hour, root
 	svc := &evaluation.Service{DB: db, Root: root, Adapter: ad, Model: "m1", Language: "fa", Timeout: time.Minute, Stall: time.Minute,
 		Parallel: parallel, MaxAnswerBytes: 1 << 20, MaxSource: 64}
+	for _, o := range opts {
+		o(svc)
+	}
 	r.Register(domain.JobKindEvaluate, svc.Handle)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -943,4 +947,57 @@ func TestCR53_ResultTimestampsMatchOneRegex(t *testing.T) {
 			t.Errorf("r2.FinishedAt = %q, want regex %s", r2.FinishedAt, tsRegex)
 		}
 	})
+}
+
+// T11.4: with compile_check on, a Go answer is vetted, the result reaches the AI as data and lands
+// in the report, result.json and the review flags; a non-Go answer is not checked.
+func TestEvaluateCompileCheck(t *testing.T) {
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("go not on PATH")
+	}
+	e := setup(t, 1, func(s *evaluation.Service) { s.CompileCheck = true })
+	bad := tpl + "package main\n\nfunc f() int { return \"x\" }\n"
+	if err := os.WriteFile(filepath.Join(e.dir, "topics/02-http/answers/v1/q01-one.go"), []byte(bad), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if st, code := e.wait(e.enqueue("full")); st != "succeeded" {
+		t.Fatalf("status %s (%s)", st, code)
+	}
+	e.ad.mu.Lock()
+	t1, t2 := e.ad.task["q01"], e.ad.task["q02"]
+	e.ad.mu.Unlock()
+	if !strings.Contains(t1, `"compile_check"`) || !strings.Contains(t1, `"failed"`) {
+		t.Errorf("q01 task.json lacks the failed compile result: %s", t1)
+	}
+	if strings.Contains(t2, "compile_check") {
+		t.Errorf("q02 (.md) was compile-checked: %s", t2)
+	}
+	dir := evaluation.AttemptRel("02-http", 1, 1)
+	if md := string(e.read(dir + "/q01-report.md")); !strings.Contains(md, "بررسی کامپایل (go vet): ناموفق") || strings.Contains(md, e.dir) {
+		t.Errorf("q01 report compile section missing or leaks the path:\n%s", md)
+	}
+	b := e.read(dir + "/result.json")
+	if err := schema.ValidateResult(b); err != nil {
+		t.Fatal(err)
+	}
+	var res schema.Result
+	json.Unmarshal(b, &res)
+	for _, it := range res.Items {
+		switch {
+		case it.ExerciseID == "q01" && (it.Compile == nil || it.Compile.Status != "failed"):
+			t.Errorf("q01 compile = %+v, want failed", it.Compile)
+		case it.ExerciseID == "q02" && it.Compile != nil:
+			t.Errorf("q02 compile = %+v, want none", it.Compile)
+		}
+	}
+	var flags string
+	e.db.Writer().QueryRow(`SELECT i.flags FROM attempt_items i JOIN exercises x ON x.id = i.exercise_id WHERE x.ex_id = 'q01'`).Scan(&flags)
+	if !strings.Contains(flags, evaluation.FlagCompileFailed) {
+		t.Errorf("q01 flags = %q, want %s", flags, evaluation.FlagCompileFailed)
+	}
+	if e.root.Exists(".app/work/compile") {
+		if ents, _ := os.ReadDir(filepath.Join(e.dir, ".app/work/compile")); len(ents) > 0 {
+			t.Errorf("temp modules left behind: %v", ents)
+		}
+	}
 }

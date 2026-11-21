@@ -212,7 +212,7 @@
   {{end}}
   <table class="grid"><thead><tr><th>شناسه</th><th>عنوان</th><th>وضعیت</th><th>نمره</th><th>گزارش</th></tr></thead>
     <tbody>{{range .AttemptItems}}<tr>
-      <td data-label="شناسه"><code>{{.ExID}}</code></td><td data-label="عنوان"><bdi>{{.Title}}</bdi>{{if .Flags}} <span class="badge warn">⚠ نیازمند بازبینی</span>{{end}}</td>
+      <td data-label="شناسه"><code>{{.ExID}}</code></td><td data-label="عنوان"><bdi>{{.Title}}</bdi>{{if .Flags}} <span class="badge warn">⚠ نیازمند بازبینی</span>{{end}}{{range .Flags}}{{if eq . "compile_failed"}} <span class="badge warn">کامپایل نشد</span>{{end}}{{end}}</td>
       <td data-label="وضعیت">{{if and .Flags (eq .Status "unanswered")}}نیازمند بازبینی دستی (ارسال نشد){{else}}{{itemStatus .Status}}{{end}}{{if .CarriedFrom}} (از تلاش {{.CarriedFrom}}){{end}}</td>
       <td data-label="نمره" class="score" data-ex="{{.ExID}}">{{fa .Score}}</td>
       <td data-label="گزارش">{{if .ReportRel}}<a href="/topics/{{$.Panel.ID}}/reports?v={{$.Set.Version}}&amp;attempt={{$.Attempt.No}}&amp;ex={{.ExID}}">گزارش</a>

@@ -64,6 +64,13 @@ auto_retry = 2
 # Wait before each automatic retry (default "2m", minimum "1s").
 retry_delay = "2m"
 
+[evaluation]
+# Type-check Go answers with `go vet` before the AI evaluates them (default false). The code is
+# never run. Needs the go toolchain on PATH; a snippet, an external import or a timeout is skipped.
+compile_check = false
+# Limit for one go vet run (default "30s", minimum "1s").
+compile_timeout = "30s"
+
 [exercises]
 count_default = 6
 count_min = 3

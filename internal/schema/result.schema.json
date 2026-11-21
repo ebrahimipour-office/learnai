@@ -78,6 +78,15 @@
           "error_types": {
             "type": "array",
             "items": { "enum": ["conceptual", "logical", "technical", "style", "omission"] }
+          },
+          "compile": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["status"],
+            "properties": {
+              "status": { "enum": ["ok", "failed", "skipped"] },
+              "output": { "type": "string" }
+            }
           }
         },
         "allOf": [

@@ -116,7 +116,8 @@ func (s *Service) commit(ctx context.Context, j jobs.Job, mode string, set setIn
 			skillVersion = out.SkillVersion
 			md, item, flags := Report(ReportInput{Weight: me.Weight, Question: exercises.Section(sh.exercisesMD, me.ID), Answer: pk.Body,
 				TemplateNormSHA: x.TemplateNormSHA,
-				Rubric:          sh.rubric[me.ID], Eval: ev, AttemptNo: k, RubricVersion: set.RubricVersion, SkillVersion: out.SkillVersion, Date: now})
+				Rubric:          sh.rubric[me.ID], Eval: ev, AttemptNo: k, RubricVersion: set.RubricVersion, SkillVersion: out.SkillVersion, Date: now,
+				Compile: out.Compile})
 			et, _ := json.Marshal(nonNil(item.ErrorTypes))
 			files = append(files, outFile{path.Join(dir, *item.ReportFile), "report", "attempt_item", md})
 			rows = append(rows, itemRow{item: item, aiScore: sql.NullInt64{Int64: int64(ev.Score), Valid: true},

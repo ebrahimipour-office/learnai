@@ -48,7 +48,8 @@ type ReportInput struct {
 	AttemptNo       int
 	RubricVersion   int
 	SkillVersion    string
-	Date            string // RFC 3339
+	Date            string          // RFC 3339
+	Compile         *schema.Compile // T11.4 go vet result; nil = not checked
 }
 
 func ReportFile(exID string) string { return exID + "-report.md" }
@@ -79,6 +80,9 @@ func Report(in ReportInput) ([]byte, schema.ResultItem, []string) {
 	score, mismatch := scoring.ExerciseScore(cs, in.Eval.Score)
 	sha := fsx.HashBytes(in.Answer)
 	flags := Flags(in.Answer, in.TemplateNormSHA, score)
+	if in.Compile != nil && in.Compile.Status == compileFailed {
+		flags = append(flags, FlagCompileFailed)
+	}
 
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "# گزارش تصحیح %s\n\n", id)
@@ -105,6 +109,15 @@ func Report(in ReportInput) ([]byte, schema.ResultItem, []string) {
 	b.WriteString("| معیار | شرح | امتیاز | حداکثر | نظر |\n|---|---|---|---|---|\n")
 	for _, c := range in.Rubric.Criteria {
 		fmt.Fprintf(&b, "| %s | %s | %d | %d | %s |\n", cell(c.ID), cell(c.Description), awarded[c.ID], c.MaxPoints, cell(comments[c.ID]))
+	}
+
+	if c := in.Compile; c != nil {
+		label := map[string]string{compileOK: "موفق", compileFailed: "ناموفق", compileSkipped: "انجام نشد"}[c.Status]
+		fmt.Fprintf(&b, "\n## بررسی کامپایل (go vet): %s\n\n", label)
+		if c.Output != "" {
+			f := fence([]byte(c.Output))
+			fmt.Fprintf(&b, "%stext\n%s\n%s\n", f, c.Output, f)
+		}
 	}
 
 	b.WriteString("\n## خطاها\n\n")
@@ -154,7 +167,7 @@ func Report(in ReportInput) ([]byte, schema.ResultItem, []string) {
 
 	rf := ReportFile(id)
 	return b.Bytes(), schema.ResultItem{ExerciseID: id, Weight: in.Weight, Status: "evaluated", Score: score,
-		AnswerSHA256: &sha, ReportFile: &rf, CriteriaScores: cs, ErrorTypes: types}, flags
+		AnswerSHA256: &sha, ReportFile: &rf, CriteriaScores: cs, ErrorTypes: types, Compile: in.Compile}, flags
 }
 
 // RawAnswer returns the answer bytes embedded in a report built by Report.

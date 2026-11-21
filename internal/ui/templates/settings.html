@@ -100,6 +100,7 @@
   <dt>خروجی ساختاریافته (<bdi><code>--json-schema</code></bdi>)</dt><dd>{{if .Caps.StructuredOutput}}بله{{else}}خیر{{end}}</dd>
   {{if eq $.Adapter "antigravity"}}<dt>رد نشدن مجوزها (<bdi><code>--dangerously-skip-permissions</code></bdi>، <bdi><code>adapter.skip_permissions</code></bdi>)</dt><dd>{{if $.SkipPermissions}}فعال (فقط همراه <bdi><code>--sandbox</code></bdi>){{else}}غیرفعال{{end}}</dd>{{end}}
   <dt>مدل پیکربندی‌شده</dt><dd><bdi>{{or $.Model "پیش‌فرض ابزار"}}</bdi></dd>
+  {{with .Go}}<dt>بررسی کامپایل Go (<bdi><code>evaluation.compile_check</code></bdi>)</dt><dd><bdi>{{.}}</bdi></dd>{{end}}
   <dt>مدل‌های در دسترس</dt><dd>{{range .Caps.Models}}<bdi><code>{{.}}</code></bdi> {{else}}—{{end}}</dd>
 </dl>
 {{if or .Err .Caps.Notes}}<details><summary>جزئیات فنی</summary>

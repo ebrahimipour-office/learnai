@@ -36,6 +36,13 @@ type Config struct {
 	Limits           LimitsConfig    `toml:"limits"`
 	Editor           EditorConfig    `toml:"editor"`
 	Review           ReviewConfig    `toml:"review"`
+	Evaluation       EvalConfig      `toml:"evaluation"`
+}
+
+// EvalConfig: the optional go vet check of Go answers before evaluation (T11.4). Off by default.
+type EvalConfig struct {
+	CompileCheck   bool          `toml:"compile_check"`
+	CompileTimeout time.Duration `toml:"compile_timeout"`
 }
 
 // ReviewConfig picks the topics shown under «برای مرور» on /topics (T10.17).
@@ -132,6 +139,7 @@ func DefaultConfig(defaultBaseDir string) Config {
 			AutoRetry:           2,
 			RetryDelay:          2 * time.Minute,
 		},
+		Evaluation: EvalConfig{CompileTimeout: 30 * time.Second},
 		Exercises: ExercisesConfig{
 			CountDefault: 6,
 			CountMin:     3,
@@ -275,6 +283,7 @@ func (c *Config) Validate() error {
 		{"jobs.timeout_analyze", c.Jobs.TimeoutAnalyze},
 		{"jobs.stall_timeout", c.Jobs.StallTimeout},
 		{"jobs.retry_delay", c.Jobs.RetryDelay},
+		{"evaluation.compile_timeout", c.Evaluation.CompileTimeout},
 	} {
 		if tc.d < time.Second {
 			return fmt.Errorf("%w: %s must be at least 1s, got %s", ErrInvalidDuration, tc.name, tc.d)

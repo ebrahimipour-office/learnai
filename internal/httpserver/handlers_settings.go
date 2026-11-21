@@ -8,7 +8,9 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"os/exec"
 	"slices"
+	"strings"
 	"time"
 
 	"learninghub/internal/ai"
@@ -34,6 +36,7 @@ type Settings struct {
 	Editor         string                 // config editor.command: program run as Editor <abs path>; "" hides «باز کردن»
 	Review         config.ReviewConfig    // «برای مرور» thresholds on /topics; zero = 70 and 14 days
 	Maintenance    *maintenance.Service   // backups on /settings (T10.20); nil hides the section
+	CompileCheck   bool                   // config evaluation.compile_check: doctor also reports `go version` (T11.4)
 }
 
 // Doctor is one Probe result as shown on the settings page.
@@ -43,6 +46,7 @@ type Doctor struct {
 	Err       string // raw error, for "technical details"
 	Hint      string // actionable Persian message; "" = ready
 	ModelWarn string
+	Go        string // `go version` when evaluation.compile_check is on; "" = check off
 }
 
 // Ready reports whether lesson jobs can run; a model warning alone does not block.
@@ -56,6 +60,13 @@ func ProbeAdapter(ctx context.Context, s Settings) Doctor {
 	caps, err := s.Adapter.Probe(ctx)
 	model := ai.ModelFor(s.Adapter, s.Model)
 	d := Doctor{At: time.Now(), Caps: caps}
+	if s.CompileCheck {
+		out, err := exec.CommandContext(ctx, "go", "version").Output()
+		d.Go = strings.TrimSpace(string(out))
+		if err != nil {
+			d.Go = "go یافت نشد؛ بررسی کامپایل پاسخ‌ها انجام نمی‌شود (skipped)"
+		}
+	}
 	switch {
 	case err != nil:
 		d.Err, d.Hint = err.Error(), ai.Message(ai.Code(err))
