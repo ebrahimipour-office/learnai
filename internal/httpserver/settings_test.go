@@ -399,3 +399,35 @@ func TestCR43_ProbeAdapterModelWarningMessages(t *testing.T) {
 		})
 	}
 }
+
+// T10.19: the finished job card and /settings show token usage; zero or missing usage is «نامشخص».
+func TestJobUsageShown(t *testing.T) {
+	e := newEnv(t)
+	e.seedTopics()
+	if b := e.settingsPage(false); strings.Contains(b, "مصرف توکن") {
+		t.Error("no finished jobs: usage section must be hidden")
+	}
+	e.ad.Output = lessonOutput("درس")
+	e.post("/topics/1/jobs/lesson", nil, true)
+	id, _ := e.lastJob()
+	e.pollUntilDone(id)
+	if page := e.get("/topics/1").Body.String(); !strings.Contains(page, "توکن: نامشخص") {
+		t.Errorf("fake adapter reports no tokens: want «نامشخص» on the card\n%s", page)
+	}
+	if b := e.settingsPage(false); !strings.Contains(b, "مصرف توکن ۳۰ روز اخیر") || !strings.Contains(b, `<td data-label="توکن ورودی">نامشخص</td>`) {
+		t.Errorf("settings: want usage table with «نامشخص»\n%s", b)
+	}
+
+	if _, err := e.db.Writer().Exec(`UPDATE jobs SET usage = '{"input_tokens":1200,"output_tokens":34}' WHERE id = ?`, id); err != nil {
+		t.Fatal(err)
+	}
+	if page := e.get("/topics/1").Body.String(); !strings.Contains(page, "توکن: ورودی ۱۲۰۰، خروجی ۳۴") {
+		t.Errorf("card must show input/output tokens\n%s", page)
+	}
+	b := e.settingsPage(false)
+	for _, want := range []string{"<td>تولید درس</td>", `<bdi>fake</bdi>`, `<td data-label="تعداد">۱</td>`, `<td data-label="توکن ورودی">۱۲۰۰</td>`, `<td data-label="توکن خروجی">۳۴</td>`} {
+		if !strings.Contains(b, want) {
+			t.Errorf("settings missing %q", want)
+		}
+	}
+}

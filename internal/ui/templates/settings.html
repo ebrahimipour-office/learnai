@@ -29,6 +29,18 @@
 </ul>
 </section>{{end}}
 
+{{if .Usage}}<section id="usage">
+<h2>مصرف توکن ۳۰ روز اخیر</h2>
+<table class="grid"><thead><tr><th>نوع کار</th><th>ابزار</th><th>تعداد</th><th>توکن ورودی</th><th>توکن خروجی</th></tr></thead>
+  <tbody>{{range .Usage}}<tr>
+    <td>{{jobKind .Kind}}</td><td data-label="ابزار"><bdi>{{or .Adapter "—"}}</bdi></td><td data-label="تعداد">{{fa .Jobs}}</td>
+    {{if or .InputTokens .OutputTokens}}<td data-label="توکن ورودی">{{fa .InputTokens}}</td><td data-label="توکن خروجی">{{fa .OutputTokens}}</td>
+    {{else}}<td data-label="توکن ورودی">نامشخص</td><td data-label="توکن خروجی">نامشخص</td>{{end}}
+  </tr>{{end}}</tbody>
+</table>
+<p class="note">برخی ابزارها مصرف توکن را گزارش نمی‌دهند؛ آن کارها با «نامشخص» یا صفر شمرده می‌شوند.</p>
+</section>{{end}}
+
 <section>
 <h2>ابزار هوش مصنوعی (doctor)</h2>
 {{if .Adapters}}

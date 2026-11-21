@@ -19,6 +19,7 @@ type Info struct {
 	EnqueuedAt, StartedAt, FinishedAt string
 	AutoAttempt, AutoMax              int    // T10.8: automatic retry n of AutoMax; 0 = started by the user
 	NotBefore                         string // a queued automatic retry waits until then
+	InputTokens, OutputTokens         int64  // T10.19: from jobs.usage; both 0 = the tool reported nothing
 }
 
 // Waiting is how long a queued automatic retry still waits, rounded to seconds; 0 if it may run now.
@@ -63,13 +64,20 @@ func (i *Info) Duration() time.Duration {
 
 const infoCols = `SELECT id, COALESCE(topic_id, 0), kind, status, COALESCE(phase, ''), progress_done, progress_total,
 	COALESCE(error_code, ''), COALESCE(error_message, ''), cancel_requested, enqueued_at,
-	COALESCE(started_at, ''), COALESCE(finished_at, ''), auto_attempt, COALESCE(not_before, '') FROM jobs `
+	COALESCE(started_at, ''), COALESCE(finished_at, ''), auto_attempt, COALESCE(not_before, ''),
+	` + tokensIn + `, ` + tokensOut + ` FROM jobs `
+
+// tokensIn/tokensOut read tokens from jobs.usage (ai.Usage JSON); NULL or malformed ⇒ 0.
+const (
+	tokensIn  = `CASE WHEN json_valid(usage) THEN COALESCE(json_extract(usage, '$.input_tokens'), 0) ELSE 0 END`
+	tokensOut = `CASE WHEN json_valid(usage) THEN COALESCE(json_extract(usage, '$.output_tokens'), 0) ELSE 0 END`
+)
 
 func (r *Runner) scanInfo(ctx context.Context, where string, args ...any) (*Info, error) {
 	var i Info
 	err := r.db.Writer().QueryRowContext(ctx, infoCols+where, args...).Scan(&i.ID, &i.TopicID, &i.Kind, &i.Status,
 		&i.Phase, &i.Done, &i.Total, &i.ErrorCode, &i.ErrorMessage, &i.CancelRequested, &i.EnqueuedAt, &i.StartedAt, &i.FinishedAt,
-		&i.AutoAttempt, &i.NotBefore)
+		&i.AutoAttempt, &i.NotBefore, &i.InputTokens, &i.OutputTokens)
 	i.AutoMax = r.AutoRetry
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrNotFound
@@ -96,4 +104,30 @@ func (r *Runner) Latest(ctx context.Context, scope string, kind domain.JobKind) 
 		return nil, nil
 	}
 	return i, err
+}
+
+// UsageRow is the token total of one job kind and AI tool (settings page, T10.19).
+type UsageRow struct {
+	Kind, Adapter             string
+	Jobs                      int
+	InputTokens, OutputTokens int64 // both 0 = no job of the group reported usage
+}
+
+// UsageSince sums token usage of jobs finished at or after since, by kind and tool.
+func UsageSince(ctx context.Context, db *sql.DB, since time.Time) ([]UsageRow, error) {
+	rows, err := db.QueryContext(ctx, `SELECT kind, COALESCE(adapter, '') AS a, COUNT(*), SUM(`+tokensIn+`), SUM(`+tokensOut+`)
+		FROM jobs WHERE finished_at >= ? GROUP BY kind, a ORDER BY kind, a`, since.UTC().Format("2006-01-02T15:04:05.000Z"))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []UsageRow
+	for rows.Next() {
+		var u UsageRow
+		if err := rows.Scan(&u.Kind, &u.Adapter, &u.Jobs, &u.InputTokens, &u.OutputTokens); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
 }

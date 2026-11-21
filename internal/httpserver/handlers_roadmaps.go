@@ -106,6 +106,7 @@ type pageData struct {
 	Privacy, PrivacyAck string          // notice text; RFC3339 time of acknowledgement or ""
 	NeedAck             bool            // settings: reached via the first-run gate (T9.7)
 	SkillUpdates        []skills.Update // settings: installed skills older than the embedded ones (§13.2)
+	Usage               []jobs.UsageRow // settings: token totals of the last 30 days by job kind and tool (T10.19)
 }
 
 type ruleOption struct {

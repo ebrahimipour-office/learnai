@@ -13,6 +13,7 @@ import (
 	"learninghub/internal/ai"
 	"learninghub/internal/config"
 	"learninghub/internal/domain"
+	"learninghub/internal/jobs"
 	"learninghub/internal/store"
 	"learninghub/skills"
 )
@@ -129,9 +130,15 @@ func (a *app) renderSettings(w http.ResponseWriter, r *http.Request, status int,
 		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
 		return
 	}
+	usage, err := jobs.UsageSince(r.Context(), a.settings.DB.Reader(), time.Now().AddDate(0, 0, -30))
+	if err != nil {
+		slog.Error("summing job usage", "error", err)
+		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
+		return
+	}
 	a.render(w, status, "settings", "layout", &pageData{Title: "تنظیمات", Error: msg, Doctor: a.doctor(),
 		Model: ai.ModelFor(a.settings.Adapter, a.settings.Model), Adapter: a.settings.Adapter.Name(), SkipPermissions: a.settings.SkipPermissions,
-		Adapters: a.adapterNames(), PrivacyAck: ack, Privacy: PrivacyNotice, SkillUpdates: ups,
+		Adapters: a.adapterNames(), PrivacyAck: ack, Privacy: PrivacyNotice, SkillUpdates: ups, Usage: usage,
 		NeedAck: r.URL.Query().Has("need_ack")})
 }
 
