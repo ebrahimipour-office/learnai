@@ -71,6 +71,7 @@ type pageData struct {
 	Topics              []*topics.Node
 	Matched, TopicTotal int
 	Resume              *topics.Resume // T10.4: last opened topic; nil = none
+	Review              *topics.Review // T10.17: «برای مرور»; nil = nothing evaluated yet
 
 	Panel   *topics.Panel
 	Viewing *topics.LessonVersion // lesson version shown; nil = none
@@ -155,6 +156,7 @@ func newApp(sm *SecurityManager, drafts *roadmaps.Service, topicList *topics.Ser
 		"sugStatus":   func(s string) string { return suggestionStatusLabels[s] },
 		"fileKind":    func(s string) string { return fileKindLabels[s] },
 		"scoreTrend":  scoreTrend,
+		"errorType":   func(s string) string { return cmp.Or(errorTypeLabels[s], s) },
 	}
 	for _, p := range []string{"new", "draft", "topics", "topic", "settings", "sync"} {
 		a.pages[p] = template.Must(template.New(p).Funcs(funcs).ParseFS(ui.FS, "templates/layout.html", "templates/"+p+".html"))

@@ -473,6 +473,27 @@ func TestResumeCard(t *testing.T) {
 	}
 }
 
+// T10.17: «برای مرور» is hidden until something was evaluated, then lists the low topic with its
+// error types (Persian labels) linking to the reports tab.
+func TestReviewSection(t *testing.T) {
+	e := newEnv(t)
+	e.exerciseSet()
+	page := func() string { return e.do(httptest.NewRequest(http.MethodGet, "/topics", nil)).Body.String() } // full page, not the htmx fragment
+	if strings.Contains(page(), "review-h") {
+		t.Error("nothing evaluated: review section must be hidden")
+	}
+	e.evaluate("q01") // topic score 50 < default 70
+	if _, err := e.db.Writer().Exec(`UPDATE attempt_items SET error_types = '["logical","omission"]'`); err != nil {
+		t.Fatal(err)
+	}
+	list := page()
+	for _, want := range []string{`id="review-h"`, `<a href="/topics/1/reports">`, "نمره ۵۰.۰۰", "منطقی (۱)", "جاافتادگی"} {
+		if !strings.Contains(list, want) {
+			t.Errorf("review section missing %q", want)
+		}
+	}
+}
+
 // T10.11: lesson and exercises tabs offer a print button; app.js prints via a delegated listener (CSP) and
 // app.css hides the chrome in print.
 func TestPrintView(t *testing.T) {

@@ -15,6 +15,17 @@
   {{else}}<a href="/topics/{{.ID}}/reports">مرور گزارش‌ها</a>{{end}}</p>
   <ul class="status-counts">{{range $.Statuses}}<li>{{statusLabel .Value}}: <strong>{{index $.Resume.Counts .Value}}</strong></li>{{end}}</ul>
 </section>{{end}}
+{{with .Review}}<section class="resume review" aria-labelledby="review-h">
+  <h2 id="review-h">برای مرور</h2>
+  {{if .Errors}}<p class="status-counts">پرتکرارترین خطاها: {{range .Errors}}<span>{{errorType .Type}} <strong>{{fa .N}}</strong></span> {{end}}</p>{{end}}
+  {{if .Topics}}<ul>{{range .Topics}}
+    <li><a href="/topics/{{.ID}}/reports"><bdi>{{.Title}}</bdi></a>
+      {{if .Low}}<span class="badge warn">نمره {{num .Score}}</span>{{end}}
+      {{if .Stale}}<span class="badge">آخرین ارزیابی: {{localTime .FinishedAt}}</span>{{end}}
+      {{with .Errors}}<small class="hint">— {{range $i, $e := .}}{{if $i}}، {{end}}{{errorType $e.Type}} ({{fa $e.N}}){{end}}</small>{{end}}</li>
+  {{end}}</ul>
+  {{else}}<p class="note">موضوعی با نمره پایین یا ارزیابی قدیمی نیست.</p>{{end}}
+</section>{{end}}
 <form method="get" action="/topics" role="search"
       hx-get="/topics" hx-trigger="input delay:300ms" hx-target="#topic-results" hx-swap="outerHTML" hx-push-url="true">
   <label>جست‌وجو <input type="search" name="q" value="{{.Query}}"></label>

@@ -83,3 +83,8 @@ max_tree_topics   = 200      # maximum topic records created by one tree import
 [editor]
 # Optional external editor command template (e.g., "code -g {{file}}:{{line}}").
 command = ""
+
+# «برای مرور» در صفحه موضوعات: آخرین نمره کمتر از score_below یا آخرین ارزیابی قدیمی‌تر از stale_days روز
+[review]
+score_below = 70
+stale_days = 14

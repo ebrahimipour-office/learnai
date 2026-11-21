@@ -35,6 +35,13 @@ type Config struct {
 	Exercises        ExercisesConfig `toml:"exercises"`
 	Limits           LimitsConfig    `toml:"limits"`
 	Editor           EditorConfig    `toml:"editor"`
+	Review           ReviewConfig    `toml:"review"`
+}
+
+// ReviewConfig picks the topics shown under «برای مرور» on /topics (T10.17).
+type ReviewConfig struct {
+	ScoreBelow float64 `toml:"score_below"` // latest score under this is "low"
+	StaleDays  int     `toml:"stale_days"`  // latest evaluation older than this is "stale"
 }
 
 // AdapterConfig: the top-level keys configure agy; [adapter.claude] and [adapter.codex] the other
@@ -144,6 +151,7 @@ func DefaultConfig(defaultBaseDir string) Config {
 		Editor: EditorConfig{
 			Command: "",
 		},
+		Review: ReviewConfig{ScoreBelow: 70, StaleDays: 14},
 	}
 }
 
@@ -291,6 +299,12 @@ func (c *Config) Validate() error {
 	}
 	if c.BackupKeep < 1 {
 		c.BackupKeep = 7
+	}
+	if c.Review.ScoreBelow <= 0 || c.Review.ScoreBelow > 100 {
+		c.Review.ScoreBelow = 70
+	}
+	if c.Review.StaleDays < 1 {
+		c.Review.StaleDays = 14
 	}
 
 	// 6. Validate jobs concurrency

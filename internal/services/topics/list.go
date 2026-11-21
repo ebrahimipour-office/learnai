@@ -31,8 +31,8 @@ type Node struct {
 	Status, State, Origin string
 	Score                 sql.NullFloat64 // latest attempt of the current exercise set
 	Partial               bool
-	Busy                  bool // has a queued or running job
-	Missing               int  // registered files last seen missing by sync
+	Busy                  bool   // has a queued or running job
+	Missing               int    // registered files last seen missing by sync
 	InLesson              bool   // the query matched only the current lesson's text (T9.15)
 	Query                 string // the search that listed it, carried to the topic page for highlighting (T10.16)
 

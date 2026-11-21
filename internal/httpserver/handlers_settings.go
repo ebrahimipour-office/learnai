@@ -29,6 +29,7 @@ type Settings struct {
 	MaxAnswerBytes int64                  // config limits.max_answer_bytes (evaluation selection)
 	MaxViewBytes   int64                  // largest Markdown file a page renders; 0 = 1 MB (T10.6)
 	Editor         string                 // config editor.command: program run as Editor <abs path>; "" hides «باز کردن»
+	Review         config.ReviewConfig    // «برای مرور» thresholds on /topics; zero = 70 and 14 days
 }
 
 // Doctor is one Probe result as shown on the settings page.

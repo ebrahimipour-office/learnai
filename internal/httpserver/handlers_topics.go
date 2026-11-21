@@ -1,10 +1,12 @@
 package httpserver
 
 import (
+	"cmp"
 	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"learninghub/internal/domain"
 	"learninghub/internal/services/topics"
@@ -16,6 +18,10 @@ var statusLabels = map[string]string{
 	string(domain.StatusExercisesReady): "تمرین آماده",
 	string(domain.StatusAnswered):       "پاسخ‌داده‌شده",
 	string(domain.StatusEvaluated):      "ارزیابی‌شده",
+}
+
+var errorTypeLabels = map[string]string{
+	"conceptual": "مفهومی", "logical": "منطقی", "technical": "فنی", "style": "سبک کد", "omission": "جاافتادگی",
 }
 
 var statusOrder = []domain.TopicStatus{domain.StatusCreated, domain.StatusContentReady,
@@ -39,12 +45,19 @@ func (a *app) listTopics(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
 		return
 	}
+	rc := a.settings.Review
+	review, err := a.topics.Review(r.Context(), cmp.Or(rc.ScoreBelow, 70), cmp.Or(rc.StaleDays, 14), time.Now())
+	if err != nil {
+		slog.Error("loading review list", "error", err)
+		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
+		return
+	}
 	opts := make([]ruleOption, len(statusOrder))
 	for i, s := range statusOrder {
 		opts[i] = ruleOption{Value: string(s), Label: statusLabels[string(s)], Selected: string(s) == f.Status}
 	}
 	data := &pageData{Title: "موضوعات", Query: f.Query, Status: f.Status, Archived: f.Archived, Statuses: opts,
-		Topics: tree, Matched: matched, TopicTotal: total, Resume: resume}
+		Topics: tree, Matched: matched, TopicTotal: total, Resume: resume, Review: review}
 	name := "layout"
 	if r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-History-Restore-Request") != "true" {
 		name = "topic-results"
