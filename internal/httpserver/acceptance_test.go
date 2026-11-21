@@ -296,7 +296,7 @@ func TestAcceptanceR11_2(t *testing.T) {
 		t.Fatalf("R11.2-9: scan: %d", rec.Code)
 	}
 	page = e.get("/sync").Body.String()
-	if !strings.Contains(page, "1 گم‌شده، 1 جابه‌جاشده، 1 جدید، 1 تغییرکرده") {
+	if !strings.Contains(page, "۱ گم‌شده، ۱ جابه‌جاشده، ۱ جدید، ۱ تغییرکرده") {
 		t.Errorf("R11.2-9: sync report:\n%s", page)
 	}
 	if !maps.Equal(disk, tree(t, e.base, "topics")) || rows != files() {
@@ -484,7 +484,7 @@ func TestAcceptanceChapters(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(e.base, filepath.FromSlash(evaluation.AttemptRel(tp.dir, 1, 1)), evaluation.ReportFile("q01"))); err != nil {
 			t.Errorf("%s: report: %v", tp.title, err)
 		}
-		if page := e.get(fmt.Sprintf("/topics/%d/reports", tp.id)).Body.String(); !strings.Contains(page, `data-ex="q01">70<`) {
+		if page := e.get(fmt.Sprintf("/topics/%d/reports", tp.id)).Body.String(); !strings.Contains(page, `data-ex="q01">۷۰<`) {
 			t.Errorf("%s: reports tab must show the software score 70, not the AI's 90", tp.title)
 		}
 	}

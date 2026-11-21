@@ -134,7 +134,7 @@ func TestLessonGenerateFlow(t *testing.T) {
 		t.Fatalf("job status %s", st)
 	}
 	page := e.get("/topics/1").Body.String()
-	for _, want := range []string{`<h3 id="h-مقدمه" dir="auto">مقدمه</h3>`, `<pre dir="ltr"><code class="language-go">`, "موفق", "نسخه 1",
+	for _, want := range []string{`<h3 id="h-مقدمه" dir="auto">مقدمه</h3>`, `<pre dir="ltr"><code class="language-go">`, "موفق", "نسخه ۱",
 		`<a href="/topics/1">✓ انجام شد — مشاهده درس</a>`, "مدت: "} {
 		if !strings.Contains(page, want) {
 			t.Errorf("panel missing %q", want)
@@ -173,10 +173,10 @@ func TestLessonRegenerateNeedsConfirm(t *testing.T) {
 	id2, _ := e.lastJob()
 	e.pollUntilDone(id2)
 	page := e.get("/topics/1").Body.String()
-	if !strings.Contains(page, "نسخه دوم") || !strings.Contains(page, "نسخه 2") {
+	if !strings.Contains(page, "نسخه دوم") || !strings.Contains(page, "نسخه ۲") {
 		t.Fatal("current lesson must be version 2")
 	}
-	if old := e.get("/topics/1/lesson?v=1").Body.String(); !strings.Contains(old, "نسخه اول") || !strings.Contains(old, "نسخه قدیمی 1") {
+	if old := e.get("/topics/1/lesson?v=1").Body.String(); !strings.Contains(old, "نسخه اول") || !strings.Contains(old, "نسخه قدیمی ۱") {
 		t.Error("?v=1 must render the archived version")
 	}
 }

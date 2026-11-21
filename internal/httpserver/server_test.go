@@ -215,7 +215,7 @@ func TestImportPreviewFlow(t *testing.T) {
 
 	rec = e.do(httptest.NewRequest(http.MethodGet, draftURL, nil))
 	page := rec.Body.String()
-	if rec.Code != http.StatusOK || !strings.Contains(page, "<strong>3</strong> موضوع") || !strings.Contains(page, "Goroutines") {
+	if rec.Code != http.StatusOK || !strings.Contains(page, "<strong>۳</strong> موضوع") || !strings.Contains(page, "Goroutines") {
 		t.Fatalf("preview page: %d\n%s", rec.Code, page)
 	}
 	if !strings.Contains(page, e.sm.CSRFToken()) {
@@ -229,7 +229,7 @@ func TestImportPreviewFlow(t *testing.T) {
 	}
 	rec = e.selection(draftURL, url.Values{"rule": {"deepest"}, "shown_rule": {"deepest"}, "include": keys[1:]}, true)
 	frag := rec.Body.String()
-	if rec.Code != http.StatusOK || strings.Contains(frag, "<html") || !strings.Contains(frag, "<strong>2</strong> موضوع انتخاب‌شده از 3") {
+	if rec.Code != http.StatusOK || strings.Contains(frag, "<html") || !strings.Contains(frag, "<strong>۲</strong> موضوع انتخاب‌شده از ۳") {
 		t.Fatalf("htmx selection: want fragment with 2 of 3, got %d\n%s", rec.Code, frag)
 	}
 
@@ -239,7 +239,7 @@ func TestImportPreviewFlow(t *testing.T) {
 		t.Fatalf("non-htmx selection: want 303, got %d", rec.Code)
 	}
 	rec = e.do(httptest.NewRequest(http.MethodGet, draftURL, nil))
-	if !strings.Contains(rec.Body.String(), "<strong>2</strong> موضوع انتخاب‌شده از 2") {
+	if !strings.Contains(rec.Body.String(), "<strong>۲</strong> موضوع انتخاب‌شده از ۲") {
 		t.Errorf("level-2 preview wrong:\n%s", rec.Body.String())
 	}
 
@@ -438,7 +438,7 @@ func TestTopicListPage(t *testing.T) {
 	req.Header.Set("HX-Request", "true")
 	frag := e.do(req).Body.String()
 	// "topic 42" matches 42 and 420-429.
-	if strings.Contains(frag, "<html") || !strings.Contains(frag, "<strong>11</strong> موضوع یافت شد") {
+	if strings.Contains(frag, "<html") || !strings.Contains(frag, "<strong>۱۱</strong> موضوع یافت شد") {
 		t.Errorf("htmx search fragment wrong:\n%s", frag)
 	}
 }
@@ -525,7 +525,7 @@ func TestReimportFlow(t *testing.T) {
 	}
 	draftURL = rec.Header().Get("Location")
 	page := e.do(httptest.NewRequest(http.MethodGet, draftURL, nil)).Body.String()
-	for _, want := range []string{"ورود مجدد", "1 جدید، 0 تغییرکرده، 1 ناپدیدشده، 1 بدون تغییر", "شاید همان «<bdi>Loops</bdi>»"} {
+	for _, want := range []string{"ورود مجدد", "۱ جدید، ۰ تغییرکرده، ۱ ناپدیدشده، ۱ بدون تغییر", "شاید همان «<bdi>Loops</bdi>»"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("preview must contain %q:\n%s", want, page)
 		}

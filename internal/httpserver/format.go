@@ -18,13 +18,13 @@ func faSize(n int) string {
 	return faDigits.Replace(strconv.Itoa(n>>10)) + " کیلوبایت"
 }
 
-// localTime shows a stored RFC 3339 UTC timestamp in the machine's local zone (B8); anything unparsable is shown as is.
+// localTime shows a stored RFC 3339 UTC timestamp in the machine's local zone (B8) in Persian digits; anything unparsable is shown as is.
 func localTime(s string) string {
 	t, err := time.Parse(time.RFC3339Nano, s)
 	if err != nil {
 		return s
 	}
-	return t.Local().Format("2006-01-02 15:04")
+	return faDigits.Replace(t.Local().Format("2006-01-02 15:04"))
 }
 
 // faDuration spells d in Persian, e.g. 2m57s ⇒ «۲ دقیقه و ۵۷ ثانیه»; zero parts are left out.

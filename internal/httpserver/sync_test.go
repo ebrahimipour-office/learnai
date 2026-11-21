@@ -38,7 +38,7 @@ func TestSyncPageScanAndApply(t *testing.T) {
 		t.Fatalf("scan: %d %s", rec.Code, rec.Body.String())
 	}
 	page := e.get("/sync").Body.String()
-	if !strings.Contains(page, "1 جابه‌جاشده") || !strings.Contains(page, "topics/01-http/moved/rubric.json") || !strings.Contains(page, `name="move" value="1"`) {
+	if !strings.Contains(page, "۱ جابه‌جاشده") || !strings.Contains(page, "topics/01-http/moved/rubric.json") || !strings.Contains(page, `name="move" value="1"`) {
 		t.Fatalf("report page:\n%s", page)
 	}
 	var runID string

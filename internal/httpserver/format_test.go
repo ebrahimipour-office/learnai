@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,7 +24,10 @@ func TestFaDuration(t *testing.T) {
 
 func TestLocalTime(t *testing.T) {
 	in := "2026-11-08T08:23:30Z"
-	want := time.Date(2026, 11, 8, 8, 23, 30, 0, time.UTC).Local().Format("2006-01-02 15:04")
+	want := faDigits.Replace(time.Date(2026, 11, 8, 8, 23, 30, 0, time.UTC).Local().Format("2006-01-02 15:04"))
+	if strings.ContainsAny(want, "0123456789") {
+		t.Fatalf("want Persian digits, got %q", want)
+	}
 	if got := localTime(in); got != want {
 		t.Errorf("localTime(%q) = %q, want %q", in, got, want)
 	}

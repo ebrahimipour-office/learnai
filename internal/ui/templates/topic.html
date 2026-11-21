@@ -9,7 +9,7 @@
   {{if eq .Panel.State "archived"}}<form method="post" action="/topics/{{.Panel.ID}}/unarchive" class="inline"><input type="hidden" name="csrf_token" value="{{.CSRF}}"><button type="submit"{{if .Panel.Busy}} disabled{{end}}>بازگردانی</button></form>
   {{else}}<form method="post" action="/topics/{{.Panel.ID}}/archive" class="inline"><input type="hidden" name="csrf_token" value="{{.CSRF}}"><button type="submit" class="link" title="فقط از فهرست پنهان می‌شود؛ هیچ فایلی حذف نمی‌شود"{{if .Panel.Busy}} disabled{{end}}>بایگانی</button></form>{{end}}</div>
 {{template "stepper" .}}
-{{with .Panel.Children}}<details class="children" open><summary>زیررکوردها ({{len .}})</summary>
+{{with .Panel.Children}}<details class="children" open><summary>زیررکوردها ({{fa (len .)}})</summary>
   <ul>{{range .}}<li><a href="/topics/{{.ID}}"><bdi>{{.Title}}</bdi></a>{{if .Archived}} <span class="badge">بایگانی‌شده</span>{{end}}</li>{{end}}</ul>
 </details>{{end}}
 <nav class="tabs" aria-label="بخش‌های موضوع">
@@ -34,9 +34,9 @@
 <div class="tools">{{template "job-area" .}}
 {{if .Panel.Lessons}}
   <button type="button" class="link" data-print>چاپ</button>
-  <details class="versions"><summary>نسخه‌ها ({{len .Panel.Lessons}})</summary>
+  <details class="versions"><summary>نسخه‌ها ({{fa (len .Panel.Lessons)}})</summary>
     <ul>{{range .Panel.Lessons}}
-      <li><a href="/topics/{{$.Panel.ID}}/lesson?v={{.Version}}"{{if and $.Viewing (eq $.Viewing.Version .Version)}} aria-current="true"{{end}}>نسخه {{.Version}}</a>
+      <li><a href="/topics/{{$.Panel.ID}}/lesson?v={{.Version}}"{{if and $.Viewing (eq $.Viewing.Version .Version)}} aria-current="true"{{end}}>نسخه {{fa .Version}}</a>
         {{if .Current}}<span class="badge">جاری</span>{{end}}
         <span class="note"><bdi>{{localTime .CreatedAt}}</bdi>{{with .Model}} · <bdi>{{.}}</bdi>{{end}}</span></li>{{end}}
     </ul>
@@ -46,7 +46,7 @@
   </details>{{end}}
 {{end}}</div>
 {{if .Panel.Lessons}}
-  {{with .Viewing}}{{if not .Current}}<p class="note">در حال مشاهده نسخه قدیمی {{.Version}}. <a href="/topics/{{$.Panel.ID}}/lesson">نسخه جاری</a></p>{{end}}{{end}}
+  {{with .Viewing}}{{if not .Current}}<p class="note">در حال مشاهده نسخه قدیمی {{fa .Version}}. <a href="/topics/{{$.Panel.ID}}/lesson">نسخه جاری</a></p>{{end}}{{end}}
   <article class="md" dir="auto">{{.Lesson}}</article>
 {{else}}
   <p class="note empty">هنوز درسی برای این موضوع ساخته نشده است.</p>
@@ -82,7 +82,7 @@
 {{define "set-tab"}}
 <section class="set">
 {{if .Set}}
-  {{if gt (len .Sets) 1}}<details class="versions"><summary>مجموعه‌ها ({{len .Sets}})</summary>
+  {{if gt (len .Sets) 1}}<details class="versions"><summary>مجموعه‌ها ({{fa (len .Sets)}})</summary>
     <ul>{{range .Sets}}
       <li><a href="/topics/{{$.Panel.ID}}/{{$.Tab}}?v={{.Version}}"{{if eq $.Set.Version .Version}} aria-current="true"{{end}}>مجموعه v{{.Version}}</a>
         {{if .Current}}<span class="badge">جاری</span>{{end}}
@@ -102,7 +102,7 @@
   <article class="md" dir="auto">{{.ExercisesMD}}</article>
   {{else}}
   {{with .Exercises}}<p class="roadmap-progress"><progress max="{{len .}}" value="{{$.Answered}}" aria-label="پیشرفت پاسخ‌ها"></progress>
-    <span>{{$.Answered}} از {{len .}} پاسخ داده شد</span></p>{{end}}
+    <span>{{fa $.Answered}} از {{fa (len .)}} پاسخ داده شد</span></p>{{end}}
   <table class="grid"><thead><tr><th>تمرین</th><th>فایل</th><th>وضعیت</th></tr></thead>
     <tbody>{{range .Exercises}}<tr>
       <td><code>{{.ExID}}</code> <bdi>{{.Title}}</bdi></td>
@@ -144,10 +144,10 @@
   <h2>تاریخچه تلاش‌ها</h2>
   <table class="grid"><thead><tr><th>تلاش</th><th>تاریخ</th><th>حالت</th><th>نمره موضوع</th><th>پاسخ‌داده‌شده</th></tr></thead>
     <tbody>{{range .Attempts}}<tr>
-      <td data-label="تلاش"><a href="/topics/{{$.Panel.ID}}/reports?v={{$.Set.Version}}&amp;attempt={{.No}}"{{if eq $.Attempt.No .No}} aria-current="true"{{end}}>تلاش {{.No}}</a></td>
+      <td data-label="تلاش"><a href="/topics/{{$.Panel.ID}}/reports?v={{$.Set.Version}}&amp;attempt={{.No}}"{{if eq $.Attempt.No .No}} aria-current="true"{{end}}>تلاش {{fa .No}}</a></td>
       <td data-label="تاریخ"><bdi>{{localTime .FinishedAt}}</bdi></td><td data-label="حالت">{{evalMode .Mode}}</td>
       <td data-label="نمره موضوع" class="score">{{num .Score}}</td>
-      <td data-label="پاسخ‌داده‌شده">{{if .Partial}}<span class="badge warn">ناقص ({{.Answered}} از {{.Total}} پاسخ‌داده‌شده)</span>{{else}}{{.Answered}} از {{.Total}}{{end}}</td>
+      <td data-label="پاسخ‌داده‌شده">{{if .Partial}}<span class="badge warn">ناقص ({{fa .Answered}} از {{fa .Total}} پاسخ‌داده‌شده)</span>{{else}}{{fa .Answered}} از {{fa .Total}}{{end}}</td>
     </tr>{{end}}</tbody>
   </table>
   {{with scoreTrend .Attempts}}
@@ -155,27 +155,27 @@
     <svg viewBox="0 0 300 110" role="img" aria-label="روند نمره موضوع در تلاش‌ها؛ تلاش ۱ در سمت راست">
       <line x1="10" y1="5" x2="290" y2="5"/><line x1="10" y1="55" x2="290" y2="55"/><line x1="10" y1="105" x2="290" y2="105"/>
       <polyline points="{{.Line}}"/>
-      {{range .Points}}<circle cx="{{.X}}" cy="{{.Y}}" r="4"><title>تلاش {{.No}}: {{num .Score}}</title></circle>{{end}}
+      {{range .Points}}<circle cx="{{.X}}" cy="{{.Y}}" r="4"><title>تلاش {{fa .No}}: {{num .Score}}</title></circle>{{end}}
     </svg>
     <figcaption class="note">روند نمره موضوع (۰ تا ۱۰۰)</figcaption>
   </figure>
   {{end}}
   {{with .Attempt}}
-  <h2>تلاش {{.No}} — نمره موضوع <span class="score">{{num .Score}}</span>
-    {{if .Partial}}<span class="badge warn">ناقص ({{.Answered}} از {{.Total}} پاسخ‌داده‌شده)</span>{{end}}</h2>
+  <h2>تلاش {{fa .No}} — نمره موضوع <span class="score">{{num .Score}}</span>
+    {{if .Partial}}<span class="badge warn">ناقص ({{fa .Answered}} از {{fa .Total}} پاسخ‌داده‌شده)</span>{{end}}</h2>
   <p class="note"><a href="/files/{{.SummaryFileID}}">summary.md</a> · <a href="/files/{{.ResultFileID}}">result.json</a></p>
   {{end}}
   <table class="grid"><thead><tr><th>شناسه</th><th>عنوان</th><th>وضعیت</th><th>نمره</th><th>گزارش</th></tr></thead>
     <tbody>{{range .AttemptItems}}<tr>
       <td data-label="شناسه"><code>{{.ExID}}</code></td><td data-label="عنوان"><bdi>{{.Title}}</bdi>{{if .Flags}} <span class="badge warn">⚠ نیازمند بازبینی</span>{{end}}</td>
       <td data-label="وضعیت">{{if and .Flags (eq .Status "unanswered")}}نیازمند بازبینی دستی (ارسال نشد){{else}}{{itemStatus .Status}}{{end}}{{if .CarriedFrom}} (از تلاش {{.CarriedFrom}}){{end}}</td>
-      <td data-label="نمره" class="score" data-ex="{{.ExID}}">{{.Score}}</td>
+      <td data-label="نمره" class="score" data-ex="{{.ExID}}">{{fa .Score}}</td>
       <td data-label="گزارش">{{if .ReportRel}}<a href="/topics/{{$.Panel.ID}}/reports?v={{$.Set.Version}}&amp;attempt={{$.Attempt.No}}&amp;ex={{.ExID}}">گزارش</a>
-        {{else if .CarriedFrom}}<a href="/topics/{{$.Panel.ID}}/reports?v={{$.Set.Version}}&amp;attempt={{.CarriedFrom}}&amp;ex={{.ExID}}">گزارش تلاش {{.CarriedFrom}}</a>{{end}}</td>
+        {{else if .CarriedFrom}}<a href="/topics/{{$.Panel.ID}}/reports?v={{$.Set.Version}}&amp;attempt={{.CarriedFrom}}&amp;ex={{.ExID}}">گزارش تلاش {{fa .CarriedFrom}}</a>{{end}}</td>
     </tr>{{end}}</tbody>
   </table>
   {{with .ReportItem}}
-  <h2 id="report">گزارش <code>{{.ExID}}</code> — تلاش {{$.Attempt.No}}</h2>
+  <h2 id="report">گزارش <code>{{.ExID}}</code> — تلاش {{fa $.Attempt.No}}</h2>
   <p class="note"><a href="/files/{{.ReportFileID}}">{{base .ReportRel}}</a></p>
   <article class="md" dir="auto">{{$.ReportMD}}</article>
   {{end}}
@@ -240,7 +240,7 @@
     <strong>{{jobKind .Kind}}</strong> <span class="badge">{{jobStatus .Status}}</span>
     {{if eq .Status "succeeded"}}<a href="/topics/{{.TopicID}}{{if eq .Kind "exercises"}}/exercises{{else if eq .Kind "evaluate"}}/reports{{end}}">✓ انجام شد — مشاهده {{if eq .Kind "exercises"}}تمرین‌ها{{else if eq .Kind "evaluate"}}گزارش{{else}}درس{{end}}</a>{{end}}
     {{if .Active}}{{with .Phase}}<span>مرحله: {{jobPhase .}}</span>{{end}}{{end}}
-    {{if .Total}}<progress aria-label="پیشرفت" value="{{.Done}}" max="{{.Total}}">{{.Done}}/{{.Total}}</progress>{{end}}
+    {{if .Total}}<progress aria-label="پیشرفت" value="{{.Done}}" max="{{.Total}}">{{fa .Done}}/{{fa .Total}}</progress>{{end}}
     {{if .Duration}}<span class="note">{{if .Active}}زمان سپری‌شده{{else}}مدت{{end}}: {{faDuration .Duration}}</span>{{end}}
     {{if .AutoAttempt}}<span class="note">تلاش خودکار {{.AutoAttempt}} از {{.AutoMax}}{{with .Waiting}}؛ شروع تا {{faDuration .}} دیگر{{end}}</span>{{end}}
     {{if eq .Status "failed"}}{{$msg := aiMessage .ErrorCode}}<p class="error">{{if $msg}}{{$msg}}{{else}}<bdi>{{.ErrorMessage}}</bdi>{{end}}

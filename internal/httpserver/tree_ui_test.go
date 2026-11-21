@@ -63,7 +63,7 @@ func TestTreeUI(t *testing.T) {
 		t.Error("child panel has no breadcrumb link to its parent")
 	}
 	parent := e.do(httptest.NewRequest(http.MethodGet, fmt.Sprintf("/topics/%d", basics), nil)).Body.String()
-	if !strings.Contains(parent, "زیررکوردها (2)") || !strings.Contains(parent, fmt.Sprintf(`<a href="/topics/%d"><bdi>Data types</bdi></a>`, types)) {
+	if !strings.Contains(parent, "زیررکوردها (۲)") || !strings.Contains(parent, fmt.Sprintf(`<a href="/topics/%d"><bdi>Data types</bdi></a>`, types)) {
 		t.Error("parent panel does not list its sub-records")
 	}
 }
@@ -87,7 +87,7 @@ func TestTopicSearchEmptyAndGroupMatching(t *testing.T) {
 	if !strings.Contains(resEmpty, "هیچ موضوعی با این مشخصات یافت نشد.") {
 		t.Errorf("expected empty search note, got: %s", resEmpty)
 	}
-	if !strings.Contains(resEmpty, "<strong>0</strong> موضوع یافت شد") {
+	if !strings.Contains(resEmpty, "<strong>۰</strong> موضوع یافت شد") {
 		t.Errorf("expected 0 matches count, got: %s", resEmpty)
 	}
 }

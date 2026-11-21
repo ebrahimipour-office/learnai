@@ -157,8 +157,8 @@ func TestAnswersTabStatuses(t *testing.T) {
 	if !strings.Contains(page, `title="`+abs1+`"`) || !strings.Contains(page, `data-copy="`+abs1+`"`) || strings.Contains(page, `value="`+abs1+`"`) {
 		t.Fatalf("answers tab must offer the full path %s in title and copy only", abs1)
 	}
-	if !strings.Contains(page, ">0 از 3 پاسخ داده شد<") || !strings.Contains(page, `<progress max="3" value="0"`) {
-		t.Error("answers tab must summarise progress as 0 از 3")
+	if !strings.Contains(page, ">۰ از ۳ پاسخ داده شد<") || !strings.Contains(page, `<progress max="3" value="0"`) {
+		t.Error("answers tab must summarise progress as ۰ از ۳")
 	}
 	if strings.Count(page, "بدون پاسخ") != 3 || strings.Contains(page, ".internal") {
 		t.Fatal("fresh set: three unanswered files, no .internal paths")
@@ -184,7 +184,7 @@ func TestAnswersTabStatuses(t *testing.T) {
 	if strings.Contains(page, "status-unanswered") {
 		t.Error("no file is unanswered any more")
 	}
-	if !strings.Contains(page, ">2 از 3 پاسخ داده شد<") { // answered + changed count; missing does not
+	if !strings.Contains(page, ">۲ از ۳ پاسخ داده شد<") { // answered + changed count; missing does not
 		t.Error("answers tab must count answered and changed files")
 	}
 }
@@ -335,10 +335,10 @@ func TestReportsTab(t *testing.T) {
 	page = e.get("/topics/1/reports").Body.String()
 	a := res.Aggregate
 	for _, want := range []string{
-		"تلاش " + strconv.Itoa(res.AttemptNo),
-		`<td data-label="نمره موضوع" class="score">` + strconv.FormatFloat(a.WeightedScore, 'f', 2, 64) + "</td>",
+		"تلاش " + httpserver.FaDigits.Replace(strconv.Itoa(res.AttemptNo)),
+		`<td data-label="نمره موضوع" class="score">` + httpserver.FaDigits.Replace(strconv.FormatFloat(a.WeightedScore, 'f', 2, 64)) + "</td>",
 		`<strong>ارزیابی</strong>`,
-		"ناقص (" + strconv.Itoa(a.AnsweredCount) + " از " + strconv.Itoa(a.TotalCount) + " پاسخ‌داده‌شده)",
+		"ناقص (" + httpserver.FaDigits.Replace(strconv.Itoa(a.AnsweredCount)) + " از " + httpserver.FaDigits.Replace(strconv.Itoa(a.TotalCount)) + " پاسخ‌داده‌شده)",
 		`aria-current="page">گزارش‌ها`,
 	} {
 		if !strings.Contains(page, want) {
@@ -346,7 +346,7 @@ func TestReportsTab(t *testing.T) {
 		}
 	}
 	for _, it := range res.Items {
-		if want := `data-ex="` + it.ExerciseID + `">` + strconv.Itoa(it.Score) + "<"; !strings.Contains(page, want) {
+		if want := `data-ex="` + it.ExerciseID + `">` + httpserver.FaDigits.Replace(strconv.Itoa(it.Score)) + "<"; !strings.Contains(page, want) {
 			t.Errorf("score of %s: want %q in page", it.ExerciseID, want)
 		}
 	}
@@ -361,7 +361,7 @@ func TestReportsTab(t *testing.T) {
 	if strings.Contains(e.get("/topics/1/lesson").Body.String(), `<strong>ارزیابی</strong>`) {
 		t.Error("lesson tab must not show the evaluate job card")
 	}
-	if want := `<span class="score">` + strconv.FormatFloat(a.WeightedScore, 'f', 2, 64) + "</span>"; !strings.Contains(e.get("/topics").Body.String(), want) {
+	if want := `<span class="score">` + httpserver.FaDigits.Replace(strconv.FormatFloat(a.WeightedScore, 'f', 2, 64)) + "</span>"; !strings.Contains(e.get("/topics").Body.String(), want) {
 		t.Errorf("topics list score must match the reports tab: want %q", want)
 	}
 
@@ -377,7 +377,7 @@ func TestReportsTab(t *testing.T) {
 	// T9.13: a second attempt draws the score trend.
 	e.evaluate() // attempt 2, score 50
 	if trend := e.get("/topics/1/reports").Body.String(); !strings.Contains(trend, `<polyline points="`) ||
-		strings.Count(trend, "<circle ") != 2 || !strings.Contains(trend, "<title>تلاش 2: 50.00</title>") {
+		strings.Count(trend, "<circle ") != 2 || !strings.Contains(trend, "<title>تلاش ۲: ۵۰.۰۰</title>") {
 		t.Error("two attempts must draw the score trend with one titled point each")
 	}
 }

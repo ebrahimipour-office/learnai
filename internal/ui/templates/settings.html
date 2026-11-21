@@ -7,7 +7,7 @@
 {{if and .NeedAck (not .PrivacyAck)}}<p class="error" role="alert">برای دیدن موضوعات و استفاده از هوش مصنوعی ابتدا این متن را تأیید کنید.</p>{{end}}
 <p>{{.Privacy}}</p>
 {{if not .PrivacyAck}}<p class="note">راه‌اندازی اولیه: نتیجه بررسی ابزار هوش مصنوعی را پایین همین صفحه ببینید و پس از تأیید این متن، فهرست موضوعات باز می‌شود.</p>{{end}}
-{{if .PrivacyAck}}<p class="note">تأییدشده در <bdi>{{.PrivacyAck}}</bdi></p>
+{{if .PrivacyAck}}<p class="note">تأییدشده در <bdi>{{localTime .PrivacyAck}}</bdi></p>
 {{else}}
 <form method="post" action="/settings/privacy">
   <input type="hidden" name="csrf_token" value="{{.CSRF}}">

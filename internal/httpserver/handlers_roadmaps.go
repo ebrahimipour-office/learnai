@@ -147,7 +147,8 @@ func newApp(sm *SecurityManager, drafts *roadmaps.Service, topicList *topics.Ser
 		"difficulty":  func(s string) string { return difficultyLabels[s] },
 		"itemStatus":  func(s string) string { return itemStatusLabels[s] },
 		"evalMode":    func(s string) string { return evalModeLabels[s] },
-		"num":         func(f float64) string { return strconv.FormatFloat(f, 'f', 2, 64) },
+		"num":         func(f float64) string { return faDigits.Replace(strconv.FormatFloat(f, 'f', 2, 64)) },
+		"fa":          func(v any) string { return faDigits.Replace(fmt.Sprint(v)) }, // display counts only; ids, paths and attribute values stay Latin
 		"localTime":   localTime,
 		"faDuration":  faDuration,
 		"sugKind":     func(s string) string { return suggestionKindLabels[s] },
@@ -401,7 +402,7 @@ func (a *app) confirmDraft(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, roadmaps.ErrNothingSelected):
 		a.renderDraft(w, r, http.StatusUnprocessableEntity, d, "هیچ موضوعی انتخاب نشده است.")
 	case errors.Is(err, roadmaps.ErrTooManyTopics):
-		a.renderDraft(w, r, http.StatusUnprocessableEntity, d, fmt.Sprintf("حداکثر %d رکورد در یک ورود؛ تیک برخی سرفصل‌ها را بردارید.", a.drafts.TreeCap))
+		a.renderDraft(w, r, http.StatusUnprocessableEntity, d, faDigits.Replace(fmt.Sprintf("حداکثر %d رکورد در یک ورود؛ تیک برخی سرفصل‌ها را بردارید.", a.drafts.TreeCap)))
 	case errors.Is(err, roadmaps.ErrDraftNotFound):
 		a.renderNew(w, r, http.StatusNotFound, "پیش‌نویس پیدا نشد، منقضی شده یا قبلاً ثبت شده است.")
 	case err != nil:
@@ -459,7 +460,7 @@ func (a *app) renderDraft(w http.ResponseWriter, r *http.Request, status int, d 
 		Title:        "پیش‌نمایش ورود",
 		Error:        errMsg,
 		Draft:        d,
-		Expires:      d.ExpiresAt.Local().Format("2006-01-02 15:04"),
+		Expires:      faDigits.Replace(d.ExpiresAt.Local().Format("2006-01-02 15:04")),
 		RuleValue:    value,
 		Rules:        ruleOptions(value),
 		Items:        items,
@@ -495,7 +496,7 @@ func (a *app) draftAI(r *http.Request, d *roadmaps.Draft, data *pageData) error 
 			}
 		}
 		if k := d.AI.Rule.Kind; k == roadmap.RuleChapters || k == roadmap.RuleTree {
-			data.AILabel = fmt.Sprintf("%d فصل", len(d.AI.Rule.Chapters))
+			data.AILabel = faDigits.Replace(fmt.Sprintf("%d فصل", len(d.AI.Rule.Chapters)))
 		}
 	}
 	data.HasH2 = hasLevel(roadmap.Parse(d.Content), 2)
@@ -682,7 +683,7 @@ func selectionError(err error, fallback string) string {
 func ruleOptions(selected string) []ruleOption {
 	opts := []ruleOption{{Value: "deepest", Label: "سرفصل‌های بدون زیرسرفصل (پیش‌فرض)"}}
 	for n := 1; n <= 6; n++ {
-		opts = append(opts, ruleOption{Value: fmt.Sprintf("level-%d", n), Label: fmt.Sprintf("سرفصل‌های سطح %d", n)})
+		opts = append(opts, ruleOption{Value: fmt.Sprintf("level-%d", n), Label: faDigits.Replace(fmt.Sprintf("سرفصل‌های سطح %d", n))})
 	}
 	opts = append(opts, ruleOption{Value: "items", Label: "آیتم‌های لیست"},
 		ruleOption{Value: string(roadmap.RuleTree), Label: "هر سرفصل یک رکورد"})

@@ -54,7 +54,7 @@ func TestDraftAIAssistFlow(t *testing.T) {
 	}
 
 	page = e.do(httptest.NewRequest(http.MethodGet, draftURL, nil)).Body.String()
-	for _, want := range []string{"قاعده پیشنهادی: <strong>آیتم‌های لیست</strong>", "سرفصل‌ها فازند", `name="rule" value="ai"`, "اعمال پیشنهاد", "<strong>2</strong> موضوع انتخاب‌شده از 2"} {
+	for _, want := range []string{"قاعده پیشنهادی: <strong>آیتم‌های لیست</strong>", "سرفصل‌ها فازند", `name="rule" value="ai"`, "اعمال پیشنهاد", "<strong>۲</strong> موضوع انتخاب‌شده از ۲"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("page missing %q", want)
 		}
@@ -69,7 +69,7 @@ func TestDraftAIAssistFlow(t *testing.T) {
 		t.Fatalf("apply: %d", rec.Code)
 	}
 	page = e.do(httptest.NewRequest(http.MethodGet, draftURL, nil)).Body.String()
-	if !strings.Contains(page, "<strong>3</strong> موضوع انتخاب‌شده از 3") || strings.Contains(page, "اعمال پیشنهاد") {
+	if !strings.Contains(page, "<strong>۳</strong> موضوع انتخاب‌شده از ۳") || strings.Contains(page, "اعمال پیشنهاد") {
 		t.Errorf("after apply: want 3 topics and no apply button\n%s", page)
 	}
 }
@@ -143,8 +143,8 @@ func TestDraftChapterFlow(t *testing.T) {
 	}
 	// T8.4: the untouched selection took the suggestion (tree rule + title) on its own; no apply button.
 	page := e.do(httptest.NewRequest(http.MethodGet, draftURL, nil)).Body.String()
-	for _, want := range []string{"<strong>3 فصل</strong>", "عنوان پیشنهادی: <bdi>کتاب Go</bdi>", "همروندی", "(خط 7)",
-		`value="کتاب Go"`, "<strong>3</strong> موضوع انتخاب‌شده از 3", `value="tree" selected`} {
+	for _, want := range []string{"<strong>۳ فصل</strong>", "عنوان پیشنهادی: <bdi>کتاب Go</bdi>", "همروندی", "(خط ۷)",
+		`value="کتاب Go"`, "<strong>۳</strong> موضوع انتخاب‌شده از ۳", `value="tree" selected`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("suggestion page missing %q", want)
 		}
@@ -161,7 +161,7 @@ func TestDraftChapterFlow(t *testing.T) {
 	if rec := e.selection(draftURL, tick, false); rec.Code != http.StatusSeeOther {
 		t.Fatalf("tick: %d", rec.Code)
 	}
-	if page := e.do(httptest.NewRequest(http.MethodGet, draftURL, nil)).Body.String(); !strings.Contains(page, "<strong>2</strong> موضوع انتخاب‌شده از 3") {
+	if page := e.do(httptest.NewRequest(http.MethodGet, draftURL, nil)).Body.String(); !strings.Contains(page, "<strong>۲</strong> موضوع انتخاب‌شده از ۳") {
 		t.Errorf("after unticking one tree record\n%s", page)
 	}
 
