@@ -12,7 +12,8 @@ type DiffItem struct {
 	Key, Title string
 	OldTitle   string // Changed: the recorded title when it differs
 	Restored   bool   // Changed: the topic was archived and comes back
-	Guess      string // New: title of a similar disappeared topic (suggestion only, RK8)
+	Guess      string // New: title of a similar disappeared topic (RK8)
+	GuessKey   string // New: stable key of that topic; the preview offers linking the two (T11.2)
 }
 
 // Diff compares the kept topics of a re-import draft with the roadmap's recorded topics (R2.5).
@@ -117,7 +118,7 @@ func diffTopics(kept []roadmap.Topic, old []oldTopic) *Diff {
 		goneRunes[i] = capRunes(o.TitleNorm)
 	}
 	for i := range d.New {
-		d.New[i].Guess = guess(capRunes(roadmap.Normalize(d.New[i].Title)), gone, goneRunes)
+		d.New[i].Guess, d.New[i].GuessKey = guess(capRunes(roadmap.Normalize(d.New[i].Title)), gone, goneRunes)
 	}
 	return d
 }
@@ -136,9 +137,9 @@ func capRunes(s string) []rune {
 	return r[:min(len(r), guessMaxRunes)]
 }
 
-// guess returns the most similar gone title. A renamed group keeps title_norm equal (similarity 1).
-func guess(norm []rune, gone []oldTopic, goneRunes [][]rune) string {
-	best, bestSim := "", guessMin
+// guess returns the most similar gone title and key. A renamed group keeps title_norm equal (similarity 1).
+func guess(norm []rune, gone []oldTopic, goneRunes [][]rune) (string, string) {
+	best, bestKey, bestSim := "", "", guessMin
 	for i, o := range gone {
 		// Distance >= length gap, so similarity <= shorter/longer: skip pairs that cannot win.
 		lo, hi := min(len(norm), len(goneRunes[i])), max(len(norm), len(goneRunes[i]))
@@ -146,10 +147,10 @@ func guess(norm []rune, gone []oldTopic, goneRunes [][]rune) string {
 			continue
 		}
 		if s := similarity(norm, goneRunes[i]); s >= bestSim {
-			best, bestSim = o.Title, s
+			best, bestKey, bestSim = o.Title, o.Key, s
 		}
 	}
-	return best
+	return best, bestKey
 }
 
 // similarity is 1 - Levenshtein distance / longer length, over runes.
@@ -203,4 +204,9 @@ func KeptTopics(sel *roadmap.Selection, excludedKeys []string) []roadmap.Topic {
 		kept = append(kept, t)
 	}
 	return kept
+}
+
+// Similarity compares two titles the way the re-import guess does (normalized, capped, 0..1).
+func Similarity(a, b string) float64 {
+	return similarity(capRunes(roadmap.Normalize(a)), capRunes(roadmap.Normalize(b)))
 }

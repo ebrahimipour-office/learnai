@@ -20,6 +20,9 @@ import (
 
 var ErrNothingSelected = errors.New("no topics selected")
 
+// ErrBadLink: a rename link does not pair a new topic with a disappeared one of this re-import, or reuses one (T11.2).
+var ErrBadLink = errors.New("invalid topic link")
+
 // ErrTooManyTopics: a tree selection keeps more than Service.TreeCap records; the user must untick some (R12).
 var ErrTooManyTopics = errors.New("too many topics for the tree rule")
 
@@ -38,6 +41,14 @@ const maxDirSlugRunes = 40
 // source range gets its chapter text in topics/<dir>/source.md (§12.6). On any failure no rows change
 // and no file written by this confirm is left behind.
 func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topics int, err error) {
+	return s.ConfirmLinked(ctx, id, nil)
+}
+
+// ConfirmLinked is Confirm with rename links (RK8, T11.2): links maps a new topic's stable key to the key
+// of a disappeared active topic, which is then updated in place (same id and dir_name, history kept)
+// instead of being archived next to a fresh empty topic. A link that is not new→gone, or that reuses a
+// gone topic, fails with ErrBadLink and changes nothing (the draft is not consumed).
+func (s *Service) ConfirmLinked(ctx context.Context, id string, links map[string]string) (roadmapID int64, topics int, err error) {
 	d, err := s.Draft(ctx, id)
 	if err != nil {
 		return 0, 0, err
@@ -207,6 +218,9 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 		for _, o := range old {
 			oldByKey[o.Key] = o
 		}
+		if err := checkLinks(links, kept, oldByKey); err != nil {
+			return err
+		}
 		var writes []sourceWrite
 		ids := make([]int64, len(kept)) // kept index -> topics.id; a parent precedes its children
 		next, err := NextTopicSeq(ctx, tx, s.root)
@@ -228,6 +242,10 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 			if !ok && t.LegacyKey != "" && t.LegacyKey != t.StableKey {
 				o, ok = oldByKey[t.LegacyKey]
 			}
+			relinked := false
+			if !ok && links[t.StableKey] != "" {
+				o, ok, relinked = oldByKey[links[t.StableKey]], true, true
+			}
 			if ok {
 				_, err := tx.ExecContext(ctx,
 					`UPDATE topics SET group_id = ?, parent_id = ?, stable_key = ?, title = ?, title_norm = ?, outline = ?, ord = ?, state = 'active',
@@ -235,6 +253,13 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 					group, parent, t.StableKey, t.Title, roadmap.Normalize(t.Title), outline, float64(i+1), revID, o.ID)
 				if err != nil {
 					return fmt.Errorf("updating topic %q: %w", t.Title, err)
+				}
+				if relinked {
+					if _, err := tx.ExecContext(ctx, `INSERT INTO audit_log (action, target_type, target_id, detail)
+						VALUES ('topic_relinked', 'topic', ?, json_object('old_key', ?, 'new_key', ?, 'old_title', ?, 'title', ?))`,
+						o.ID, o.Key, t.StableKey, o.Title, t.Title); err != nil {
+						return err
+					}
 				}
 			} else {
 				var slug, dir string
@@ -300,6 +325,34 @@ func (s *Service) Confirm(ctx context.Context, id string) (roadmapID int64, topi
 		return 0, 0, err
 	}
 	return roadmapID, len(kept), nil
+}
+
+// checkLinks enforces that every link pairs a kept topic with no recorded match to an active recorded
+// topic that no kept topic matches (the diff's New and Gone), each gone topic at most once.
+func checkLinks(links map[string]string, kept []roadmap.Topic, oldByKey map[string]oldTopic) error {
+	if len(links) == 0 {
+		return nil
+	}
+	matched := map[string]bool{} // recorded keys claimed by stable or legacy key
+	unmatched := map[string]bool{}
+	for _, t := range kept {
+		if _, ok := oldByKey[t.StableKey]; ok {
+			matched[t.StableKey] = true
+		} else if _, ok := oldByKey[t.LegacyKey]; ok && t.LegacyKey != "" {
+			matched[t.LegacyKey] = true
+		} else {
+			unmatched[t.StableKey] = true
+		}
+	}
+	used := map[string]bool{}
+	for newKey, oldKey := range links {
+		o, ok := oldByKey[oldKey]
+		if !unmatched[newKey] || !ok || o.State != "active" || matched[oldKey] || used[oldKey] {
+			return fmt.Errorf("%w: %s → %s", ErrBadLink, newKey, oldKey)
+		}
+		used[oldKey] = true
+	}
+	return nil
 }
 
 // sourceWrite is a chapter text to put on disk once its rows are recorded. hist != "" means source.md

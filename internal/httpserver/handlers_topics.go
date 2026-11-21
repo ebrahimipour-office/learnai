@@ -68,6 +68,25 @@ func (a *app) listTopics(w http.ResponseWriter, r *http.Request) {
 func (a *app) archiveTopic(w http.ResponseWriter, r *http.Request)   { a.setArchived(w, r, true) }
 func (a *app) unarchiveTopic(w http.ResponseWriter, r *http.Request) { a.setArchived(w, r, false) }
 
+// mergeTopic hands this empty topic's place to an archived topic of the same roadmap (RK8, T11.2).
+func (a *app) mergeTopic(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	from, err := strconv.ParseInt(r.FormValue("from"), 10, 64)
+	if !ok || err != nil {
+		http.Error(w, "موضوع نامعتبر است", http.StatusBadRequest)
+		return
+	}
+	switch err := a.topics.Merge(r.Context(), id, from); {
+	case err == nil:
+		http.Redirect(w, r, "/topics/"+strconv.FormatInt(from, 10), http.StatusSeeOther)
+	case errors.Is(err, domain.ErrInvalidState):
+		http.Error(w, "ادغام فقط برای موضوع خالی و یک موضوع بایگانی‌شده از همان نقشه راه ممکن است.", http.StatusConflict)
+	default:
+		slog.Error("merging topics", "topic", id, "from", from, "error", err)
+		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
+	}
+}
+
 // setArchived changes only topics.state (T9.12) and goes back to the topic page.
 func (a *app) setArchived(w http.ResponseWriter, r *http.Request, archived bool) {
 	id, ok := pathID(r)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"html"
 	"maps"
 	"mime/multipart"
 	"net/http"
@@ -546,6 +547,75 @@ func TestReimportFlow(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(e.base, "roadmaps", "go", "rev-002.md")); err != nil {
 		t.Errorf("rev-002.md: %v", err)
+	}
+}
+
+// TestReimportLinkFlow: ticking «همان موضوع است» keeps the renamed topic in place (T11.2); a forged link is 400.
+func TestReimportLinkFlow(t *testing.T) {
+	e := newEnv(t)
+	csrf := e.sm.CSRFToken()
+	draftURL := e.upload("go.md", []byte("# Go\n## Basics\n### Types\n### Loops\n")).Header().Get("Location")
+	if rec := e.confirm(draftURL, url.Values{"csrf_token": {csrf}, "confirm": {"1"}}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("first import: %d", rec.Code)
+	}
+	draftURL = e.uploadTo("1", "go.md", []byte("# Go\n## Basics\n### Types\n### Loop\n")).Header().Get("Location")
+	page := e.do(httptest.NewRequest(http.MethodGet, draftURL, nil)).Body.String()
+	m := regexp.MustCompile(`name="link" value="([^"]+)" form="confirm-draft"`).FindStringSubmatch(page)
+	if m == nil || !strings.Contains(page, `id="confirm-draft"`) {
+		t.Fatalf("link checkbox missing:\n%s", page)
+	}
+	link := html.UnescapeString(m[1])
+	newKey, _, _ := strings.Cut(link, "=")
+	for _, bad := range []string{newKey + "=nope", "garbage"} {
+		if rec := e.confirm(draftURL, url.Values{"csrf_token": {csrf}, "confirm": {"1"}, "link": {bad}}); rec.Code != http.StatusBadRequest {
+			t.Errorf("link %q: want 400, got %d", bad, rec.Code)
+		}
+	}
+	if rec := e.confirm(draftURL, url.Values{"csrf_token": {csrf}, "confirm": {"1"}, "link": {link}}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("confirm with link: %d %s", rec.Code, rec.Body.String())
+	}
+	var topics, archived int
+	var title string
+	_ = e.db.Writer().QueryRow(`SELECT COUNT(*), COUNT(*) FILTER (WHERE state = 'archived') FROM topics`).Scan(&topics, &archived)
+	_ = e.db.Writer().QueryRow(`SELECT title FROM topics WHERE dir_name LIKE '02-%'`).Scan(&title)
+	if topics != 2 || archived != 0 || title != "Loop" {
+		t.Errorf("want 2 active topics with Loops renamed in place, got %d/%d %q", topics, archived, title)
+	}
+}
+
+// TestMergeTopicFlow: a rename confirmed without a link is undone from the empty topic's page (T11.2).
+func TestMergeTopicFlow(t *testing.T) {
+	e := newEnv(t)
+	csrf := e.sm.CSRFToken()
+	draftURL := e.upload("go.md", []byte("# Go\n## Basics\n### Types\n### Loops\n")).Header().Get("Location")
+	e.confirm(draftURL, url.Values{"csrf_token": {csrf}, "confirm": {"1"}})
+	draftURL = e.uploadTo("1", "go.md", []byte("# Go\n## Basics\n### Types\n### Loop\n")).Header().Get("Location")
+	if rec := e.confirm(draftURL, url.Values{"csrf_token": {csrf}, "confirm": {"1"}}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("confirm without link: %d", rec.Code)
+	}
+	var loops, loop int64
+	_ = e.db.Writer().QueryRow(`SELECT id FROM topics WHERE title = 'Loops'`).Scan(&loops)
+	_ = e.db.Writer().QueryRow(`SELECT id FROM topics WHERE title = 'Loop'`).Scan(&loop)
+	page := e.get(fmt.Sprintf("/topics/%d", loop)).Body.String()
+	if !strings.Contains(page, fmt.Sprintf(`action="/topics/%d/merge"`, loop)) || !strings.Contains(page, fmt.Sprintf(`<option value="%d">Loops</option>`, loops)) {
+		t.Fatalf("merge form missing:\n%s", page)
+	}
+	if page := e.get(fmt.Sprintf("/topics/%d", loops)).Body.String(); strings.Contains(page, "/merge") {
+		t.Error("archived topic must not offer merge")
+	}
+	mergeURL := fmt.Sprintf("/topics/%d/merge", loop)
+	if rec := e.do(httptest.NewRequest(http.MethodPost, mergeURL, strings.NewReader("from=1"))); rec.Code != http.StatusForbidden {
+		t.Errorf("merge without CSRF: %d", rec.Code)
+	}
+	if rec := e.post(mergeURL, url.Values{"from": {"x"}}, false); rec.Code != http.StatusBadRequest {
+		t.Errorf("bad from: %d", rec.Code)
+	}
+	rec := e.post(mergeURL, url.Values{"from": {fmt.Sprint(loops)}}, false)
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != fmt.Sprintf("/topics/%d", loops) {
+		t.Fatalf("merge: %d %s", rec.Code, rec.Header().Get("Location"))
+	}
+	if rec := e.post(mergeURL, url.Values{"from": {fmt.Sprint(loops)}}, false); rec.Code != http.StatusConflict {
+		t.Errorf("second merge: %d", rec.Code)
 	}
 }
 

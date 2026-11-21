@@ -107,16 +107,17 @@ type pageData struct {
 
 	Doctor              *Doctor
 	Adapter, Model      string
-	SkipPermissions     bool                 // settings: agy runs with --dangerously-skip-permissions
-	Adapters            []string             // selectable AI tools on the settings page
-	Privacy, PrivacyAck string               // notice text; RFC3339 time of acknowledgement or ""
-	Jalali              bool                 // calendar display option (O7)
-	NeedAck             bool                 // settings: reached via the first-run gate (T9.7)
-	SkillUpdates        []skills.Update      // settings: installed skills older than the embedded ones (§13.2)
-	Usage               []jobs.UsageRow      // settings: token totals of the last 30 days by job kind and tool (T10.19)
-	Backups             []maintenance.Backup // settings: newest first (T10.20)
-	BackupsOn           bool                 // settings: the backups section is shown
-	BackupNote          string               // settings: result of «پشتیبان‌گیری الان»
+	SkipPermissions     bool                    // settings: agy runs with --dangerously-skip-permissions
+	Adapters            []string                // selectable AI tools on the settings page
+	Privacy, PrivacyAck string                  // notice text; RFC3339 time of acknowledgement or ""
+	Jalali              bool                    // calendar display option (O7)
+	MergeFrom           []topics.MergeCandidate // archived topics this empty topic can hand its place to (T11.2)
+	NeedAck             bool                    // settings: reached via the first-run gate (T9.7)
+	SkillUpdates        []skills.Update         // settings: installed skills older than the embedded ones (§13.2)
+	Usage               []jobs.UsageRow         // settings: token totals of the last 30 days by job kind and tool (T10.19)
+	Backups             []maintenance.Backup    // settings: newest first (T10.20)
+	BackupsOn           bool                    // settings: the backups section is shown
+	BackupNote          string                  // settings: result of «پشتیبان‌گیری الان»
 }
 
 type ruleOption struct {
@@ -416,8 +417,20 @@ func (a *app) confirmDraft(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	_, _, err = a.drafts.Confirm(r.Context(), d.ID)
+	// T11.2: «همان موضوع است» ticks arrive as link=newKey=oldKey; the service checks they pair New with Gone.
+	links := map[string]string{}
+	for _, v := range r.Form["link"] {
+		newKey, oldKey, ok := strings.Cut(v, "=")
+		if _, dup := links[newKey]; !ok || newKey == "" || oldKey == "" || dup {
+			a.renderDraft(w, r, http.StatusBadRequest, d, "پیوند موضوع نامعتبر است.")
+			return
+		}
+		links[newKey] = oldKey
+	}
+	_, _, err = a.drafts.ConfirmLinked(r.Context(), d.ID, links)
 	switch {
+	case errors.Is(err, roadmaps.ErrBadLink):
+		a.renderDraft(w, r, http.StatusBadRequest, d, "پیوند موضوع نامعتبر است؛ هر موضوع جدید فقط به یک موضوع ناپدیدشده پیوند می‌خورد.")
 	case errors.Is(err, roadmaps.ErrNothingSelected):
 		a.renderDraft(w, r, http.StatusUnprocessableEntity, d, "هیچ موضوعی انتخاب نشده است.")
 	case errors.Is(err, roadmaps.ErrTooManyTopics):

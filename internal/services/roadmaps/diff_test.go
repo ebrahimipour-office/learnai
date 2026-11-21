@@ -173,3 +173,56 @@ func TestReimportRejectsUnknownRoadmap(t *testing.T) {
 		t.Errorf("want ErrNoRoadmap, got %v", err)
 	}
 }
+
+// TestReimportLinksRename: a rename link updates the disappeared topic in place (RK8, T11.2);
+// bad links fail without consuming the draft or changing a row.
+func TestReimportLinksRename(t *testing.T) {
+	s, db, _ := newServiceIn(t, t.TempDir())
+	ctx := context.Background()
+	id, _ := s.CreateDraft(ctx, "go.md", []byte(sample))
+	rid, _, err := s.Confirm(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var loopsID int64
+	if err := db.Writer().QueryRow(`SELECT id FROM topics WHERE dir_name = '02-loops'`).Scan(&loopsID); err != nil {
+		t.Fatal(err)
+	}
+	d, diff := reimport(t, s, rid, sampleV2)
+	loop, channels := diff.New[0], diff.New[2]
+	if loop.GuessKey != diff.Gone[0].Key {
+		t.Fatalf("guess key %q, want %q", loop.GuessKey, diff.Gone[0].Key)
+	}
+	before := topicStates(t, db)
+	for name, links := range map[string]map[string]string{
+		"gone key reused":  {loop.Key: loop.GuessKey, channels.Key: loop.GuessKey},
+		"target not gone":  {loop.Key: diff.Changed[0].Key},
+		"source not new":   {diff.Changed[0].Key: loop.GuessKey},
+		"unknown recorded": {loop.Key: "nope"},
+	} {
+		if _, _, err := s.ConfirmLinked(ctx, d.ID, links); !errors.Is(err, roadmaps.ErrBadLink) {
+			t.Errorf("%s: want ErrBadLink, got %v", name, err)
+		}
+	}
+	if got := topicStates(t, db); !reflect.DeepEqual(got, before) || count(t, db, "roadmap_revisions") != 1 {
+		t.Fatalf("bad links changed rows: %v", got)
+	}
+
+	if _, _, err := s.ConfirmLinked(ctx, d.ID, map[string]string{loop.Key: loop.GuessKey}); err != nil {
+		t.Fatal(err)
+	}
+	var key, title string
+	if err := db.Writer().QueryRow(`SELECT stable_key, title FROM topics WHERE id = ? AND dir_name = '02-loops' AND state = 'active'`, loopsID).Scan(&key, &title); err != nil {
+		t.Fatalf("linked topic not kept in place: %v", err)
+	}
+	if key != loop.Key || title != "Loop" {
+		t.Errorf("linked topic: key %q title %q", key, title)
+	}
+	want := map[string]string{"01-types": "active", "02-loops": "active", "03-goroutines": "archived", "04-goroutines": "active", "05-channels": "active"}
+	if got := topicStates(t, db); !reflect.DeepEqual(got, want) {
+		t.Errorf("topics: got %v, want %v", got, want)
+	}
+	if n := count(t, db, "audit_log WHERE action = 'topic_relinked'"); n != 1 {
+		t.Errorf("audit rows: %d", n)
+	}
+}

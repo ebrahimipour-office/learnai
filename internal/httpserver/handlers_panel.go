@@ -92,6 +92,11 @@ func (a *app) showTopic(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
 		return
 	}
+	if d.MergeFrom, err = a.topics.MergeCandidates(r.Context(), id); err != nil {
+		slog.Error("listing merge candidates", "topic", id, "error", err)
+		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
+		return
+	}
 	a.fillLesson(r, d)
 	a.render(w, http.StatusOK, "topic", "layout", d)
 }

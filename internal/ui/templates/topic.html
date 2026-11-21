@@ -10,6 +10,13 @@
   {{else}}<form method="post" action="/topics/{{.Panel.ID}}/archive" class="inline"><input type="hidden" name="csrf_token" value="{{.CSRF}}"><button type="submit" class="link" title="فقط از فهرست پنهان می‌شود؛ هیچ فایلی حذف نمی‌شود"{{if .Panel.Busy}} disabled{{end}}>بایگانی</button></form>{{end}}
   <a href="/topics/{{.Panel.ID}}/export" download title="پوشه موضوع بدون فایل‌های داخلی">دانلود zip</a></div>
 {{template "stepper" .}}
+{{with .MergeFrom}}<form method="post" action="/topics/{{$.Panel.ID}}/merge" class="merge">
+  <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+  <label>این موضوع تغییرنام‌یافته همان موضوع بایگانی‌شده است:
+    <select name="from">{{range .}}<option value="{{.ID}}">{{.Title}}</option>{{end}}</select></label>
+  <button type="submit">ادغام</button>
+  <span class="note">موضوع بایگانی‌شده با عنوان و جای این موضوع فعال می‌شود و تاریخچه‌اش حفظ می‌شود؛ این موضوع خالی حذف می‌شود.</span>
+</form>{{end}}
 {{with .Panel.Children}}<details class="children" open><summary>زیررکوردها ({{fa (len .)}})</summary>
   <ul>{{range .}}<li><a href="/topics/{{.ID}}"><bdi>{{.Title}}</bdi></a>{{if .Archived}} <span class="badge">بایگانی‌شده</span>{{end}}</li>{{end}}</ul>
 </details>{{end}}
