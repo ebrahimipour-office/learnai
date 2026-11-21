@@ -294,6 +294,13 @@ dd code { white-space: nowrap; }
 .stepper .done a { color: var(--ok); border-color: var(--ok); }
 .stepper .done a::after { content: " ✓" / ""; }
 @media (max-width: 40rem) { .stepper { gap: .35rem; } .stepper a { padding-inline: .5rem; } } /* T10.10: one row at 390px */
+/* T10.16: search matches in the lesson and the "?" shortcuts dialog */
+mark { background: var(--warn-soft); color: inherit; outline: 1px solid var(--warn); }
+dialog { background: var(--surface); color: var(--fg); border: 1px solid var(--line); border-radius: var(--radius); max-width: min(24rem, 100% - 2rem); }
+dialog::backdrop { background: rgb(0 0 0 / .4); }
+dialog dl { display: grid; grid-template-columns: auto 1fr; gap: .25rem 1rem; }
+dialog dd { margin: 0; }
+kbd { font-family: var(--mono); border: 1px solid var(--line); border-radius: var(--radius); padding: 0 .35em; background: var(--surface-2); }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 #job-area:not(:has(*)) { display: none; } /* whitespace-only, so :empty never matches */
 .pager { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin: 2rem 0 0; padding-top: 1rem; border-top: 1px solid var(--line); }

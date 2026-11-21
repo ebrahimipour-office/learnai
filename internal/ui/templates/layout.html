@@ -18,5 +18,10 @@
   <button type="button" class="theme-toggle" data-theme-toggle title="تغییر تم: خودکار، روشن، تاریک" aria-live="polite">تم: خودکار</button></div></header>
 <div id="flash" class="error" role="alert" hidden></div>
 <main id="main" tabindex="-1">{{template "content" .}}</main>
+<dialog id="shortcuts" aria-labelledby="shortcuts-h">
+  <h2 id="shortcuts-h">میان‌برهای صفحه‌کلید</h2>
+  <dl><dt><kbd>/</kbd></dt><dd>جست‌وجوی موضوعات</dd><dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>فصل قبل / بعد</dd><dt><kbd>?</kbd></dt><dd>همین راهنما</dd></dl>
+  <form method="dialog"><button>بستن</button></form>
+</dialog>
 </body>
 </html>{{end}}

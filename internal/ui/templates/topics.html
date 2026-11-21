@@ -58,7 +58,7 @@
   <ul>{{range .Items}}{{template "tnode" .}}{{end}}</ul>
 </details></li>{{else}}
 <li class="topic{{if eq .State "archived"}} archived{{end}}">
-  <a href="/topics/{{.ID}}"><bdi>{{.Title}}</bdi></a>
+  <a href="/topics/{{.ID}}{{with .Query}}?q={{.}}{{end}}"><bdi>{{.Title}}</bdi></a>
   {{template "mini-steps" .Status}}
   {{if .Score.Valid}}<span class="score">{{num .Score.Float64}}</span>{{if .Partial}} <span class="badge warn">ناقص</span>{{end}}{{end}}
   {{if eq .Origin "suggested"}}<span class="badge suggested">پیشنهادی</span>{{end}}

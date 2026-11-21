@@ -33,7 +33,8 @@ type Node struct {
 	Partial               bool
 	Busy                  bool // has a queued or running job
 	Missing               int  // registered files last seen missing by sync
-	InLesson              bool // the query matched only the current lesson's text (T9.15)
+	InLesson              bool   // the query matched only the current lesson's text (T9.15)
+	Query                 string // the search that listed it, carried to the topic page for highlighting (T10.16)
 
 	// Roadmap fields (T9.8): over all active topics of the roadmap, whatever the filter
 	Done, Total int             // evaluated / all active topics
@@ -190,7 +191,7 @@ func (s *Service) List(ctx context.Context, f Filter) (tree []*Node, matched, to
 		var rid int64
 		var rtitle string
 		var gid, pid sql.NullInt64
-		t := &Node{Kind: "topic"}
+		t := &Node{Kind: "topic", Query: f.Query}
 		if err := rows.Scan(&rid, &rtitle, &t.ID, &gid, &pid, &t.Title, &t.Status, &t.State, &t.Origin, &t.Score, &t.Partial, &t.InLesson, &t.Busy, &t.Missing); err != nil {
 			return nil, 0, 0, err
 		}

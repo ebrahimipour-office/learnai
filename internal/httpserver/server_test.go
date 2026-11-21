@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -599,6 +600,87 @@ func TestCR45_TopicsHistoryRestoreReturnsFullPage(t *testing.T) {
 	}
 	if !strings.Contains(bodyRestore, `<div id="topic-results">`) {
 		t.Fatalf("restore: expected #topic-results in full page, got:\n%s", bodyRestore)
+	}
+}
+
+// T10.16: a search result links to the topic with ?q=; app.js marks the matches in text nodes and adds shortcuts.
+func TestSearchHighlightAndShortcuts(t *testing.T) {
+	e := newEnv(t)
+	draftURL := e.upload("go.md", []byte("# Go\n## Basics\n### Types\n")).Header().Get("Location")
+	if rec := e.confirm(draftURL, url.Values{"csrf_token": {e.sm.CSRFToken()}, "confirm": {"1"}}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("confirm: %d", rec.Code)
+	}
+	body := e.do(httptest.NewRequest(http.MethodGet, "/topics?q=Types", nil)).Body.String()
+	if !regexp.MustCompile(`<a href="/topics/\d+\?q=Types">`).MatchString(body) {
+		t.Errorf("search result must link with ?q=:\n%s", body)
+	}
+	if body := e.do(httptest.NewRequest(http.MethodGet, "/topics", nil)).Body.String(); strings.Contains(body, "?q=") {
+		t.Errorf("no search ⇒ plain links:\n%s", body)
+	}
+	if !strings.Contains(body, `<dialog id="shortcuts"`) {
+		t.Error("layout must carry the shortcuts dialog")
+	}
+	appJS := e.do(httptest.NewRequest(http.MethodGet, "/static/app.js", nil)).Body.String()
+	nodePath, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node not available on host; skipping node DOM test")
+	}
+	script := `
+const code = process.argv[1];
+class Node_ { constructor() { this.parent = null; } replaceWith(n) { const p = this.parent, i = p.kids.indexOf(this); p.kids[i] = n; n.parent = p; } }
+class Text extends Node_ {
+  constructor(v) { super(); this.nodeValue = v; }
+  splitText(i) { const t = new Text(this.nodeValue.slice(i)); this.nodeValue = this.nodeValue.slice(0, i);
+    const p = this.parent; p.kids.splice(p.kids.indexOf(this) + 1, 0, t); t.parent = p; return t; }
+}
+class El extends Node_ {
+  constructor(tag, kids = [], attrs = {}) { super(); this.tag = tag; this.attrs = attrs; this.kids = []; for (const k of kids) this.add(k); }
+  add(k) { k = typeof k === "string" ? new Text(k) : k; k.parent = this; this.kids.push(k); }
+  set textContent(v) { this.kids = []; this.add(v); }
+  html() { return "<" + this.tag + Object.entries(this.attrs).map(([k, v]) => " " + k + '="' + v + '"').join("") + ">" +
+    this.kids.map((k) => (k instanceof Text ? k.nodeValue : k.html())).join("") + "</" + this.tag + ">"; }
+}
+function texts(n, out = []) { for (const k of n.kids) k instanceof Text ? out.push(k) : texts(k, out); return out; }
+function run(search, article) {
+  const listeners = {};
+  let scrolled = null, focused = false, clicked = null, modal = false, href = null;
+  const links = { 'a[rel="prev"]': { click() { clicked = "prev"; } }, 'a[rel="next"]': { click() { clicked = "next"; } } };
+  const document = {
+    addEventListener(evt, fn) { listeners[evt] = fn; },
+    querySelectorAll: (s) => (s === "article.md" && article ? [article] : []),
+    querySelector: (s) => (s === "input[type=search]" ? (search.input ? { focus() { focused = true; } } : null) : links[s]),
+    getElementById: (id) => (id === "shortcuts" ? { showModal() { modal = true; } } : null),
+    createElement: (tag) => { const m = new El(tag); m.scrollIntoView = () => { scrolled = m; }; return m; },
+    createTreeWalker: (root) => { const all = texts(root); let i = 0; return { nextNode: () => all[i++] || null }; },
+    body: { addEventListener() {} },
+  };
+  const location = { search: search.q, set href(v) { href = v; } };
+  new Function("document", "location", "NodeFilter", code)(document, location, { SHOW_TEXT: 4 });
+  const key = (code, extra = {}) => { let prevented = false;
+    listeners.keydown({ code, shiftKey: false, target: { closest: () => extra.inField || null }, preventDefault() { prevented = true; }, ...extra });
+    return prevented; };
+  return { key, get: () => ({ scrolled, focused, clicked, modal, href }) };
+}
+const mk = () => new El("article", [new El("p", ["Use a WaitGroup; waitgroup.Wait() blocks."]), new El("pre", [new El("code", ["var wg sync.WaitGroup"], { class: "WaitGroup" })])]);
+let a = mk(), r = run({ q: "?q=WaitGroup" }, a);
+const want = '<article><p>Use a <mark>WaitGroup</mark>; <mark>waitgroup</mark>.Wait() blocks.</p><pre><code class="WaitGroup">var wg sync.<mark>WaitGroup</mark></code></pre></article>';
+if (a.html() !== want) { console.error(a.html()); process.exit(2); }
+if (r.get().scrolled?.tag !== "mark" || r.get().scrolled.kids[0].nodeValue !== "WaitGroup") process.exit(3);
+for (const q of ["", "?q=", "?q=%20%20", "?q=nomatch"]) { a = mk(); r = run({ q }, a); if (a.html() !== mk().html() || r.get().scrolled) process.exit(4); }
+r = run({ q: "", input: true });
+if (!r.key("Slash") || !r.get().focused) process.exit(5);
+r = run({ q: "" });
+r.key("Slash"); if (r.get().href !== "/topics") process.exit(6);
+r.key("BracketLeft"); if (r.get().clicked !== "prev") process.exit(7);
+r.key("BracketRight"); if (r.get().clicked !== "next") process.exit(8);
+r.key("Slash", { shiftKey: true }); if (!r.get().modal) process.exit(9);
+r = run({ q: "", input: true });
+if (r.key("Slash", { inField: {} }) || r.get().focused) process.exit(10); // typing in a field: no shortcut
+if (r.key("BracketLeft", { ctrlKey: true }) || r.get().clicked) process.exit(11);
+if (r.key("KeyA")) process.exit(12);
+`
+	if out, err := exec.Command(nodePath, "-e", script, appJS).CombinedOutput(); err != nil {
+		t.Fatalf("node highlight/shortcut test failed (%v): %s", err, out)
 	}
 }
 

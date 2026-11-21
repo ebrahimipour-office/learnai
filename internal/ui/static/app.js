@@ -40,7 +40,54 @@ function addCodeButtons(root) {
     pre.before(btn);
   }
 }
+// T10.16: a topic opened from a search (?q=) marks the matches in its text and scrolls to the first.
+// Text nodes only, never innerHTML; runs before the copy buttons so their labels are never marked.
+function highlight(root, q) {
+  q = q?.trim().toLowerCase();
+  if (!q) return null;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const hits = [];
+  for (let n; (n = walker.nextNode()); ) if (n.nodeValue.toLowerCase().includes(q)) hits.push(n);
+  let first = null;
+  for (let n of hits) {
+    // shortcut: assumes toLowerCase keeps length (true for Persian and ASCII), rare Unicode may shift the mark
+    for (let i; (i = n.nodeValue.toLowerCase().indexOf(q)) >= 0; ) {
+      const hit = n.splitText(i);
+      n = hit.splitText(q.length);
+      const mark = document.createElement("mark");
+      mark.textContent = hit.nodeValue;
+      hit.replaceWith(mark);
+      first ??= mark;
+    }
+  }
+  return first;
+}
+const articles = document.querySelectorAll("article.md");
+if (articles.length) {
+  const q = new URLSearchParams(location.search).get("q");
+  let first = null;
+  for (const a of articles) first = highlight(a, q) || first;
+  first?.scrollIntoView({ block: "center" });
+}
 addCodeButtons(document);
+
+// T10.16: "/" search, "[" / "]" previous/next topic, "?" help. ev.code is the physical key, so it also works on a Persian layout.
+document.addEventListener("keydown", (ev) => {
+  if (ev.ctrlKey || ev.metaKey || ev.altKey || ev.target.closest?.("input, textarea, select, [contenteditable], dialog")) return;
+  let act;
+  if (ev.code === "Slash" && ev.shiftKey) act = () => document.getElementById("shortcuts")?.showModal();
+  else if (ev.code === "Slash") {
+    act = () => {
+      const s = document.querySelector("input[type=search]");
+      if (s) s.focus();
+      else location.href = "/topics";
+    };
+  } else if (ev.code === "BracketLeft") act = () => document.querySelector('a[rel="prev"]')?.click();
+  else if (ev.code === "BracketRight") act = () => document.querySelector('a[rel="next"]')?.click();
+  if (!act) return;
+  ev.preventDefault(); // keep "/" out of the field it focuses
+  act();
+});
 // T10.14: topic groups the user closed stay closed (per browser; storage may be blocked).
 function closedGroups() {
   try {
