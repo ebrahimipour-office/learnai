@@ -1065,7 +1065,7 @@ cwd = WorkDir
 | **مدل** | از پیکربندی (`agy models`)؛ نام مدل ناشناخته با خطای روشن رد می‌شود و بی‌صدا به مدل دیگری برنمی‌گردد. |
 | **ثبت لاگ** | `prompt.txt`، `events.ndjson`، `response.json`، `stderr.txt`، `meta.json` (نسخه CLI، مدت، توکن) و در صورت رد اعتبارسنجی `validation_error.txt` (دلیل رد؛ هر تلاش جدا، حتی اگر retry موفق شود؛ همراه `WARN` در لاگ سرور) در `.app/logs/jobs/<id>/`؛ رازها و توکن‌ها پیش از ثبت mask می‌شوند. |
 
-**Adapterهای دیگر:** `fake` (تست، بخش ۶.۷). در آینده `geminiapi`/`anthropic` برای فراخوانی مستقیم API با همان interface؛ تنها تفاوت: `WorkDir` را به‌صورت متن در Prompt بسته‌بندی می‌کنند.
+**Adapterهای دیگر:** `fake` (تست، بخش ۶.۷). **`anthropic` (T12.3، پیاده‌سازی‌شده):** فراخوانی مستقیم Messages API با SDK رسمی Go (`internal/ai/anthropicapi`) با همان interface؛ `WorkDir` به‌صورت متن بسته‌بندی می‌شود (`SKILL.md`/`AGENTS.md`/`profile.md` در system با cache، هر `inputs/*` با برچسب «داده» در پیام کاربر)، خروجی با structured outputs (`output_config.format`؛ کلیدواژه‌های پشتیبانی‌نشده به توضیح منتقل و اعتبارسنجی کامل سمت برنامه)، streaming با heartbeat برای نگهبان stall، `effort` و fallback سمت سرور هنگام refusal. خطاها: 401/403 ⇐ `auth_required`، 429/529 ⇐ `rate_limited`، `max_tokens` ⇐ `invalid_output`، refusal ⇐ `tool_error`. کلید فقط از محیط (`adapter.anthropic.api_key_env` یا جست‌وجوی خود SDK)، هرگز در config/DB/لاگ. `geminiapi` همچنان آینده است.
 
 ### ۶.۳. ترکیب Prompt و Skill (D6)
 

@@ -243,6 +243,22 @@ func TestConfig_AdditionalValidationBranches(t *testing.T) {
 		}
 	})
 
+	t.Run("anthropic adapter (T12.3)", func(t *testing.T) {
+		cfg := config.DefaultConfig(`C:\LearningHub`)
+		cfg.Adapter.Kind = "anthropic"
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("anthropic kind: %v", err)
+		}
+		cfg.Adapter.Anthropic.Effort = "extreme"
+		if err := cfg.Validate(); err == nil {
+			t.Error("unknown effort accepted")
+		}
+		cfg.Adapter.Anthropic.Effort, cfg.Adapter.Anthropic.MaxTokens = "", 200000
+		if err := cfg.Validate(); err == nil {
+			t.Error("max_tokens over 128000 accepted")
+		}
+	})
+
 	t.Run("empty base dir", func(t *testing.T) {
 		cfg := config.DefaultConfig("")
 		if err := cfg.Validate(); err == nil {

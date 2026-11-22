@@ -65,6 +65,16 @@ type AdapterConfig struct {
 	ExtraArgs       []string   `toml:"extra_args"`
 	Claude          ToolConfig `toml:"claude"`
 	Codex           ToolConfig `toml:"codex"`
+	Anthropic       APIConfig  `toml:"anthropic"`
+}
+
+// APIConfig is the direct Anthropic API adapter (T12.3). The key comes only from the environment:
+// APIKeyEnv names the variable, "" lets the SDK find ANTHROPIC_API_KEY or an `ant auth login` profile.
+type APIConfig struct {
+	Model     string `toml:"model"`
+	Effort    string `toml:"effort"`
+	MaxTokens int64  `toml:"max_tokens"`
+	APIKeyEnv string `toml:"api_key_env"`
 }
 
 // ToolConfig is one more AI CLI; Model/Effort "" use the tool's own default.
@@ -126,6 +136,7 @@ func DefaultConfig(defaultBaseDir string) Config {
 			ExtraArgs:       nil,
 			Claude:          ToolConfig{Binary: "claude"},
 			Codex:           ToolConfig{Binary: "codex"},
+			Anthropic:       APIConfig{Model: "claude-opus-5-5", Effort: "high", MaxTokens: 64000},
 		},
 		Jobs: JobsConfig{
 			MaxConcurrent:       1,
@@ -251,8 +262,14 @@ func (c *Config) Validate() error {
 	if c.Adapter.SkipPermissions && !c.Adapter.Sandbox {
 		return ErrSkipWithoutSandbox
 	}
-	if !slices.Contains([]string{"antigravity", "claude", "codex"}, c.Adapter.Kind) {
-		return fmt.Errorf("adapter.kind must be antigravity, claude or codex, not %q", c.Adapter.Kind)
+	if !slices.Contains([]string{"antigravity", "claude", "codex", "anthropic"}, c.Adapter.Kind) {
+		return fmt.Errorf("adapter.kind must be antigravity, claude, codex or anthropic, not %q", c.Adapter.Kind)
+	}
+	if e := c.Adapter.Anthropic.Effort; e != "" && !slices.Contains([]string{"low", "medium", "high", "xhigh", "max"}, e) {
+		return fmt.Errorf("adapter.anthropic.effort must be low, medium, high, xhigh or max, not %q", e)
+	}
+	if n := c.Adapter.Anthropic.MaxTokens; n < 0 || n > 128000 {
+		return fmt.Errorf("adapter.anthropic.max_tokens must be between 1 and 128000 (0 = default), not %d", n)
 	}
 
 	// 3. Ensure base directory is absolute

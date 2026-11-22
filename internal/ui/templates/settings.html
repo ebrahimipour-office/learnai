@@ -86,7 +86,7 @@
   <button type="submit">ذخیره</button>
 </form>
 <p class="note">مدل و مسیر هر ابزار در <bdi>config.toml</bdi> تنظیم می‌شود:</p>
-<ul class="note config-keys"><li><code>[adapter]</code> — agy</li><li><code>[adapter.claude]</code> — claude</li><li><code>[adapter.codex]</code> — codex</li></ul>
+<ul class="note config-keys"><li><code>[adapter]</code> — agy</li><li><code>[adapter.claude]</code> — claude</li><li><code>[adapter.codex]</code> — codex</li><li><code>[adapter.anthropic]</code> — Anthropic API (کلید فقط از متغیر محیطی <code>ANTHROPIC_API_KEY</code>)</li></ul>
 {{if eq $.Adapter "codex"}}<p class="error" role="alert"><strong>هشدار امنیتی:</strong> ساندباکس Codex در حالت read-only دسترسی خواندن به تمام دیسک دارد و ایزولاسیون آن به پوشه کار محدود نمی‌شود.</p>{{end}}
 {{end}}
 {{with .Doctor}}

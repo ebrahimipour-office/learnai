@@ -85,6 +85,8 @@ func adapterModelInfo(name string) (tool string, tomlKey string) {
 		return "claude models", "adapter.claude.model"
 	case "codex":
 		return "codex models", "adapter.codex.model"
+	case "anthropic":
+		return "GET /v1/models", "adapter.anthropic.model"
 	default:
 		return "agy models", "adapter.model"
 	}

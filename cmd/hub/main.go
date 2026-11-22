@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"learninghub/internal/ai"
+	"learninghub/internal/ai/anthropicapi"
 	"learninghub/internal/ai/antigravity"
 	"learninghub/internal/ai/procgroup"
 	"learninghub/internal/config"
@@ -512,5 +513,7 @@ func newAdapter(cfg config.Config, logs *fsx.Root, kind string) *ai.Switch {
 	return ai.NewSwitch(kind,
 		antigravity.New(antigravity.Config{Binary: ad.Binary, Model: ad.Model, Effort: ad.Effort, Sandbox: ad.Sandbox, SkipPermissions: ad.SkipPermissions, ExtraArgs: ad.ExtraArgs, Logs: logs}),
 		tool(antigravity.KindClaude, ad.Claude),
-		tool(antigravity.KindCodex, ad.Codex))
+		tool(antigravity.KindCodex, ad.Codex),
+		anthropicapi.New(anthropicapi.Config{Model: ad.Anthropic.Model, Effort: ad.Anthropic.Effort, MaxTokens: ad.Anthropic.MaxTokens,
+			APIKeyEnv: ad.Anthropic.APIKeyEnv, Logs: logs}))
 }
