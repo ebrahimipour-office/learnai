@@ -18,6 +18,7 @@ import (
 
 	"learninghub/internal/ai"
 	"learninghub/internal/ai/antigravity"
+	"learninghub/internal/ai/procgroup"
 	"learninghub/internal/config"
 	"learninghub/internal/domain"
 	"learninghub/internal/fsx"
@@ -355,6 +356,10 @@ func runServe(args []string) error {
 	defer func() {
 		_ = fileLock.Unlock()
 	}()
+	// Holding the lock, no other hub uses this base dir: anything still running in .app/work outlived a crash (T12.2).
+	if n := procgroup.Sweep(filepath.Join(appDir, "work")); n > 0 {
+		slog.Warn("Killed processes left by a previous run", "count", n)
+	}
 
 	slog.Info("Starting LearningHub server",
 		"version", Version,

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"testing"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -97,5 +98,45 @@ func TestStartFailsOnZeroJobHandle(t *testing.T) {
 
 	if cmd.ProcessState == nil || !cmd.ProcessState.Exited() {
 		t.Fatalf("child process was not waited on")
+	}
+}
+
+// T12.2: the child is still suspended when attach runs (CREATE_SUSPENDED), and it runs once attached.
+func TestChildSuspendedUntilAttached(t *testing.T) {
+	var prev uint32 = 99
+	beforeAttachForTest = func(g *Group) {
+		snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPTHREAD, 0)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer windows.CloseHandle(snap)
+		te := windows.ThreadEntry32{Size: uint32(unsafe.Sizeof(windows.ThreadEntry32{}))}
+		for err = windows.Thread32First(snap, &te); err == nil; err = windows.Thread32Next(snap, &te) {
+			if te.OwnerProcessID == uint32(g.cmd.Process.Pid) {
+				h, err := windows.OpenThread(windows.THREAD_SUSPEND_RESUME, false, te.ThreadID)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				prev, _ = windows.ResumeThread(h) // the previous suspend count; attach's own resume then finds 0
+				windows.CloseHandle(h)
+				return
+			}
+		}
+	}
+	defer func() { beforeAttachForTest = nil }()
+	cmd := exec.CommandContext(context.Background(), os.Args[0])
+	cmd.Env = append(os.Environ(), "PROCGROUP_ROLE=exit")
+	g, err := Start(cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+	if prev != 1 {
+		t.Errorf("suspend count before attach = %d, want 1 (started suspended)", prev)
+	}
+	if err := cmd.Wait(); err != nil {
+		t.Fatalf("resumed child should run and exit 0: %v", err)
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os/exec"
 	"sync"
+	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -33,13 +34,17 @@ func newGroup(cmd *exec.Cmd) (*Group, error) {
 		windows.CloseHandle(job)
 		return nil, err
 	}
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	// The child starts suspended and runs only once it is in the job, so nothing it spawns can escape (T12.2).
+	cmd.SysProcAttr.CreationFlags |= windows.CREATE_SUSPENDED
 	return &Group{cmd: cmd, job: job}, nil
 }
 
 var beforeAttachForTest func(g *Group)
 
-// attach puts the started child in the job; its later descendants join automatically.
-// shortcut: a grandchild spawned between CreateProcess and this call escapes the job; upgrade to CREATE_SUSPENDED + resume if ever seen.
+// attach puts the suspended child in the job, then lets it run; its descendants join automatically.
 func (g *Group) attach() error {
 	if beforeAttachForTest != nil {
 		beforeAttachForTest(g)
@@ -56,6 +61,37 @@ func (g *Group) attach() error {
 	}
 	if err := windows.AssignProcessToJobObject(g.job, h); err != nil {
 		return fmt.Errorf("procgroup: assign child process %d to job: %w", g.cmd.Process.Pid, err)
+	}
+	return resume(uint32(g.cmd.Process.Pid))
+}
+
+// resume starts the threads of a process created with CREATE_SUSPENDED. os/exec closes the thread
+// handle CreateProcess returns, so the threads are found with a Toolhelp snapshot.
+func resume(pid uint32) error {
+	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPTHREAD, 0)
+	if err != nil {
+		return fmt.Errorf("procgroup: thread snapshot: %w", err)
+	}
+	defer windows.CloseHandle(snap)
+	te := windows.ThreadEntry32{Size: uint32(unsafe.Sizeof(windows.ThreadEntry32{}))}
+	resumed := 0
+	for err = windows.Thread32First(snap, &te); err == nil; err = windows.Thread32Next(snap, &te) {
+		if te.OwnerProcessID != pid {
+			continue
+		}
+		h, err := windows.OpenThread(windows.THREAD_SUSPEND_RESUME, false, te.ThreadID)
+		if err != nil {
+			return fmt.Errorf("procgroup: open thread %d: %w", te.ThreadID, err)
+		}
+		_, err = windows.ResumeThread(h)
+		windows.CloseHandle(h)
+		if err != nil {
+			return fmt.Errorf("procgroup: resume thread %d: %w", te.ThreadID, err)
+		}
+		resumed++
+	}
+	if resumed == 0 {
+		return fmt.Errorf("procgroup: no thread found for process %d", pid)
 	}
 	return nil
 }

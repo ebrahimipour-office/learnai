@@ -23,6 +23,16 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	case "exit":
 		os.Exit(0)
+	case "hub": // a stand-in for hub: starts a child through Start, then waits to be SIGKILLed (T12.2)
+		c := exec.CommandContext(context.Background(), os.Args[0])
+		c.Env = append(os.Environ(), "PROCGROUP_ROLE=grandchild")
+		c.Stdout = os.Stdout
+		if _, err := Start(c); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+		time.Sleep(time.Hour)
+		os.Exit(0)
 	case "parent", "parent-exit":
 		gc := exec.Command(os.Args[0])
 		gc.Env = append(os.Environ(), "PROCGROUP_ROLE=grandchild")

@@ -29,6 +29,7 @@ func newGroup(cmd *exec.Cmd) (*Group, error) {
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
 	}
 	cmd.SysProcAttr.Setpgid = true
+	setPdeathsig(cmd.SysProcAttr)
 	return &Group{cmd: cmd, grace: killGrace, kill: syscall.Kill}, nil
 }
 
@@ -36,7 +37,8 @@ func (g *Group) attach() error { return nil }
 
 // Kill sends SIGTERM to the group once, then SIGKILL after the grace period unless the group is
 // gone by then (even if the leader already exited, its helpers get the same grace).
-// shortcut: a hard crash of hub (SIGKILL) leaves the group running on unix; windows covers it via KILL_ON_JOB_CLOSE.
+// A hard crash of hub (SIGKILL) kills the leader on linux (Pdeathsig); helpers it left are killed by Sweep
+// on the next start. shortcut: other unixes (macOS) have neither; add kqueue NOTE_EXIT watching if it matters.
 func (g *Group) Kill() error {
 	if g.cmd.Process == nil {
 		return nil
