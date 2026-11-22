@@ -492,6 +492,12 @@ func TestReviewSection(t *testing.T) {
 			t.Errorf("review section missing %q", want)
 		}
 	}
+	// T12.1: a search keystroke swaps only the results; the query-independent review section is not re-sent.
+	req := httptest.NewRequest(http.MethodGet, "/topics?q=x", nil)
+	req.Header.Set("HX-Request", "true")
+	if frag := e.do(req).Body.String(); strings.Contains(frag, "review-h") || !strings.Contains(frag, `id="topic-results"`) {
+		t.Errorf("htmx search fragment must hold only #topic-results:\n%s", frag)
+	}
 }
 
 // T10.11: lesson and exercises tabs offer a print button; app.js prints via a delegated listener (CSP) and

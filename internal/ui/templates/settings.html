@@ -61,7 +61,7 @@
 {{if .Backups}}<table class="grid"><thead><tr><th>فایل</th><th>تاریخ</th><th>اندازه</th></tr></thead>
   <tbody>{{range .Backups}}<tr>
     <td><a href="/settings/backups/{{.Name}}" download><bdi><code>{{.Name}}</code></bdi></a></td>
-    <td data-label="تاریخ"><bdi>{{fa (.ModTime.Local.Format "2006-01-02 15:04")}}</bdi></td><td data-label="اندازه">{{size .Size}}</td>
+    <td data-label="تاریخ"><bdi>{{localTime (.ModTime.UTC.Format "2006-01-02T15:04:05Z07:00")}}</bdi></td><td data-label="اندازه">{{size .Size}}</td>
   </tr>{{end}}</tbody>
 </table>
 <p class="note">بازیابی فقط آفلاین است: برنامه را متوقف کنید و در پوشه پایه اجرا کنید (فایل‌های WAL قدیمی باید حذف شوند):</p>

@@ -744,6 +744,9 @@ let a = mk(), r = run({ q: "?q=WaitGroup" }, a);
 const want = '<article><p>Use a <mark>WaitGroup</mark>; <mark>waitgroup</mark>.Wait() blocks.</p><pre><code class="WaitGroup">var wg sync.<mark>WaitGroup</mark></code></pre></article>';
 if (a.html() !== want) { console.error(a.html()); process.exit(2); }
 if (r.get().scrolled?.tag !== "mark" || r.get().scrolled.kids[0].nodeValue !== "WaitGroup") process.exit(3);
+// T12.1: the query folds like the server (ي→ی, ك→ک, ۲→2) and the original text is kept inside the mark.
+a = new El("article", [new El("p", ["كتاب ی و ۲ تا"])]); run({ q: "?q=" + encodeURIComponent("کتاب ي و 2") }, a);
+if (a.html() !== "<article><p><mark>كتاب ی و ۲</mark> تا</p></article>") { console.error(a.html()); process.exit(13); }
 for (const q of ["", "?q=", "?q=%20%20", "?q=nomatch"]) { a = mk(); r = run({ q }, a); if (a.html() !== mk().html() || r.get().scrolled) process.exit(4); }
 r = run({ q: "", input: true });
 if (!r.key("Slash") || !r.get().focused) process.exit(5);

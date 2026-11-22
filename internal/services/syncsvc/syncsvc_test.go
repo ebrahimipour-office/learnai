@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -296,6 +297,36 @@ func TestInvalidNameIsSkippedNotFatal(t *testing.T) {
 	}
 	if len(r.Moved) != 1 || len(r.New) != 1 || r.New[0] != "topics/01-http/extra.md" || len(r.Missing) != 0 {
 		t.Errorf("report = %+v", r)
+	}
+}
+
+// T12.1: an unregistered file or folder that cannot be read (permissions) is skipped, not fatal.
+func TestUnreadableIsSkippedNotFatal(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs unix permissions and a non-root user")
+	}
+	e := setup(t)
+	e.write("topics/01-http/locked.md", "x")
+	e.write("topics/01-http/shut/inner.md", "y")
+	e.write("topics/01-http/extra.md", "new")
+	for rel, mode := range map[string]os.FileMode{"topics/01-http/locked.md": 0o000, "topics/01-http/shut": 0o000} {
+		abs := filepath.Join(e.root.BaseDir(), filepath.FromSlash(rel))
+		if err := os.Chmod(abs, mode); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.Chmod(abs, 0o755) })
+	}
+	run, err := e.svc.Scan(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := run.Report
+	slices.Sort(r.Skipped)
+	if want := []string{"topics/01-http/locked.md", "topics/01-http/shut"}; !slices.Equal(r.Skipped, want) {
+		t.Errorf("skipped = %v, want %v", r.Skipped, want)
+	}
+	if len(r.New) != 1 || r.New[0] != "topics/01-http/extra.md" {
+		t.Errorf("new = %v", r.New)
 	}
 }
 

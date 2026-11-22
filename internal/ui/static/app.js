@@ -42,16 +42,24 @@ function addCodeButtons(root) {
 }
 // T10.16: a topic opened from a search (?q=) marks the matches in its text and scrolls to the first.
 // Text nodes only, never innerHTML; runs before the copy buttons so their labels are never marked.
+// fold mirrors the server's search folding (roadmap.Normalize: Arabic ي/ى/ك, Persian and Arabic digits)
+// with one-for-one replacements, so offsets in the folded text are offsets in the original (T12.1).
+const fold = (s) =>
+  s
+    .toLowerCase()
+    .replace(/[يى]/g, "ی")
+    .replace(/ك/g, "ک")
+    .replace(/[۰-۹٠-٩]/g, (d) => String(d.charCodeAt(0) % 16));
 function highlight(root, q) {
-  q = q?.trim().toLowerCase();
+  q = q && fold(q.trim());
   if (!q) return null;
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const hits = [];
-  for (let n; (n = walker.nextNode()); ) if (n.nodeValue.toLowerCase().includes(q)) hits.push(n);
+  for (let n; (n = walker.nextNode()); ) if (fold(n.nodeValue).includes(q)) hits.push(n);
   let first = null;
   for (let n of hits) {
     // shortcut: assumes toLowerCase keeps length (true for Persian and ASCII), rare Unicode may shift the mark
-    for (let i; (i = n.nodeValue.toLowerCase().indexOf(q)) >= 0; ) {
+    for (let i; (i = fold(n.nodeValue).indexOf(q)) >= 0; ) {
       const hit = n.splitText(i);
       n = hit.splitText(q.length);
       const mark = document.createElement("mark");

@@ -107,9 +107,19 @@ func TestSettingsPrivacyAck(t *testing.T) {
 	if rec := e.post("/settings/calendar", url.Values{"calendar": {"jalali"}}, false); rec.Code != http.StatusSeeOther {
 		t.Fatalf("select jalali: %d", rec.Code)
 	}
+	// T12.1: backup dates follow the option too (they used to stay Gregorian).
+	if err := e.root.MkdirAll(".app/backup", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.root.WriteNew(".app/backup/app-2026-11-22.db", []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	b := e.settingsPage(false)
 	if !regexp.MustCompile(`تأییدشده در <bdi>۱۴[۰-۹]{2}/[۰-۹]{2}/[۰-۹]{2} [۰-۹]{2}:[۰-۹]{2}</bdi>`).MatchString(b) || !strings.Contains(b, `value="jalali" selected`) {
 		t.Errorf("expected Jalali date after switching, got:\n%s", b)
+	}
+	if !regexp.MustCompile(`data-label="تاریخ"><bdi>۱۴[۰-۹]{2}/[۰-۹]{2}/[۰-۹]{2} [۰-۹]{2}:[۰-۹]{2}</bdi>`).MatchString(b) {
+		t.Errorf("backup date must be Jalali too:\n%s", b)
 	}
 	var cal string
 	if err := e.db.Writer().QueryRow(`SELECT value FROM meta WHERE key = 'calendar'`).Scan(&cal); err != nil || cal != "jalali" {

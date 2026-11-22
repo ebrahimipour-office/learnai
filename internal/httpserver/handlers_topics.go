@@ -39,34 +39,33 @@ func (a *app) listTopics(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
 		return
 	}
-	resume, err := a.topics.Resume(r.Context())
-	if err != nil {
-		slog.Error("loading resume card", "error", err)
-		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
-		return
-	}
-	rc := a.settings.Review
-	review, err := a.topics.Review(r.Context(), cmp.Or(rc.ScoreBelow, 70), cmp.Or(rc.StaleDays, 14), time.Now())
-	if err != nil {
-		slog.Error("loading review list", "error", err)
-		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
-		return
-	}
-	due, err := a.topics.DueCards(r.Context(), time.Now())
-	if err != nil {
-		slog.Error("loading due flashcards", "error", err) // the list still shows
-	}
 	opts := make([]ruleOption, len(statusOrder))
 	for i, s := range statusOrder {
 		opts[i] = ruleOption{Value: string(s), Label: statusLabels[string(s)], Selected: string(s) == f.Status}
 	}
 	data := &pageData{Title: "موضوعات", Query: f.Query, Status: f.Status, Archived: f.Archived, Statuses: opts,
-		Topics: tree, Matched: matched, TopicTotal: total, Resume: resume, Review: review, DueCards: due}
-	name := "layout"
+		Topics: tree, Matched: matched, TopicTotal: total}
+	// A search keystroke (htmx) swaps only #topic-results; the resume card and «برای مرور» do not depend
+	// on the query, so they are loaded for full pages only (T12.1).
 	if r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-History-Restore-Request") != "true" {
-		name = "topic-results"
+		a.render(w, http.StatusOK, "topics", "topic-results", data)
+		return
 	}
-	a.render(w, http.StatusOK, "topics", name, data)
+	if data.Resume, err = a.topics.Resume(r.Context()); err != nil {
+		slog.Error("loading resume card", "error", err)
+		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
+		return
+	}
+	rc := a.settings.Review
+	if data.Review, err = a.topics.Review(r.Context(), cmp.Or(rc.ScoreBelow, 70), cmp.Or(rc.StaleDays, 14), time.Now()); err != nil {
+		slog.Error("loading review list", "error", err)
+		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
+		return
+	}
+	if data.DueCards, err = a.topics.DueCards(r.Context(), time.Now()); err != nil {
+		slog.Error("loading due flashcards", "error", err) // the list still shows
+	}
+	a.render(w, http.StatusOK, "topics", "layout", data)
 }
 
 func (a *app) archiveTopic(w http.ResponseWriter, r *http.Request)   { a.setArchived(w, r, true) }

@@ -237,13 +237,20 @@ func (s *Service) unregistered(registered map[string]bool) (out, skipped []strin
 		if errors.Is(err, fs.ErrNotExist) && p == topicsDir {
 			return fs.SkipAll // no topic folder yet
 		}
-		if err != nil {
+		if err != nil && p == topicsDir {
 			return err
+		}
+		if err != nil { // an unreadable folder (e.g. permissions) is reported, not fatal (T12.1)
+			skipped = append(skipped, p)
+			if d != nil && d.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
 		}
 		if !d.Type().IsRegular() || registered[p] {
 			return nil
 		}
-		if fsx.ValidateRelPath(p) != nil {
+		if fsx.ValidateRelPath(p) != nil || !s.readable(p) {
 			skipped = append(skipped, p)
 		} else {
 			out = append(out, p)
@@ -251,6 +258,16 @@ func (s *Service) unregistered(registered map[string]bool) (out, skipped []strin
 		return nil
 	})
 	return out, skipped, err
+}
+
+// readable reports whether rel can be opened: match hashes and reads every candidate, and one
+// unreadable file must not abort the whole scan (T12.1).
+func (s *Service) readable(rel string) bool {
+	f, err := s.Root.Open(rel)
+	if err == nil {
+		f.Close()
+	}
+	return err == nil
 }
 
 // match pairs missing files with unregistered ones: first by content hash (the app's or the last
