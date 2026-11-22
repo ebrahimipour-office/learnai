@@ -105,6 +105,9 @@ const tpl = "// answer below\n"
 const manifestJSON = `{"schema_version":1,"topic":{"stable_key":"a3f9c2d41b7e8f06","title":"HTTP"},"set":{"version":1,"rubric_version":1},
 	"exercises":[{"id":"q01","weight":1},{"id":"q02","weight":2},{"id":"q03","weight":1}]}`
 
+// setupGoTest is q01's rubric go_test in the next setup (T12.4); "" for none.
+var setupGoTest string
+
 func setup(t *testing.T, parallel int, opts ...func(*evaluation.Service)) *env {
 	t.Helper()
 	dir := t.TempDir()
@@ -125,6 +128,9 @@ func setup(t *testing.T, parallel int, opts ...func(*evaluation.Service)) *env {
 	for _, id := range []string{"q01", "q02", "q03"} {
 		r := schema.RubricExercise{ID: id, ReferenceAnswer: schema.ReferenceAnswer{Format: "text", Content: "ref"},
 			Criteria: []schema.Criterion{{ID: "c1", Description: "d", MaxPoints: 100, Category: "correctness"}}}
+		if id == "q01" {
+			r.GoTest = setupGoTest
+		}
 		if id == "q02" {
 			r.OutOfScopeKnowledge = []schema.OutOfScopeKnowledge{{Topic: "TLS handshakes", Handling: "do_not_penalize"}}
 		}
@@ -999,5 +1005,68 @@ func TestEvaluateCompileCheck(t *testing.T) {
 		if ents, _ := os.ReadDir(filepath.Join(e.dir, ".app/work/compile")); len(ents) > 0 {
 			t.Errorf("temp modules left behind: %v", ents)
 		}
+	}
+}
+
+// T12.4: with run_tests on, q01's hidden go_test runs against the Go answer; the result reaches the AI
+// as data and lands in the report, result.json and the flags. The .md answer and q03 (no go_test) are not run.
+func TestEvaluateRunTests(t *testing.T) {
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("go not on PATH")
+	}
+	setupGoTest = "package main\n\nimport \"testing\"\n\nfunc TestAdd(t *testing.T) {\n\tif got := Add(2, 3); got != 5 {\n\t\tt.Fatalf(\"Add(2, 3) = %d, want 5\", got)\n\t}\n}\n"
+	defer func() { setupGoTest = "" }()
+	e := setup(t, 1, func(s *evaluation.Service) { s.RunTests, s.TestTimeout = true, 30*time.Second })
+	wrong := tpl + "package main\n\nfunc Add(a, b int) int { return a - b }\n"
+	if err := os.WriteFile(filepath.Join(e.dir, "topics/02-http/answers/v1/q01-one.go"), []byte(wrong), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if st, code := e.wait(e.enqueue("full")); st != "succeeded" {
+		t.Fatalf("status %s (%s)", st, code)
+	}
+	e.ad.mu.Lock()
+	t1, t2 := e.ad.task["q01"], e.ad.task["q02"]
+	e.ad.mu.Unlock()
+	if !strings.Contains(t1, `"go_test"`) || !strings.Contains(t1, "want 5") {
+		t.Errorf("q01 task.json lacks the failed test result: %s", t1)
+	}
+	if strings.Contains(t2, "go_test") {
+		t.Errorf("q02 (.md) was tested: %s", t2)
+	}
+	dir := evaluation.AttemptRel("02-http", 1, 1)
+	if md := string(e.read(dir + "/q01-report.md")); !strings.Contains(md, "آزمون‌ها (go test): ناموفق") || strings.Contains(md, e.dir) {
+		t.Errorf("q01 report test section missing or leaks the path:\n%s", md)
+	}
+	b := e.read(dir + "/result.json")
+	if err := schema.ValidateResult(b); err != nil {
+		t.Fatal(err)
+	}
+	var res schema.Result
+	json.Unmarshal(b, &res)
+	for _, it := range res.Items {
+		if (it.ExerciseID == "q01") != (it.Tests != nil && it.Tests.Status == "failed") {
+			t.Errorf("%s tests = %+v", it.ExerciseID, it.Tests)
+		}
+	}
+	var flags string
+	e.db.Writer().QueryRow(`SELECT i.flags FROM attempt_items i JOIN exercises x ON x.id = i.exercise_id WHERE x.ex_id = 'q01'`).Scan(&flags)
+	if !strings.Contains(flags, evaluation.FlagTestsFailed) {
+		t.Errorf("q01 flags = %q, want %s", flags, evaluation.FlagTestsFailed)
+	}
+}
+
+// T12.4: with run_tests off (the default) a go_test in the rubric is never run.
+func TestEvaluateRunTestsOff(t *testing.T) {
+	setupGoTest = "package main\n\nimport \"testing\"\n\nfunc TestX(t *testing.T) {}\n"
+	defer func() { setupGoTest = "" }()
+	e := setup(t, 1)
+	if st, code := e.wait(e.enqueue("full")); st != "succeeded" {
+		t.Fatalf("status %s (%s)", st, code)
+	}
+	e.ad.mu.Lock()
+	t1 := e.ad.task["q01"]
+	e.ad.mu.Unlock()
+	if strings.Contains(t1, `"go_test"`) {
+		t.Errorf("tests ran with run_tests off: %s", t1)
 	}
 }

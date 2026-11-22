@@ -78,6 +78,14 @@ retry_delay = "2m"
 compile_check = false
 # Limit for one go vet run (default "30s", minimum "1s").
 compile_timeout = "30s"
+# Run the hidden Go test that exercise generation wrote for each Go exercise against the answer with
+# `go test` (default false). This RUNS your answer's code on this machine: in a temp module with a
+# closed environment (none of your variables, no module downloads, no cgo), a deadline and the whole
+# process tree killed after it. A test that imports anything beyond a fixed safe list, or an answer that
+# imports os/exec, net, syscall, unsafe or plugin, is skipped instead of run. Needs go on PATH.
+run_tests = false
+# Limit for the test binary (default "60s", minimum "1s"); building gets one more minute.
+test_timeout = "60s"
 
 [exercises]
 count_default = 6

@@ -50,6 +50,7 @@ type ReportInput struct {
 	SkillVersion    string
 	Date            string          // RFC 3339
 	Compile         *schema.Compile // T11.4 go vet result; nil = not checked
+	Tests           *schema.Compile // T12.4 go test result; nil = not run
 }
 
 func ReportFile(exID string) string { return exID + "-report.md" }
@@ -83,6 +84,9 @@ func Report(in ReportInput) ([]byte, schema.ResultItem, []string) {
 	if in.Compile != nil && in.Compile.Status == compileFailed {
 		flags = append(flags, FlagCompileFailed)
 	}
+	if in.Tests != nil && in.Tests.Status == compileFailed {
+		flags = append(flags, FlagTestsFailed)
+	}
 
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "# گزارش تصحیح %s\n\n", id)
@@ -111,12 +115,18 @@ func Report(in ReportInput) ([]byte, schema.ResultItem, []string) {
 		fmt.Fprintf(&b, "| %s | %s | %d | %d | %s |\n", cell(c.ID), cell(c.Description), awarded[c.ID], c.MaxPoints, cell(comments[c.ID]))
 	}
 
-	if c := in.Compile; c != nil {
-		label := map[string]string{compileOK: "موفق", compileFailed: "ناموفق", compileSkipped: "انجام نشد"}[c.Status]
-		fmt.Fprintf(&b, "\n## بررسی کامپایل (go vet): %s\n\n", label)
-		if c.Output != "" {
-			f := fence([]byte(c.Output))
-			fmt.Fprintf(&b, "%stext\n%s\n%s\n", f, c.Output, f)
+	for _, c := range []struct {
+		title string
+		r     *schema.Compile
+	}{{"بررسی کامپایل (go vet)", in.Compile}, {"آزمون‌ها (go test)", in.Tests}} {
+		if c.r == nil {
+			continue
+		}
+		label := map[string]string{compileOK: "موفق", compileFailed: "ناموفق", compileSkipped: "انجام نشد"}[c.r.Status]
+		fmt.Fprintf(&b, "\n## %s: %s\n\n", c.title, label)
+		if c.r.Output != "" {
+			f := fence([]byte(c.r.Output))
+			fmt.Fprintf(&b, "%stext\n%s\n%s\n", f, c.r.Output, f)
 		}
 	}
 
@@ -167,7 +177,7 @@ func Report(in ReportInput) ([]byte, schema.ResultItem, []string) {
 
 	rf := ReportFile(id)
 	return b.Bytes(), schema.ResultItem{ExerciseID: id, Weight: in.Weight, Status: "evaluated", Score: score,
-		AnswerSHA256: &sha, ReportFile: &rf, CriteriaScores: cs, ErrorTypes: types, Compile: in.Compile}, flags
+		AnswerSHA256: &sha, ReportFile: &rf, CriteriaScores: cs, ErrorTypes: types, Compile: in.Compile, Tests: in.Tests}, flags
 }
 
 // RawAnswer returns the answer bytes embedded in a report built by Report.

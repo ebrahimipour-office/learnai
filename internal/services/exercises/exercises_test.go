@@ -530,3 +530,35 @@ func TestCrashBeforeTxRecovers(t *testing.T) {
 		t.Error("next job did not record v1")
 	}
 }
+
+// T12.4: the hidden go test is kept in the rubric for a .go answer and dropped for any other.
+func TestBuildKeepsGoTestOnlyForGo(t *testing.T) {
+	raw, err := os.ReadFile("testdata/agy-crit-ids.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatal(err)
+	}
+	for _, x := range out["exercises"].([]any) {
+		x.(map[string]any)["rubric"].(map[string]any)["go_test"] = "  package main\n\nimport \"testing\"\n\nfunc TestX(t *testing.T) {}\n"
+	}
+	raw, _ = json.Marshal(out)
+	set, err := exercises.Build(raw, exercises.Meta{StableKey: key, TopicTitle: "T", Version: 1, CreatedAt: "2026-11-01T00:00:00Z",
+		Generator: schema.ManifestGenerator{Adapter: "fake", Skill: "s", SkillVersion: "1"}, AllowedExts: []string{".go", ".md"}, CountMin: 1, CountMax: 5})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	var goSeen, otherSeen bool
+	for i, ex := range set.Rubric.Exercises {
+		isGo := set.Manifest.Exercises[i].Answer.Ext == ".go"
+		goSeen, otherSeen = goSeen || isGo, otherSeen || !isGo
+		if isGo != (ex.GoTest != "") || (isGo && !strings.HasPrefix(ex.GoTest, "package main")) {
+			t.Errorf("%s (%s): go_test = %q", ex.ID, set.Manifest.Exercises[i].Answer.Ext, ex.GoTest)
+		}
+	}
+	if !goSeen || !otherSeen {
+		t.Fatal("fixture needs both a .go and a non-.go exercise")
+	}
+}

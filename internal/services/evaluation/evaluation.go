@@ -55,6 +55,8 @@ type Service struct {
 	MaxSource      int64         // config limits.max_source_bytes
 	CompileCheck   bool          // config evaluation.compile_check: go vet each Go answer first (T11.4)
 	CompileTimeout time.Duration // config evaluation.compile_timeout; 0 = 30s
+	RunTests       bool          // config evaluation.run_tests: run the rubric's go_test against each Go answer (T12.4)
+	TestTimeout    time.Duration // config evaluation.test_timeout; 0 = 60s
 }
 
 // Output is what a done step leaves in staging for the commit (T5.5).
@@ -64,6 +66,7 @@ type Output struct {
 	Evaluation   json.RawMessage `json:"evaluation"`    // validated ai-evaluation-output
 	SkillVersion string          `json:"skill_version"`
 	Compile      *schema.Compile `json:"compile,omitempty"` // T11.4; nil = check off or not a Go answer
+	Tests        *schema.Compile `json:"tests,omitempty"`   // T12.4; nil = off, not a Go answer or no go_test
 }
 
 func StepKey(exID string) string { return "exercise:" + exID }
@@ -186,7 +189,7 @@ func (s *Service) run(ctx context.Context, j jobs.Job, p Params) error {
 		fp.WriteString(pk.ExID + "=" + pk.SHA + "\x00")
 	}
 	fp.WriteString("only=" + strings.Join(p.Only, ",") + "\x00")
-	fp.WriteString(fmt.Sprintf("compile=%t\x00", s.CompileCheck)) // turning the check on re-evaluates
+	fp.WriteString(fmt.Sprintf("compile=%t\x00tests=%t\x00", s.CompileCheck, s.RunTests)) // turning a check on re-evaluates
 	fingerprint := fsx.HashBytes(fp.Bytes())
 	if _, err := s.DB.Writer().ExecContext(ctx, `UPDATE jobs SET inputs_fingerprint = ?, adapter = ?, model = ?, skill = ? WHERE id = ?`,
 		fingerprint, s.Adapter.Name(), ai.ModelFor(s.Adapter, s.Model), skillName, j.ID); err != nil {
@@ -372,6 +375,14 @@ func (s *Service) step(ctx context.Context, j jobs.Job, sh shared, pk topics.Pic
 		c := CompileCheck(ctx, s.Root, fmt.Sprintf("%d-%s", j.ID, pk.ExID), pk.Body, cmp.Or(s.CompileTimeout, 30*time.Second))
 		comp, taskFields["compile_check"] = &c, c
 	}
+	var tests *schema.Compile
+	if s.RunTests && path.Ext(pk.AnswerRel) == ".go" && rub.GoTest != "" {
+		c := schema.Compile{Status: compileSkipped, Output: "go vet failed; the tests were not run"}
+		if comp == nil || comp.Status != compileFailed {
+			c = TestCheck(ctx, s.Root, fmt.Sprintf("%d-%s-test", j.ID, pk.ExID), pk.Body, []byte(rub.GoTest), cmp.Or(s.TestTimeout, time.Minute))
+		}
+		tests, taskFields["go_test"] = &c, c
+	}
 	task, err := json.MarshalIndent(taskFields, "", "  ")
 	if err != nil {
 		return err
@@ -400,7 +411,7 @@ func (s *Service) step(ctx context.Context, j jobs.Job, sh shared, pk topics.Pic
 	if err != nil {
 		return err
 	}
-	b, err := json.Marshal(Output{ExerciseID: pk.ExID, AnswerSHA256: pk.SHA, Evaluation: out, SkillVersion: req.Skill.Version, Compile: comp})
+	b, err := json.Marshal(Output{ExerciseID: pk.ExID, AnswerSHA256: pk.SHA, Evaluation: out, SkillVersion: req.Skill.Version, Compile: comp, Tests: tests})
 	if err != nil {
 		return err
 	}

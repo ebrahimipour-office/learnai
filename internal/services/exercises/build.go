@@ -35,6 +35,7 @@ type Output struct {
 			CommonErrors        []schema.CommonError         `json:"common_errors"`
 			OutOfScopeKnowledge []schema.OutOfScopeKnowledge `json:"out_of_scope_knowledge"`
 			GradingNotes        string                       `json:"grading_notes"`
+			GoTest              string                       `json:"go_test"`
 		} `json:"rubric"`
 	} `json:"exercises"`
 	Suggestions []struct {
@@ -119,9 +120,13 @@ func Build(raw json.RawMessage, m Meta) (*Set, error) {
 		for k := range r.Criteria { // like qNN: the AI's criterion ids are ignored (B5)
 			r.Criteria[k].ID = fmt.Sprintf("c%d", k+1)
 		}
+		goTest := strings.TrimSpace(r.GoTest)
+		if ext != ".go" {
+			goTest = "" // a go test only makes sense next to a .go answer (T12.4)
+		}
 		set.Rubric.Exercises = append(set.Rubric.Exercises, schema.RubricExercise{ID: id, ReferenceAnswer: r.ReferenceAnswer,
 			Criteria: r.Criteria, CommonErrors: r.CommonErrors, OutOfScopeKnowledge: outOfScope(r.OutOfScopeKnowledge, x.ExternalKnowledge),
-			GradingNotes: r.GradingNotes})
+			GradingNotes: r.GradingNotes, GoTest: goTest})
 		fmt.Fprintf(&md, "\n## [%s] %s\n\n%s\n", id, title, statement)
 		set.Answers = append(set.Answers, Answer{ExID: id, FileName: ans.FileName,
 			Content: fsx.GenerateAnswerTemplate(m.StableKey, m.Version, id, title, ext, x.Answer.Starter)})

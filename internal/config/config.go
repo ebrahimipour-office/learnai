@@ -39,10 +39,13 @@ type Config struct {
 	Evaluation       EvalConfig      `toml:"evaluation"`
 }
 
-// EvalConfig: the optional go vet check of Go answers before evaluation (T11.4). Off by default.
+// EvalConfig: the optional go vet check (T11.4) and go test run (T12.4) of Go answers before evaluation.
+// Both are off by default; run_tests is the only setting under which the app runs code.
 type EvalConfig struct {
 	CompileCheck   bool          `toml:"compile_check"`
 	CompileTimeout time.Duration `toml:"compile_timeout"`
+	RunTests       bool          `toml:"run_tests"`
+	TestTimeout    time.Duration `toml:"test_timeout"`
 }
 
 // ReviewConfig picks the topics shown under «برای مرور» on /topics (T10.17).
@@ -150,7 +153,7 @@ func DefaultConfig(defaultBaseDir string) Config {
 			AutoRetry:           2,
 			RetryDelay:          2 * time.Minute,
 		},
-		Evaluation: EvalConfig{CompileTimeout: 30 * time.Second},
+		Evaluation: EvalConfig{CompileTimeout: 30 * time.Second, TestTimeout: time.Minute},
 		Exercises: ExercisesConfig{
 			CountDefault: 6,
 			CountMin:     3,
@@ -301,6 +304,7 @@ func (c *Config) Validate() error {
 		{"jobs.stall_timeout", c.Jobs.StallTimeout},
 		{"jobs.retry_delay", c.Jobs.RetryDelay},
 		{"evaluation.compile_timeout", c.Evaluation.CompileTimeout},
+		{"evaluation.test_timeout", c.Evaluation.TestTimeout},
 	} {
 		if tc.d < time.Second {
 			return fmt.Errorf("%w: %s must be at least 1s, got %s", ErrInvalidDuration, tc.name, tc.d)

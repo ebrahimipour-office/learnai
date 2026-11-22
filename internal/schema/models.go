@@ -69,6 +69,7 @@ type RubricExercise struct {
 	CommonErrors        []CommonError         `json:"common_errors,omitempty"`
 	OutOfScopeKnowledge []OutOfScopeKnowledge `json:"out_of_scope_knowledge,omitempty"`
 	GradingNotes        string                `json:"grading_notes,omitempty"`
+	GoTest              string                `json:"go_test,omitempty"` // T12.4: hidden _test.go for a Go answer; run only with evaluation.run_tests
 }
 
 type ReferenceAnswer struct {
@@ -121,9 +122,11 @@ type ResultItem struct {
 	CriteriaScores     []CriteriaScore `json:"criteria_scores,omitempty"`
 	ErrorTypes         []string        `json:"error_types,omitempty"`
 	Compile            *Compile        `json:"compile,omitempty"` // T11.4: go vet result; nil = check off or not Go
+	Tests              *Compile        `json:"tests,omitempty"`   // T12.4: go test result; nil = off, not Go or no go_test
 }
 
-// Compile is the optional go vet check of a Go answer (T11.4); the code is never run.
+// Compile is the result of an optional check of a Go answer: go vet (T11.4, never runs the code)
+// or go test against the rubric's go_test (T12.4).
 type Compile struct {
 	Status string `json:"status"`           // ok | failed | skipped
 	Output string `json:"output,omitempty"` // vet output (failed) or why it was skipped

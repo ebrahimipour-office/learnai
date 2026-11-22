@@ -154,7 +154,7 @@ func runDoctor(args []string) {
 	}
 
 	adapter := newAdapter(cfg, nil, kind)
-	d := httpserver.ProbeAdapter(ctx, httpserver.Settings{Adapter: adapter, Model: adapter.Model(), CompileCheck: cfg.Evaluation.CompileCheck})
+	d := httpserver.ProbeAdapter(ctx, httpserver.Settings{Adapter: adapter, Model: adapter.Model(), CompileCheck: cfg.Evaluation.CompileCheck || cfg.Evaluation.RunTests})
 	ok := writeErr == "" && d.Ready()
 
 	if *asJSON {
@@ -417,6 +417,7 @@ func runServe(args []string) error {
 		Timeout: cfg.Jobs.TimeoutEvaluateItem, JobTimeout: cfg.Jobs.TimeoutEvaluate, Stall: cfg.Jobs.StallTimeout, Parallel: cfg.Jobs.EvaluateParallelism,
 		MaxAnswerBytes: cfg.Limits.MaxAnswerBytes, MaxSource: cfg.Limits.MaxSourceBytes,
 		CompileCheck: cfg.Evaluation.CompileCheck, CompileTimeout: cfg.Evaluation.CompileTimeout,
+		RunTests: cfg.Evaluation.RunTests, TestTimeout: cfg.Evaluation.TestTimeout,
 	}).Handle)
 	runner.Register(domain.JobKindQA, (&qa.Service{
 		DB: db, Root: root, Adapter: adapter, Model: cfg.Adapter.Model, Language: cfg.Language,
@@ -434,7 +435,7 @@ func runServe(args []string) error {
 	// Maintenance at startup and hourly: expired job dirs/logs, daily DB backup, expired import drafts.
 	maint := &maintenance.Service{DB: db, Root: root, LogRetention: time.Duration(cfg.LogRetentionDays) * 24 * time.Hour, KeepBackups: cfg.BackupKeep}
 	srv := httpserver.NewServer(cfg.Listen, sm, drafts, topics.NewService(db, root), runner, root,
-		httpserver.Settings{DB: db, Adapter: adapter, Switch: adapter, Model: cfg.Adapter.Model, SkipPermissions: cfg.Adapter.SkipPermissions, Exercises: cfg.Exercises, MaxAnswerBytes: cfg.Limits.MaxAnswerBytes, MaxViewBytes: cfg.Limits.MaxRoadmapBytes, Editor: cfg.Editor.Command, Review: cfg.Review, Maintenance: maint, CompileCheck: cfg.Evaluation.CompileCheck})
+		httpserver.Settings{DB: db, Adapter: adapter, Switch: adapter, Model: cfg.Adapter.Model, SkipPermissions: cfg.Adapter.SkipPermissions, Exercises: cfg.Exercises, MaxAnswerBytes: cfg.Limits.MaxAnswerBytes, MaxViewBytes: cfg.Limits.MaxRoadmapBytes, Editor: cfg.Editor.Command, Review: cfg.Review, Maintenance: maint, CompileCheck: cfg.Evaluation.CompileCheck || cfg.Evaluation.RunTests})
 	maintDone := make(chan struct{})
 	go func() {
 		defer close(maintDone)

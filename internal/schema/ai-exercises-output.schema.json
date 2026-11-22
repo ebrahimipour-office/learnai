@@ -119,7 +119,8 @@
                   }
                 }
               },
-              "grading_notes": { "type": "string", "maxLength": 1200 }
+              "grading_notes": { "type": "string", "maxLength": 1200 },
+              "go_test": { "type": "string", "maxLength": 20000 }
             }
           }
         }

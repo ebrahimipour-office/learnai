@@ -17,6 +17,17 @@
     "items",
     "aggregate"
   ],
+  "$defs": {
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["ok", "failed", "skipped"] },
+        "output": { "type": "string" }
+      }
+    }
+  },
   "properties": {
     "schema_version": { "const": 1 },
     "topic": {
@@ -79,15 +90,8 @@
             "type": "array",
             "items": { "enum": ["conceptual", "logical", "technical", "style", "omission"] }
           },
-          "compile": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["status"],
-            "properties": {
-              "status": { "enum": ["ok", "failed", "skipped"] },
-              "output": { "type": "string" }
-            }
-          }
+          "compile": { "$ref": "#/$defs/check" },
+          "tests": { "$ref": "#/$defs/check" }
         },
         "allOf": [
           {

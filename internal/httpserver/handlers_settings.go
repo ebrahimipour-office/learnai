@@ -36,7 +36,7 @@ type Settings struct {
 	Editor         string                 // config editor.command: program run as Editor <abs path>; "" hides «باز کردن»
 	Review         config.ReviewConfig    // «برای مرور» thresholds on /topics; zero = 70 and 14 days
 	Maintenance    *maintenance.Service   // backups on /settings (T10.20); nil hides the section
-	CompileCheck   bool                   // config evaluation.compile_check: doctor also reports `go version` (T11.4)
+	CompileCheck   bool                   // evaluation.compile_check or run_tests: doctor also reports `go version` (T11.4, T12.4)
 }
 
 // Doctor is one Probe result as shown on the settings page.
