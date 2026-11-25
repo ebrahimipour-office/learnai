@@ -203,7 +203,14 @@ func (e *env) enqueue(mode string) int64 {
 
 func (e *env) wait(id int64) (status, code string) {
 	e.t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	return e.waitFor(id, 10*time.Second)
+}
+
+// waitFor is for jobs that run the go toolchain: a fresh GOCACHE under t.TempDir
+// rebuilds the std library, which can exceed 10s under a parallel `make test`.
+func (e *env) waitFor(id int64, d time.Duration) (status, code string) {
+	e.t.Helper()
+	deadline := time.Now().Add(d)
 	for time.Now().Before(deadline) {
 		var c *string
 		if err := e.db.Writer().QueryRow(`SELECT status, error_code FROM jobs WHERE id = ?`, id).Scan(&status, &c); err != nil {
@@ -966,7 +973,7 @@ func TestEvaluateCompileCheck(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(e.dir, "topics/02-http/answers/v1/q01-one.go"), []byte(bad), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if st, code := e.wait(e.enqueue("full")); st != "succeeded" {
+	if st, code := e.waitFor(e.enqueue("full"), 120*time.Second); st != "succeeded" {
 		t.Fatalf("status %s (%s)", st, code)
 	}
 	e.ad.mu.Lock()
@@ -1021,7 +1028,7 @@ func TestEvaluateRunTests(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(e.dir, "topics/02-http/answers/v1/q01-one.go"), []byte(wrong), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if st, code := e.wait(e.enqueue("full")); st != "succeeded" {
+	if st, code := e.waitFor(e.enqueue("full"), 120*time.Second); st != "succeeded" {
 		t.Fatalf("status %s (%s)", st, code)
 	}
 	e.ad.mu.Lock()
