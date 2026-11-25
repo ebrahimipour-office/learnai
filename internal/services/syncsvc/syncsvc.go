@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"learninghub/internal/domain"
@@ -112,21 +113,22 @@ func (s *Service) Scan(ctx context.Context) (*Run, error) {
 	reindex := map[int64][]byte{}
 	for _, r := range rows {
 		sha, size, mtime, err := s.observe(r)
-		if errors.Is(err, fs.ErrNotExist) {
+		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) { // ENOTDIR: a parent folder became a file
 			missing = append(missing, r)
 			continue
 		}
-		if err != nil {
-			return nil, fmt.Errorf("reading %s: %w", r.RelPath, err)
+		if err != nil { // unreadable (permissions, symlink escape): reported, row left as it was (T13.5)
+			rep.Skipped = append(rep.Skipped, r.RelPath)
+			continue
 		}
 		seen = append(seen, observed{r: r, obs: obs{sha, size, mtime}})
 		// T9.15: a current lesson edited by hand since the last look gets its search text refreshed.
 		if r.Kind == "lesson" && strings.HasSuffix(r.RelPath, "/lesson/lesson.md") && sha != r.Observed {
-			md, err := s.Root.ReadFile(r.RelPath)
-			if err != nil {
-				return nil, fmt.Errorf("reading %s: %w", r.RelPath, err)
+			if md, err := s.Root.ReadFile(r.RelPath); err == nil {
+				reindex[r.TopicID] = md
+			} else {
+				rep.Skipped = append(rep.Skipped, r.RelPath)
 			}
-			reindex[r.TopicID] = md
 		}
 		if sha != r.SHA && r.Kind != "answer" {
 			rep.Modified = append(rep.Modified, r.Item)
@@ -138,10 +140,12 @@ func (s *Service) Scan(ctx context.Context) (*Run, error) {
 		return nil, err
 	}
 	rep.Skipped = append(rep.Skipped, skipped...)
-	rep.Moved, rep.New, err = s.match(ctx, missing, unregistered)
+	var unhashed []string
+	rep.Moved, rep.New, unhashed, err = s.match(ctx, missing, unregistered)
 	if err != nil {
 		return nil, err
 	}
+	rep.Skipped = append(rep.Skipped, unhashed...)
 	moved := map[int64]bool{}
 	for _, m := range rep.Moved {
 		moved[m.FileID] = true
@@ -273,10 +277,11 @@ func (s *Service) readable(rel string) bool {
 // match pairs missing files with unregistered ones: first by content hash (the app's or the last
 // observed one), then answer files by their @hub header, which survives editing. A pairing must be
 // unambiguous on both sides; anything else stays missing or new.
-func (s *Service) match(ctx context.Context, missing []row, candidates []string) ([]Move, []string, error) {
-	moves := []Move{}
+// A candidate that cannot be hashed is returned in skipped (T13.5).
+func (s *Service) match(ctx context.Context, missing []row, candidates []string) (moves []Move, newFiles, skipped []string, err error) {
+	moves = []Move{}
 	if len(missing) == 0 {
-		return moves, append([]string{}, candidates...), nil
+		return moves, append([]string{}, candidates...), nil, nil
 	}
 	byHash := map[string][]int{} // sha → indexes into missing
 	for i, r := range missing {
@@ -291,14 +296,16 @@ func (s *Service) match(ctx context.Context, missing []row, candidates []string)
 		path string
 		sha  string
 	}
-	cands := make([]cand, len(candidates))
+	var cands []cand
 	hashHits := map[int][]int{} // missing index → candidate indexes
-	for ci, p := range candidates {
+	for _, p := range candidates {
 		sha, _, err := s.Root.HashFile(p)
 		if err != nil {
-			return nil, nil, fmt.Errorf("hashing %s: %w", p, err)
+			skipped = append(skipped, p)
+			continue
 		}
-		cands[ci] = cand{p, sha}
+		ci := len(cands)
+		cands = append(cands, cand{p, sha})
 		if sha != "" && sha != emptySHA {
 			if idx := byHash[sha]; len(idx) == 1 {
 				hashHits[idx[0]] = append(hashHits[idx[0]], ci)
@@ -327,7 +334,7 @@ func (s *Service) match(ctx context.Context, missing []row, candidates []string)
 		}
 		id, err := s.headerFile(ctx, c.path)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		for mi, r := range missing {
 			if !matched[mi] && r.FileID == id {
@@ -347,13 +354,13 @@ func (s *Service) match(ctx context.Context, missing []row, candidates []string)
 		}
 	}
 	slices.SortFunc(moves, func(a, b Move) int { return int(a.FileID - b.FileID) })
-	newFiles := []string{}
+	newFiles = []string{}
 	for ci, c := range cands {
 		if !taken[ci] {
 			newFiles = append(newFiles, c.path)
 		}
 	}
-	return moves, newFiles, nil
+	return moves, newFiles, skipped, nil
 }
 
 // headerFile returns the answer file id named by the @hub header at the top of rel, or 0.

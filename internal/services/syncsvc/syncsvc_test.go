@@ -579,3 +579,48 @@ func TestScanSkipsHashOfUnchangedFiles(t *testing.T) {
 		t.Fatalf("after same-size edit: %d hashes, modified %v; want 1 hash and the lesson", *n, run.Report.Modified)
 	}
 }
+
+// T13.5: a registered file whose parent folder became a file is missing, and a registered file
+// that cannot be read is skipped; neither fails the scan.
+func TestRegisteredUnreadableNotFatal(t *testing.T) {
+	e := setup(t)
+	answers := filepath.Join(e.base, "topics/01-http/exercises/v1/answers")
+	if err := os.RemoveAll(answers); err != nil {
+		t.Fatal(err)
+	}
+	e.write("topics/01-http/exercises/v1/answers", "now a file")
+	locked := runtime.GOOS != "windows" && os.Geteuid() != 0
+	if locked {
+		abs := filepath.Join(e.base, filepath.FromSlash(rubricRel))
+		if err := os.Chmod(abs, 0o000); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.Chmod(abs, 0o644) })
+		// make the cached observation stale so the scan must hash it
+		e.exec(`UPDATE files SET observed_size = 0, observed_mtime = 0, observed_sha256 = 'stale' WHERE id = 2`)
+	}
+	run, err := e.svc.Scan(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := run.Report
+	var missing []string
+	for _, m := range r.Missing {
+		missing = append(missing, m.RelPath)
+	}
+	slices.Sort(missing)
+	if want := []string{ans1Rel, ans2Rel}; !slices.Equal(missing, want) {
+		t.Errorf("missing = %v, want %v", missing, want)
+	}
+	if locked {
+		if !slices.Contains(r.Skipped, rubricRel) {
+			t.Errorf("skipped = %v, want %s", r.Skipped, rubricRel)
+		}
+		if e.presence(2) != "present" {
+			t.Errorf("unreadable rubric presence = %s, want unchanged present", e.presence(2))
+		}
+	}
+	if e.presence(1) != "present" || e.presence(3) != "missing" {
+		t.Errorf("presence lesson=%s ans1=%s", e.presence(1), e.presence(3))
+	}
+}
