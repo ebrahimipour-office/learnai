@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -25,6 +26,7 @@ var (
 
 type Config struct {
 	BaseDir          string          `toml:"base_dir"`
+	BaseDirSet       bool            `toml:"-"` // base_dir came from a config file, not the fallback
 	Listen           string          `toml:"listen"`
 	Language         string          `toml:"language"`
 	LogRetentionDays int             `toml:"log_retention_days"`
@@ -194,6 +196,38 @@ func DefaultConfigPath() (string, error) {
 	return filepath.Join(home, ".config", "learninghub", "config.toml"), nil
 }
 
+// DefaultDataDir is where the data lives when no config sets base_dir (T13.2): %LOCALAPPDATA%\LearningHub,
+// $XDG_DATA_HOME/learninghub, ~/Library/Application Support/LearningHub or ~/.local/share/learninghub.
+// It never depends on the working directory, so running the app from another folder finds the same data.
+func DefaultDataDir() (string, error) {
+	if v := os.Getenv("LOCALAPPDATA"); v != "" {
+		return filepath.Join(v, "LearningHub"), nil
+	}
+	if v := os.Getenv("XDG_DATA_HOME"); filepath.IsAbs(v) {
+		return filepath.Join(v, "learninghub"), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	if runtime.GOOS == "darwin" {
+		return filepath.Join(home, "Library", "Application Support", "LearningHub"), nil
+	}
+	return filepath.Join(home, ".local", "share", "learninghub"), nil
+}
+
+// ResolveBaseDir picks the fallback base_dir passed to Load. cwd wins only when it already holds
+// app.db or config.toml (older installs and a project-local config); legacy reports that case.
+func ResolveBaseDir(cwd string) (dir string, legacy bool, err error) {
+	for _, name := range []string{"app.db", "config.toml"} {
+		if _, err := os.Stat(filepath.Join(cwd, name)); err == nil {
+			return cwd, true, nil
+		}
+	}
+	dir, err = DefaultDataDir()
+	return dir, false, err
+}
+
 // Load loads and validates configuration from a file or falls back to defaults.
 // When cfgPath is empty, it first checks for config.toml in fallbackBaseDir (current working directory).
 // If not found, it checks DefaultConfigPath(); if that default file exists, it is loaded.
@@ -227,6 +261,7 @@ func Load(cfgPath string, fallbackBaseDir string) (Config, error) {
 		if err != nil {
 			return cfg, fmt.Errorf("reading config file %s: %w", actualPath, err)
 		}
+		cfg.BaseDirSet = md.IsDefined("base_dir")
 		if undecoded := md.Undecoded(); len(undecoded) > 0 {
 			keys := make([]string, len(undecoded))
 			for i, k := range undecoded {

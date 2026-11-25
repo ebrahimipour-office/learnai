@@ -124,8 +124,7 @@ func runDoctor(args []string) {
 	asJSON := fs.Bool("json", false, "Print JSON")
 	_ = fs.Parse(args)
 
-	cwd, _ := os.Getwd()
-	cfg, err := config.Load(*configPath, cwd)
+	cfg, err := loadConfig(*configPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
 		os.Exit(1)
@@ -159,7 +158,7 @@ func runDoctor(args []string) {
 
 	if *asJSON {
 		res := map[string]any{
-			"ok": ok, "version": Version, "os": runtime.GOOS + "/" + runtime.GOARCH, "base_dir": cfg.BaseDir,
+			"ok": ok, "version": Version, "os": runtime.GOOS + "/" + runtime.GOARCH, "base_dir": cfg.BaseDir, "db": dbPath,
 			"base_dir_writable": writeErr == "", "base_dir_error": writeErr, "adapter": d,
 		}
 		if rev, mod := vcsInfo(); rev != "" {
@@ -180,6 +179,7 @@ func runDoctor(args []string) {
 		}
 		fmt.Printf("LearningHub %s%s (%s/%s)\n", Version, revStr, runtime.GOOS, runtime.GOARCH)
 		fmt.Printf("Base directory: %s\n", cfg.BaseDir)
+		fmt.Printf("Database: %s\n", dbPath)
 		if writeErr != "" {
 			fmt.Printf("[FAIL] base directory not writable: %s\n", writeErr)
 		}
@@ -203,8 +203,7 @@ func runMigrate(args []string) {
 	configPath := fs.String("config", "", "Path to config.toml (default: %APPDATA%\\LearningHub\\config.toml or ~/.config/learninghub/config.toml)")
 	_ = fs.Parse(args)
 
-	cwd, _ := os.Getwd()
-	cfg, err := config.Load(*configPath, cwd)
+	cfg, err := loadConfig(*configPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
 		os.Exit(1)
@@ -259,8 +258,7 @@ func runRebuild(args []string) {
 	dbPath := fs.String("db", "", "Database to create (default <base_dir>/app.db; must be new or empty)")
 	_ = fs.Parse(args)
 
-	cwd, _ := os.Getwd()
-	cfg, err := config.Load(*configPath, cwd)
+	cfg, err := loadConfig(*configPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
 		os.Exit(1)
@@ -318,8 +316,7 @@ func runServe(args []string) error {
 	configPath := fs.String("config", "", "Path to config.toml (default: %APPDATA%\\LearningHub\\config.toml or ~/.config/learninghub/config.toml)")
 	_ = fs.Parse(args)
 
-	cwd, _ := os.Getwd()
-	cfg, err := config.Load(*configPath, cwd)
+	cfg, err := loadConfig(*configPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
 		return err
@@ -374,6 +371,9 @@ func runServe(args []string) error {
 
 	// Initialize database
 	dbPath := dbFile(cfg)
+	if _, err := os.Stat(dbPath); errors.Is(err, os.ErrNotExist) {
+		slog.Info("creating NEW database (no app.db found here)", "path", dbPath)
+	}
 	db, err := store.Open(dbPath)
 	if err != nil {
 		slog.Error("Failed to initialize database", "path", dbPath, "error", err)
@@ -499,6 +499,49 @@ func runServe(args []string) error {
 func serve(args []string) {
 	if runServe(args) != nil {
 		os.Exit(1)
+	}
+}
+
+// loadConfig is the one place base_dir is chosen (T13.2): config's base_dir, else the cwd only if it
+// already holds app.db or config.toml, else config.DefaultDataDir(), so the data never follows the cwd.
+func loadConfig(path string) (config.Config, error) {
+	cwd, _ := os.Getwd()
+	fallback, legacy, err := config.ResolveBaseDir(cwd)
+	if err != nil {
+		return config.Config{}, err
+	}
+	cfg, err := config.Load(path, fallback)
+	if err != nil {
+		return cfg, err
+	}
+	switch {
+	case cfg.BaseDirSet:
+	case legacy:
+		slog.Warn("Data is in the current directory; set base_dir in config.toml to a fixed path, or the app will use a different folder when started elsewhere", "base_dir", cfg.BaseDir)
+	default:
+		if err := os.MkdirAll(cfg.BaseDir, 0o755); err != nil {
+			return cfg, err
+		}
+	}
+	if why := riskyBaseDir(cfg.BaseDir); why != "" {
+		slog.Warn("base_dir looks unsafe: "+why, "base_dir", cfg.BaseDir)
+	}
+	return cfg, nil
+}
+
+// riskyBaseDir explains why dir is a bad home for user data: make clean/release delete dist/, and inside
+// this source tree the developer's AGENTS.md is sent to the AI instead of the app's own.
+func riskyBaseDir(dir string) string {
+	if filepath.Base(dir) == "dist" {
+		return "it is a build output folder (make clean/release delete it)"
+	}
+	for d := dir; ; d = filepath.Dir(d) {
+		if b, err := os.ReadFile(filepath.Join(d, "go.mod")); err == nil && strings.HasPrefix(string(b), "module learninghub") {
+			return "it is inside the Learning Hub source tree " + d
+		}
+		if filepath.Dir(d) == d {
+			return ""
+		}
 	}
 }
 

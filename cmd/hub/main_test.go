@@ -437,3 +437,28 @@ func TestCR56_DistArtifactsVerification(t *testing.T) {
 		t.Errorf("dist/INSTALL.md does not match %s", origInstall)
 	}
 }
+
+// T13.2: with no config and no app.db in the cwd, migrate run from two different folders uses one
+// database in the OS data folder, not one per cwd.
+func TestNoConfigUsesDataDirNotCwd(t *testing.T) {
+	if os.Getenv("HUB_TEST_DATADIR") == "1" {
+		os.Args = []string{"hub", "migrate"}
+		main()
+		os.Exit(0)
+	}
+	data, cfgHome := t.TempDir(), t.TempDir()
+	for _, cwd := range []string{t.TempDir(), t.TempDir()} {
+		cmd := exec.Command(os.Args[0], "-test.run=^TestNoConfigUsesDataDirNotCwd$")
+		cmd.Dir = cwd
+		cmd.Env = append(os.Environ(), "HUB_TEST_DATADIR=1", "APPDATA=", "LOCALAPPDATA=", "XDG_CONFIG_HOME="+cfgHome, "XDG_DATA_HOME="+data)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("migrate from %s: %v\n%s", cwd, err, out)
+		}
+		if _, err := os.Stat(filepath.Join(cwd, "app.db")); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("app.db created in cwd %s", cwd)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(data, "learninghub", "app.db")); err != nil {
+		t.Fatalf("app.db not in data dir: %v", err)
+	}
+}

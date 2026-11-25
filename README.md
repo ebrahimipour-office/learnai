@@ -255,7 +255,7 @@ Learning Hub uses the first config file it finds:
 With no file, built-in defaults apply and the current directory is the base directory. Unknown keys are rejected and durations need units (`"10m"`). The full commented example is [`config.example.toml`](config.example.toml); the values below are the defaults.
 
 ```toml
-# base_dir = "/abs/path"           # Base directory (absolute); default: current working directory
+# base_dir = "/abs/path"           # Base directory (absolute); default: OS data folder (~/.local/share/learninghub, %LOCALAPPDATA%\LearningHub)
 listen = "127.0.0.1:8787"          # Must be a loopback address (127.0.0.1, ::1 or localhost)
 language = "fa"                    # UI and prompt language
 log_retention_days = 30            # Days to keep job logs

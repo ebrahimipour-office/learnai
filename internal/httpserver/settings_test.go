@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -49,6 +50,10 @@ func TestSettingsDoctor(t *testing.T) {
 	e.ad.ProbeErr = nil
 	if b := e.settingsPage(true); !strings.Contains(b, "آماده است") || !strings.Contains(b, "fake") {
 		t.Fatalf("ready probe not shown:\n%s", b)
+	}
+	// T13.2: the page says where the data and the database live.
+	if b := e.settingsPage(false); !strings.Contains(b, e.root.BaseDir()) || !strings.Contains(b, filepath.Join(e.root.BaseDir(), "app.db")) {
+		t.Fatalf("base_dir / app.db path not shown:\n%s", b)
 	}
 
 	e.ad.ProbeErr = fmt.Errorf("%w: agy", ai.ErrBinaryNotFound)

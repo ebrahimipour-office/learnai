@@ -50,6 +50,7 @@ type app struct {
 // pageData is shared by all pages; each template uses the fields it needs.
 type pageData struct {
 	Title, CSRF, Error string
+	BaseDir, DBPath    string // /settings shows where the data and app.db live (T13.2)
 	Page               string // template set name; marks the current nav link
 	CanOpen            bool   // editor.command is set: show «باز کردن» (T6.6)
 

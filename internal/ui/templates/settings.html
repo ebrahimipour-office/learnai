@@ -55,6 +55,13 @@
 <p class="note">برخی ابزارها مصرف توکن را گزارش نمی‌دهند؛ آن کارها با «نامشخص» یا صفر شمرده می‌شوند.</p>
 </section>{{end}}
 
+<section id="data-dir">
+<h2>محل داده‌ها</h2>
+<p>پوشه پایه: <bdi dir="ltr"><code>{{.BaseDir}}</code></bdi></p>
+<p>پایگاه داده: <bdi dir="ltr"><code>{{.DBPath}}</code></bdi></p>
+<p class="note">برای ثابت ماندن این مسیر، <code>base_dir</code> را در <code>config.toml</code> تنظیم کنید.</p>
+</section>
+
 {{if .BackupsOn}}<section id="backups">
 <h2>پشتیبان‌ها</h2>
 {{with .BackupNote}}<p class="note" role="status">{{.}}</p>{{end}}

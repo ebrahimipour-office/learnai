@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -502,5 +503,44 @@ func TestConfigExampleIsValid(t *testing.T) {
 	}
 	if cfg.Jobs.TimeoutAnalyze != 15*time.Minute {
 		t.Fatalf("expected Jobs.TimeoutAnalyze=15m in example config, got %v", cfg.Jobs.TimeoutAnalyze)
+	}
+}
+
+// T13.2: the data folder never follows the cwd unless the cwd already holds app.db or config.toml,
+// and base_dir in a config file always wins.
+func TestResolveBaseDir(t *testing.T) {
+	data := t.TempDir()
+	t.Setenv("LOCALAPPDATA", "")
+	t.Setenv("XDG_DATA_HOME", data)
+	want := filepath.Join(data, "learninghub")
+
+	cwd1, cwd2 := t.TempDir(), t.TempDir()
+	for _, cwd := range []string{cwd1, cwd2} {
+		dir, legacy, err := config.ResolveBaseDir(cwd)
+		if err != nil || dir != want || legacy {
+			t.Fatalf("empty cwd %s: got %q legacy=%t err=%v, want %q", cwd, dir, legacy, err, want)
+		}
+	}
+
+	if err := os.WriteFile(filepath.Join(cwd1, "app.db"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if dir, legacy, _ := config.ResolveBaseDir(cwd1); dir != cwd1 || !legacy {
+		t.Fatalf("cwd with app.db: got %q legacy=%t", dir, legacy)
+	}
+
+	pinned := t.TempDir()
+	cfgPath := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(cfgPath, []byte("base_dir = "+strconv.Quote(pinned)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(cfgPath, cwd1)
+	if err != nil || cfg.BaseDir != pinned || !cfg.BaseDirSet {
+		t.Fatalf("config base_dir must win: %q set=%t err=%v", cfg.BaseDir, cfg.BaseDirSet, err)
+	}
+
+	t.Setenv("LOCALAPPDATA", data)
+	if dir, _ := config.DefaultDataDir(); dir != filepath.Join(data, "LearningHub") {
+		t.Fatalf("LOCALAPPDATA: got %q", dir)
 	}
 }

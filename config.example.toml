@@ -3,7 +3,10 @@
 # Note: Unknown keys will be rejected by LearningHub. All durations require units (e.g., "10m", "30s").
 
 # Base directory for topics, roadmaps, and .app data.
-# When empty or omitted, defaults to the current working directory.
+# When omitted: the current directory only if it already holds app.db or config.toml (older installs,
+# with a warning); otherwise the OS data folder — %LOCALAPPDATA%\LearningHub (Windows),
+# ~/.local/share/learninghub or $XDG_DATA_HOME/learninghub (Linux), ~/Library/Application Support/LearningHub (macOS).
+# Set it to keep the data in one fixed place; never use the source tree or dist/.
 # Must be an absolute path if explicitly set.
 # base_dir = "D:\\Project3\\learnai"
 

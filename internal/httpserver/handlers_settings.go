@@ -9,6 +9,7 @@ import (
 	"mime"
 	"net/http"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -153,7 +154,7 @@ func (a *app) renderSettings(w http.ResponseWriter, r *http.Request, status int,
 			return
 		}
 	}
-	a.render(w, status, "settings", "layout", &pageData{Title: "تنظیمات", Error: msg, Doctor: a.doctor(),
+	a.render(w, status, "settings", "layout", &pageData{Title: "تنظیمات", Error: msg, Doctor: a.doctor(), BaseDir: a.root.BaseDir(), DBPath: filepath.Join(a.root.BaseDir(), "app.db"),
 		Backups: backups, BackupsOn: a.settings.Maintenance != nil, BackupNote: backupNotes[r.URL.Query().Get("backup")],
 		Model: ai.ModelFor(a.settings.Adapter, a.settings.Model), Adapter: a.settings.Adapter.Name(), SkipPermissions: a.settings.SkipPermissions,
 		Adapters: a.adapterNames(), PrivacyAck: ack, Jalali: a.jalali.Load(), Privacy: PrivacyNotice, SkillUpdates: ups, Usage: usage,
