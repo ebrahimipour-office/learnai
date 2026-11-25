@@ -61,16 +61,13 @@ func (s *Service) Run(ctx context.Context, now time.Time, force bool) (*Result, 
 	return res, errors.Join(errs...)
 }
 
-// tmpFile matches only the names fsx.WriteNew (.<base>.tmp-<hex>) and fsx.WriteAtomic (.tmp-<base>-<hex>) create.
-var tmpFile = regexp.MustCompile(`^\.(tmp-.+-|.+\.tmp-)[0-9a-f]{16}$`)
-
 // sweepTmp removes temp files a crash left behind; an hour is far longer than any write takes (CR-34).
 // Only the trees the app writes into are walked, not the whole base dir (T10.7).
 func (s *Service) sweepTmp(now time.Time, res *Result) error {
 	cutoff := now.Add(-time.Hour)
 	for _, dir := range []string{"topics", "roadmaps", ".app"} {
 		err := fs.WalkDir(s.Root.FS(), dir, func(p string, d fs.DirEntry, err error) error {
-			if err != nil || !d.Type().IsRegular() || !tmpFile.MatchString(d.Name()) {
+			if err != nil || !d.Type().IsRegular() || !fsx.IsTempName(d.Name()) {
 				return nil // missing, unreadable, symlink, directory or not ours
 			}
 			if info, err := d.Info(); err != nil || info.ModTime().After(cutoff) {

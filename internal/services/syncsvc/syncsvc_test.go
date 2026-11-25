@@ -286,6 +286,7 @@ func TestInvalidNameIsSkippedNotFatal(t *testing.T) {
 	}
 	e.write(bad, "x")
 	e.write("topics/01-http/extra.md", "new")
+	e.write("topics/01-http/.extra.md.tmp-0123456789abcdef", "partial") // crash leftover: not new (T13.4)
 	e.move(rubricRel, "topics/01-http/rubric-moved.json")
 	run, err := e.svc.Scan(context.Background())
 	if err != nil {

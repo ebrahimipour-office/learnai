@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"regexp"
 	"syscall"
 )
 
@@ -35,10 +36,9 @@ func (r *Root) WriteNew(relPath string, data []byte, perm os.FileMode) error {
 
 	cleanRel := path.Clean(relPath)
 	dir := path.Dir(cleanRel)
-	if dir != "." && dir != "/" {
-		if err := r.MkdirAll(dir, 0755); err != nil {
-			return fmt.Errorf("creating parent directories for %s: %w", cleanRel, err)
-		}
+	top, err := r.mkdirParents(dir)
+	if err != nil {
+		return fmt.Errorf("creating parent directories for %s: %w", cleanRel, err)
 	}
 
 	r.mu.RLock()
@@ -47,16 +47,9 @@ func (r *Root) WriteNew(relPath string, data []byte, perm os.FileMode) error {
 		return ErrRootClosed
 	}
 
-	// Generate random temporary filename in the same directory (CR-07)
-	var randBytes [8]byte
-	if _, err := io.ReadFull(rand.Reader, randBytes[:]); err != nil {
-		return fmt.Errorf("generating temp filename for %s: %w", cleanRel, err)
-	}
-	tmpName := path.Join(dir, fmt.Sprintf(".%s.tmp-%s", path.Base(cleanRel), hex.EncodeToString(randBytes[:])))
-
-	f, err := r.rawRoot.OpenFile(tmpName, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
+	tmpName, f, err := r.createTemp(dir, ".%s.tmp-%s", path.Base(cleanRel), perm)
 	if err != nil {
-		return fmt.Errorf("creating temp file %s: %w", tmpName, err)
+		return err
 	}
 
 	if err := writeSyncHook(f, data); err != nil {
@@ -69,7 +62,7 @@ func (r *Root) WriteNew(relPath string, data []byte, perm os.FileMode) error {
 	_ = r.rawRoot.Remove(tmpName) // temp is no longer needed whether link succeeds or fails
 
 	if err == nil {
-		syncDir(r.rawRoot, dir)
+		r.syncNew(dir, top)
 		return nil
 	}
 
@@ -79,27 +72,90 @@ func (r *Root) WriteNew(relPath string, data []byte, perm os.FileMode) error {
 
 	// shortcut: platform or filesystem refuses hard links; fall back to direct O_EXCL write (CR-07)
 	if isLinkUnsupported(err) {
-		return r.writeNewDirect(cleanRel, data, perm)
+		return r.writeNewDirect(cleanRel, top, data, perm)
 	}
 
 	return fmt.Errorf("linking %s to %s: %w", tmpName, cleanRel, err)
 }
 
-func (r *Root) writeNewDirect(cleanRel string, data []byte, perm os.FileMode) error {
-	f, err := r.rawRoot.OpenFile(cleanRel, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
+// writeNewDirect is the no-hard-link fallback: temp file, then rename, so a crash never leaves a
+// partial file under the final name (T13.4).
+func (r *Root) writeNewDirect(cleanRel, top string, data []byte, perm os.FileMode) error {
+	dir := path.Dir(cleanRel)
+	tmpName, f, err := r.createTemp(dir, ".%s.tmp-%s", path.Base(cleanRel), perm)
 	if err != nil {
-		if errors.Is(err, fs.ErrExist) || os.IsExist(err) {
-			return fmt.Errorf("%w: %s", ErrFileExists, cleanRel)
-		}
-		return fmt.Errorf("opening new file %s: %w", cleanRel, err)
+		return err
 	}
 	if err := writeSyncHook(f, data); err != nil {
-		_ = r.rawRoot.Remove(cleanRel)
+		_ = r.rawRoot.Remove(tmpName)
 		return fmt.Errorf("writing data to %s: %w", cleanRel, err)
 	}
-	dir := path.Dir(cleanRel)
-	syncDir(r.rawRoot, dir)
+	// shortcut: check-then-rename, not atomic against a concurrent creator; fine for one local app.
+	if _, err := r.rawRoot.Lstat(cleanRel); !errors.Is(err, fs.ErrNotExist) {
+		_ = r.rawRoot.Remove(tmpName)
+		if err == nil {
+			return fmt.Errorf("%w: %s", ErrFileExists, cleanRel)
+		}
+		return fmt.Errorf("checking %s: %w", cleanRel, err)
+	}
+	if err := r.rawRoot.Rename(tmpName, cleanRel); err != nil {
+		_ = r.rawRoot.Remove(tmpName)
+		return fmt.Errorf("renaming %s to %s: %w", tmpName, cleanRel, err)
+	}
+	r.syncNew(dir, top)
 	return nil
+}
+
+// createTemp creates a fresh O_EXCL temp file in dir named by format(base, randomHex). Caller holds r.mu.
+func (r *Root) createTemp(dir, format, base string, perm os.FileMode) (string, *os.File, error) {
+	var randBytes [8]byte
+	if _, err := io.ReadFull(rand.Reader, randBytes[:]); err != nil {
+		return "", nil, fmt.Errorf("generating temp filename for %s: %w", base, err)
+	}
+	tmpName := path.Join(dir, fmt.Sprintf(format, base, hex.EncodeToString(randBytes[:])))
+	f, err := r.rawRoot.OpenFile(tmpName, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
+	if err != nil {
+		return "", nil, fmt.Errorf("creating temp file %s: %w", tmpName, err)
+	}
+	return tmpName, f, nil
+}
+
+// tempName matches only the names WriteNew (.<base>.tmp-<hex>) and WriteAtomic (.tmp-<base>-<hex>) create.
+var tempName = regexp.MustCompile(`^\.(tmp-.+-|.+\.tmp-)[0-9a-f]{16}$`)
+
+// IsTempName reports whether a base name is one of this package's in-flight or crash-leftover temp files.
+func IsTempName(name string) bool { return tempName.MatchString(name) }
+
+// mkdirParents creates dir and returns its shallowest ancestor that did not exist before ("" if dir
+// already existed), so syncNew can make every new directory entry durable (T13.4).
+func (r *Root) mkdirParents(dir string) (string, error) {
+	if dir == "." || dir == "/" {
+		return "", nil
+	}
+	top := ""
+	r.mu.RLock()
+	for d := dir; d != "." && !r.closed; d = path.Dir(d) {
+		if _, err := r.rawRoot.Lstat(d); !errors.Is(err, fs.ErrNotExist) {
+			break
+		}
+		top = d
+	}
+	r.mu.RUnlock()
+	return top, r.MkdirAll(dir, 0755)
+}
+
+// syncNew fsyncs dir (the new entry in it) and, for each directory created up to top, its parent.
+func (r *Root) syncNew(dir, top string) {
+	syncDir(r.rawRoot, dir)
+	if top == "" {
+		return
+	}
+	for d := dir; ; d = path.Dir(d) {
+		syncDir(r.rawRoot, path.Dir(d))
+		if d == top || d == "." {
+			return
+		}
+	}
 }
 
 func isLinkUnsupported(err error) bool {
@@ -162,10 +218,9 @@ func (r *Root) WriteAtomic(relPath string, data []byte, perm os.FileMode) error 
 
 	cleanRel := path.Clean(relPath)
 	dir := path.Dir(cleanRel)
-	if dir != "." && dir != "/" {
-		if err := r.MkdirAll(dir, 0755); err != nil {
-			return fmt.Errorf("creating parent directories: %w", err)
-		}
+	top, err := r.mkdirParents(dir)
+	if err != nil {
+		return fmt.Errorf("creating parent directories: %w", err)
 	}
 
 	r.mu.RLock()
@@ -174,16 +229,9 @@ func (r *Root) WriteAtomic(relPath string, data []byte, perm os.FileMode) error 
 		return ErrRootClosed
 	}
 
-	// Generate random temporary filename in the same directory
-	var randBytes [8]byte
-	if _, err := io.ReadFull(rand.Reader, randBytes[:]); err != nil {
-		return fmt.Errorf("generating temp filename: %w", err)
-	}
-	tmpName := path.Join(dir, fmt.Sprintf(".tmp-%s-%s", path.Base(cleanRel), hex.EncodeToString(randBytes[:])))
-
-	f, err := r.rawRoot.OpenFile(tmpName, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
+	tmpName, f, err := r.createTemp(dir, ".tmp-%s-%s", path.Base(cleanRel), perm)
 	if err != nil {
-		return fmt.Errorf("creating temp file %s: %w", tmpName, err)
+		return err
 	}
 
 	if writeErr := writeSyncClose(f, data); writeErr != nil {
@@ -197,6 +245,6 @@ func (r *Root) WriteAtomic(relPath string, data []byte, perm os.FileMode) error 
 		return fmt.Errorf("renaming %s to %s: %w", tmpName, cleanRel, err)
 	}
 
-	syncDir(r.rawRoot, dir)
+	r.syncNew(dir, top)
 	return nil
 }

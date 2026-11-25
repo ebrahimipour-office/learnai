@@ -10,6 +10,7 @@ import (
 	"path"
 
 	"learninghub/internal/domain"
+	"learninghub/internal/fsx"
 )
 
 // Dir returns topic id's folder relative to the base dir (topics/<dir_name>); ErrNotFound when the
@@ -50,8 +51,8 @@ func (s *Service) Zip(dir string, w io.Writer) error {
 			}
 			return nil
 		}
-		if !d.Type().IsRegular() {
-			return nil // symlink or device: never followed
+		if !d.Type().IsRegular() || fsx.IsTempName(d.Name()) {
+			return nil // symlink, device or a write's temp file: never exported
 		}
 		info, err := d.Info()
 		if err != nil {

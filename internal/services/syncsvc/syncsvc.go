@@ -247,8 +247,8 @@ func (s *Service) unregistered(registered map[string]bool) (out, skipped []strin
 			}
 			return nil
 		}
-		if !d.Type().IsRegular() || registered[p] {
-			return nil
+		if !d.Type().IsRegular() || registered[p] || fsx.IsTempName(d.Name()) {
+			return nil // temp files are in-flight writes or crash leftovers, not the learner's (T13.4)
 		}
 		if fsx.ValidateRelPath(p) != nil || !s.readable(p) {
 			skipped = append(skipped, p)

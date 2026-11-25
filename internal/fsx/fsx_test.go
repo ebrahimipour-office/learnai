@@ -521,8 +521,48 @@ func TestWritesSyncParentDir(t *testing.T) {
 	if err := root.WriteAtomic("b/atomic.txt", []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 || got[0] != "a" || got[1] != "b" {
-		t.Fatalf("synced dirs = %v, want [a b]", got)
+	if strings.Join(got, " ") != "a . b ." {
+		t.Fatalf("synced dirs = %v, want [a . b .]", got)
+	}
+}
+
+// T13.4: every directory MkdirAll creates is fsynced in its parent, up to the first one that existed.
+func TestWriteNewSyncsEveryNewDir(t *testing.T) {
+	root, err := fsx.OpenRoot(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	if err := root.MkdirAll("x", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	defer fsx.SetSyncDirSpyForTest(func(dir string) { got = append(got, dir) })()
+	if err := root.WriteNew("a/b/c/f.txt", []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := root.WriteNew("x/y/g.txt", []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := root.WriteNew("x/h.txt", []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if want := "a/b/c a/b a . x/y x x"; strings.Join(got, " ") != want {
+		t.Fatalf("synced dirs = %v, want %s", got, want)
+	}
+}
+
+func TestIsTempName(t *testing.T) {
+	for name, want := range map[string]bool{
+		".a.md.tmp-0123456789abcdef": true,
+		".tmp-a.md-0123456789abcdef": true,
+		".tmp-notes":                 false,
+		"a.md":                       false,
+		".a.md.tmp-0123":             false,
+	} {
+		if fsx.IsTempName(name) != want {
+			t.Errorf("IsTempName(%q) = %v, want %v", name, !want, want)
+		}
 	}
 }
 
