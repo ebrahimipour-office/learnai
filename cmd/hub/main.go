@@ -447,7 +447,7 @@ func runServe(args []string) error {
 			slog.Info("Indexed lesson text for search", "count", n)
 		}
 		for t := time.NewTicker(time.Hour); ; {
-			if res, err := maint.Run(ctx, time.Now()); err != nil {
+			if res, err := maint.Run(ctx, time.Now(), false); err != nil {
 				slog.Error("Maintenance failed", "error", err)
 			} else if len(res.Removed) > 0 || res.Backup != "" {
 				slog.Info("Maintenance done", "removed", len(res.Removed), "backup", res.Backup)

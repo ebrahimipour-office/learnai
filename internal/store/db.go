@@ -4,7 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"embed"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -176,7 +179,65 @@ func (d *DB) WithTx(ctx context.Context, fn func(tx *sql.Tx) error) error {
 var migrations = []string{"0001_init.sql", "0002_eval_guards.sql", "0003_chapters.sql", "0004_suggestion_keys.sql", "0005_topic_tree.sql", "0006_jobs_scope_index.sql", "0007_lesson_fts.sql", "0008_topic_last_opened.sql", "0009_files_observed_size.sql", "0010_jobs_auto_retry.sql", "0011_lesson_qa.sql", "0012_flashcards.sql"}
 
 // migrate applies all pending embedded migrations.
-func (d *DB) migrate() error { return d.migrateTo(len(migrations)) }
+func (d *DB) migrate() error {
+	if err := d.backupBeforeMigrate(); err != nil {
+		return err
+	}
+	return d.migrateTo(len(migrations))
+}
+
+// backupBeforeMigrate copies an existing older-schema database to <db dir>/.app/backup/pre-migrate-v<old>.db
+// before any migration rebuilds a table (T13.3). The name is outside the daily backups' pattern, so
+// their retention never removes it. Plain os is used: the store owns the db path and runs before any fsx.Root.
+func (d *DB) backupBeforeMigrate() error {
+	v, err := d.UserVersion()
+	if err != nil {
+		return fmt.Errorf("reading user_version: %w", err)
+	}
+	if v == 0 || v >= len(migrations) {
+		return nil // new database, current, or too new (migrateTo rejects that)
+	}
+	dir := filepath.Join(filepath.Dir(d.path), ".app", "backup")
+	final := filepath.Join(dir, fmt.Sprintf("pre-migrate-v%d.db", v))
+	if _, err := os.Lstat(final); err == nil {
+		return nil // an earlier, interrupted start already saved this version
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	tmp := final + ".tmp"
+	if err := os.Remove(tmp); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	if _, err := d.writer.Exec(`VACUUM INTO ?`, tmp); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("backing up before migration: %w", err)
+	}
+	if err := QuickCheck(tmp); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("backup before migration failed its integrity check: %w", err)
+	}
+	return os.Rename(tmp, final)
+}
+
+// QuickCheck opens the SQLite file at path read-only and runs PRAGMA quick_check; nil means it reported "ok".
+func QuickCheck(path string) error {
+	db, err := sql.Open("sqlite", dsnReadOnly(path))
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	var res string
+	if err := db.QueryRow("PRAGMA quick_check;").Scan(&res); err != nil {
+		return fmt.Errorf("quick_check %s: %w", filepath.Base(path), err)
+	}
+	if res != "ok" {
+		return fmt.Errorf("quick_check %s: %s", filepath.Base(path), res)
+	}
+	return nil
+}
 
 // migrateTo applies pending migrations up to version target. Each file runs in its own transaction on
 // one dedicated connection with foreign_keys OFF (the PRAGMA is a no-op inside a transaction), so a

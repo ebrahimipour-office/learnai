@@ -42,24 +42,23 @@ type Result struct {
 	Backup  string   // relative path of the backup made; "" = today's already existed
 }
 
+// quickCheck verifies a finished backup before it gets its final name (T13.3); tests swap it.
+var quickCheck = store.QuickCheck
+
 // Run cleans expired job dirs, then makes today's backup and keeps the newest s.KeepBackups.
-func (s *Service) Run(ctx context.Context, now time.Time) (*Result, error) {
+// force remakes today's backup even if it exists («پشتیبان‌گیری الان», T13.3); the hourly loop passes false.
+// A cleanup error never stops the backup (T13.3): all errors are joined and returned at the end.
+func (s *Service) Run(ctx context.Context, now time.Time, force bool) (*Result, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	res := &Result{}
 	cutoff := now.Add(-s.LogRetention).UTC().Format("2006-01-02T15:04:05.000Z") // same form as jobs.finished_at
+	var errs []error
 	for _, dir := range []string{".app/work", ".app/staging", ".app/logs/jobs"} {
-		if err := s.clean(ctx, dir, cutoff, res); err != nil {
-			return res, err
-		}
+		errs = append(errs, s.clean(ctx, dir, cutoff, res))
 	}
-	if err := s.sweepTmp(now, res); err != nil {
-		return res, err
-	}
-	if err := s.backup(ctx, now, res); err != nil {
-		return res, err
-	}
-	return res, nil
+	errs = append(errs, s.sweepTmp(now, res), s.backup(ctx, now, force, res))
+	return res, errors.Join(errs...)
 }
 
 // tmpFile matches only the names fsx.WriteNew (.<base>.tmp-<hex>) and fsx.WriteAtomic (.tmp-<base>-<hex>) create.
@@ -103,6 +102,7 @@ func (s *Service) clean(ctx context.Context, dir, cutoff string, res *Result) er
 	if err != nil {
 		return err
 	}
+	var errs []error
 	for _, e := range entries {
 		id, err := strconv.ParseInt(e.Name(), 10, 64)
 		if err != nil || !e.IsDir() {
@@ -125,21 +125,23 @@ func (s *Service) clean(ctx context.Context, dir, cutoff string, res *Result) er
 			continue
 		}
 		if err := s.Root.RemoveAll(rel); err != nil {
-			return fmt.Errorf("removing %s: %w", rel, err)
+			errs = append(errs, fmt.Errorf("removing %s: %w", rel, err)) // e.g. locked by an antivirus; try the next dir
+			continue
 		}
 		res.Removed = append(res.Removed, rel)
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
-func (s *Service) backup(ctx context.Context, now time.Time, res *Result) error {
+func (s *Service) backup(ctx context.Context, now time.Time, force bool, res *Result) error {
 	if err := s.Root.MkdirAll(backupDir, 0o700); err != nil {
 		return err
 	}
 	rel := path.Join(backupDir, "app-"+now.UTC().Format("2006-01-02")+".db")
-	if !s.nonEmpty(rel) {
-		// Only a complete backup gets the final name (CR-36): VACUUM INTO refuses an existing file, so
-		// drop a leftover temp first, and rename only on success. A real backup is never overwritten.
+	if force || !s.nonEmpty(rel) {
+		// Only a complete, checked backup gets the final name (CR-36, T13.3): VACUUM INTO refuses an existing
+		// file, so drop a leftover temp first, and rename only on success. Rename replaces atomically, so a
+		// forced backup never leaves today's file half-written.
 		tmp := rel + ".tmp"
 		if err := s.Root.Remove(tmp); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
@@ -148,6 +150,10 @@ func (s *Service) backup(ctx context.Context, now time.Time, res *Result) error 
 		if _, err := s.DB.Writer().ExecContext(ctx, `VACUUM INTO ?`, abs); err != nil {
 			_ = s.Root.Remove(tmp)
 			return fmt.Errorf("backing up database: %w", err)
+		}
+		if err := quickCheck(abs); err != nil {
+			_ = s.Root.Remove(tmp)
+			return fmt.Errorf("backup failed its integrity check, older backups kept: %w", err)
 		}
 		if err := s.Root.Rename(tmp, rel); err != nil {
 			_ = s.Root.Remove(tmp)
@@ -161,8 +167,16 @@ func (s *Service) backup(ctx context.Context, now time.Time, res *Result) error 
 	}
 	var names []string
 	for _, e := range entries {
+		n := e.Name()
+		if staleTmp.MatchString(n) { // a crash mid-VACUUM on an earlier day; today's was handled above
+			if err := s.Root.Remove(path.Join(backupDir, n)); err != nil {
+				return err
+			}
+			res.Removed = append(res.Removed, path.Join(backupDir, n))
+			continue
+		}
 		// 0-byte files are interrupted backups from before CR-36: they must not push a real one out.
-		if n := e.Name(); IsBackupName(n) && s.nonEmpty(path.Join(backupDir, n)) {
+		if IsBackupName(n) && s.nonEmpty(path.Join(backupDir, n)) {
 			names = append(names, n)
 		}
 	}
@@ -183,7 +197,10 @@ func (s *Service) nonEmpty(rel string) bool {
 	return err == nil && info.Mode().IsRegular() && info.Size() > 0
 }
 
-var backupName = regexp.MustCompile(`^app-\d{4}-\d{2}-\d{2}\.db$`)
+var (
+	backupName = regexp.MustCompile(`^app-\d{4}-\d{2}-\d{2}\.db$`)
+	staleTmp   = regexp.MustCompile(`^app-\d{4}-\d{2}-\d{2}\.db\.tmp$`)
+)
 
 // IsBackupName reports whether n is a name backup gives (app-YYYY-MM-DD.db); the only names served for download.
 func IsBackupName(n string) bool { return backupName.MatchString(n) }

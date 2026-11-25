@@ -2,6 +2,8 @@ package store
 
 import (
 	"database/sql"
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -206,5 +208,51 @@ func TestMigrate0012Flashcards(t *testing.T) {
 	var n int
 	if err := w.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN ('uq_jobs_active_scope','idx_jobs_queue','idx_jobs_topic','idx_jobs_scope')`).Scan(&n); err != nil || n != 4 {
 		t.Errorf("jobs indexes = %d (%v), want 4", n, err)
+	}
+}
+
+// T13.3: opening an older-schema database first saves it as .app/backup/pre-migrate-v<old>.db.
+func TestOpenBacksUpBeforeMigrate(t *testing.T) {
+	old := len(migrations) - 1
+	d := openAt(t, old)
+	mustExec(t, d.writer, `INSERT INTO roadmaps (id, slug, title, select_rule) VALUES (1, 'r', 'Old', '{}')`)
+	d.writer.Close()
+
+	db, err := Open(d.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	bak := filepath.Join(filepath.Dir(d.path), ".app", "backup", fmt.Sprintf("pre-migrate-v%d.db", old))
+	if err := QuickCheck(bak); err != nil {
+		t.Fatalf("pre-migrate backup: %v", err)
+	}
+	b, err := OpenReadOnly(bak)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+	var title string
+	if v, _ := b.UserVersion(); v != old {
+		t.Fatalf("backup user_version = %d, want %d", v, old)
+	}
+	if err := b.Writer().QueryRow(`SELECT title FROM roadmaps WHERE id = 1`).Scan(&title); err != nil || title != "Old" {
+		t.Fatalf("backup row: %q %v", title, err)
+	}
+	if left, _ := filepath.Glob(filepath.Join(filepath.Dir(bak), "*.tmp")); len(left) != 0 {
+		t.Fatalf("temp left: %v", left)
+	}
+
+	// A new database and a current one make no backup.
+	fresh := filepath.Join(t.TempDir(), "app.db")
+	for range 2 {
+		db, err := Open(fresh)
+		if err != nil {
+			t.Fatal(err)
+		}
+		db.Close()
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(fresh), ".app")); !os.IsNotExist(err) {
+		t.Fatalf("fresh database got a backup dir: %v", err)
 	}
 }

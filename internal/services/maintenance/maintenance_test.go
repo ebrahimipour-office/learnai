@@ -3,10 +3,12 @@ package maintenance_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -85,7 +87,7 @@ func TestRunCleansExpiredAndBacksUp(t *testing.T) {
 	before := snapshot()
 
 	svc := &maintenance.Service{DB: db, Root: root, LogRetention: 30 * 24 * time.Hour}
-	res, err := svc.Run(context.Background(), now)
+	res, err := svc.Run(context.Background(), now, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +122,7 @@ func TestRunCleansExpiredAndBacksUp(t *testing.T) {
 	}
 
 	// Same day again: no new backup, nothing overwritten.
-	res, err = svc.Run(context.Background(), now.Add(time.Hour))
+	res, err = svc.Run(context.Background(), now.Add(time.Hour), false)
 	if err != nil || res.Backup != "" {
 		t.Errorf("second run: backup %q, err %v", res.Backup, err)
 	}
@@ -180,7 +182,7 @@ func TestMaintenance_SkipsSymlinkedEntries(t *testing.T) {
 
 	svc := &maintenance.Service{DB: db, Root: root, LogRetention: 30 * 24 * time.Hour}
 	now := time.Date(2026, 11, 7, 12, 0, 0, 0, time.UTC)
-	res, err := svc.Run(context.Background(), now)
+	res, err := svc.Run(context.Background(), now, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +252,7 @@ func TestRunSweepsStaleTempFiles(t *testing.T) {
 	if err := os.Chtimes(outside, now.Add(-2*time.Hour), now.Add(-2*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := (&maintenance.Service{DB: db, Root: root, LogRetention: time.Hour}).Run(context.Background(), now); err != nil {
+	if _, err := (&maintenance.Service{DB: db, Root: root, LogRetention: time.Hour}).Run(context.Background(), now, false); err != nil {
 		t.Fatal(err)
 	}
 	for name, f := range files {
@@ -281,7 +283,7 @@ func TestBackupIsAtomic(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := svc.Run(ctx, now); err == nil {
+	if _, err := svc.Run(ctx, now, false); err == nil {
 		t.Fatal("cancelled run: want an error")
 	}
 	if left, _ := filepath.Glob(filepath.Join(base, ".app/backup/*")); len(left) != 0 {
@@ -295,7 +297,7 @@ func TestBackupIsAtomic(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	res, err := svc.Run(context.Background(), now)
+	res, err := svc.Run(context.Background(), now, false)
 	if err != nil || res.Backup != ".app/backup/app-2026-11-14.db" {
 		t.Fatalf("second run: backup %q, err %v", res.Backup, err)
 	}
@@ -304,5 +306,119 @@ func TestBackupIsAtomic(t *testing.T) {
 	}
 	if _, err := os.Stat(today + ".tmp"); !os.IsNotExist(err) {
 		t.Fatalf("temp file left behind: %v", err)
+	}
+}
+
+// newBackupEnv opens a fresh app.db and root in a temp base dir.
+func newBackupEnv(t *testing.T) (string, *store.DB, *maintenance.Service) {
+	t.Helper()
+	base := t.TempDir()
+	db, err := store.Open(filepath.Join(base, "app.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	root, err := fsx.OpenRoot(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { root.Close() })
+	return base, db, &maintenance.Service{DB: db, Root: root, LogRetention: time.Hour}
+}
+
+// T13.3 (a): a cleanup error is reported but today's backup is still made.
+func TestCleanupErrorStillBacksUp(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
+	base, _, svc := newBackupEnv(t)
+	if err := os.MkdirAll(filepath.Join(base, ".app"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(t.TempDir(), filepath.Join(base, ".app/work")); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC)
+	res, err := svc.Run(context.Background(), now, false)
+	if err == nil {
+		t.Fatal("symlinked work dir: want an error")
+	}
+	if res.Backup != ".app/backup/app-2026-11-25.db" {
+		t.Fatalf("backup = %q, want today's despite the cleanup error", res.Backup)
+	}
+}
+
+// T13.3 (b): force remakes today's backup with the current state; the hourly pass does not.
+func TestForceRemakesTodaysBackup(t *testing.T) {
+	base, db, svc := newBackupEnv(t)
+	now := time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC)
+	bak := filepath.Join(base, ".app/backup/app-2026-11-25.db")
+	hasRow := func() bool {
+		t.Helper()
+		b, err := store.OpenReadOnly(bak)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer b.Close()
+		var n int
+		if err := b.Writer().QueryRow(`SELECT COUNT(*) FROM roadmaps`).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n > 0
+	}
+	if _, err := svc.Run(context.Background(), now, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Writer().Exec(`INSERT INTO roadmaps (slug, title, select_rule) VALUES ('r', 'R', '{}')`); err != nil {
+		t.Fatal(err)
+	}
+	if res, err := svc.Run(context.Background(), now.Add(time.Hour), false); err != nil || res.Backup != "" || hasRow() {
+		t.Fatalf("hourly pass: backup %q err %v; today's backup must stay as it was", res.Backup, err)
+	}
+	if res, err := svc.Run(context.Background(), now.Add(time.Hour), true); err != nil || res.Backup == "" || !hasRow() {
+		t.Fatalf("forced pass: backup %q err %v; want the new row in today's backup", res.Backup, err)
+	}
+}
+
+// T13.3 (c, d): a backup failing its check keeps every older one; an earlier day's temp file is removed.
+func TestBadBackupKeepsOldOnesAndStaleTmpRemoved(t *testing.T) {
+	base, _, svc := newBackupEnv(t)
+	dir := filepath.Join(base, ".app/backup")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	var old []string
+	for d := 1; d <= 9; d++ {
+		p := filepath.Join(dir, "app-2026-10-0"+strconv.Itoa(d)+".db")
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		old = append(old, p)
+	}
+	stale := filepath.Join(dir, "app-2020-01-01.db.tmp")
+	if err := os.WriteFile(stale, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC)
+
+	restore := maintenance.SetQuickCheckForTest(func(string) error { return errors.New("corrupt") })
+	if _, err := svc.Run(context.Background(), now, true); err == nil || !strings.Contains(err.Error(), "integrity") {
+		t.Fatalf("bad backup: err = %v", err)
+	}
+	restore()
+	for _, p := range old {
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("old backup removed after a bad one: %v", err)
+		}
+	}
+	if left, _ := filepath.Glob(filepath.Join(dir, "app-2026-11-25*")); len(left) != 0 {
+		t.Fatalf("bad backup left %v", left)
+	}
+
+	if _, err := svc.Run(context.Background(), now, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatalf("earlier day's temp file kept: %v", err)
 	}
 }

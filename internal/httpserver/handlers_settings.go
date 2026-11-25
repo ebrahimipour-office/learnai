@@ -305,27 +305,21 @@ func (a *app) requireAck(h http.HandlerFunc) http.HandlerFunc {
 }
 
 var backupNotes = map[string]string{
-	"made":   "پشتیبان امروز ساخته شد.",
-	"exists": "پشتیبان امروز از قبل وجود دارد؛ هر روز یک پشتیبان ساخته می‌شود.",
+	"made": "پشتیبان امروز با وضعیت همین لحظه ساخته شد.",
 }
 
-// backupNow runs the same maintenance pass as the hourly loop (T10.20); CSRF is checked by the middleware.
+// backupNow runs the hourly maintenance pass but always remakes today's backup (T10.20, T13.3); CSRF is checked by the middleware.
 func (a *app) backupNow(w http.ResponseWriter, r *http.Request) {
 	if a.settings.Maintenance == nil {
 		http.NotFound(w, r)
 		return
 	}
-	res, err := a.settings.Maintenance.Run(r.Context(), time.Now())
-	if err != nil {
+	if _, err := a.settings.Maintenance.Run(r.Context(), time.Now(), true); err != nil {
 		slog.Error("backup from settings", "error", err)
 		a.renderSettings(w, r, http.StatusInternalServerError, "پشتیبان‌گیری ناموفق بود: "+err.Error())
 		return
 	}
-	note := "exists"
-	if res.Backup != "" {
-		note = "made"
-	}
-	http.Redirect(w, r, "/settings?backup="+note+"#backups", http.StatusSeeOther)
+	http.Redirect(w, r, "/settings?backup=made#backups", http.StatusSeeOther)
 }
 
 // downloadBackup serves one file of .app/backup; only names backup itself gives are accepted, so no path reaches the disk.

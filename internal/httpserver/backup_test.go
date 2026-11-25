@@ -25,13 +25,13 @@ func TestBackupsOnSettings(t *testing.T) {
 	if rec := e.post("/settings/backup", nil, false); rec.Code != http.StatusSeeOther || !strings.Contains(rec.Header().Get("Location"), "backup=made") {
 		t.Fatalf("backup now: %d %s", rec.Code, rec.Header().Get("Location"))
 	}
-	if rec := e.post("/settings/backup", nil, false); !strings.Contains(rec.Header().Get("Location"), "backup=exists") {
-		t.Fatalf("second backup the same day: %s", rec.Header().Get("Location"))
+	if rec := e.post("/settings/backup", nil, false); !strings.Contains(rec.Header().Get("Location"), "backup=made") {
+		t.Fatalf("second backup the same day is remade (T13.3): %s", rec.Header().Get("Location"))
 	}
 	name := "app-" + time.Now().UTC().Format("2006-01-02") + ".db"
-	rec := e.get("/settings?backup=exists")
+	rec := e.get("/settings?backup=made")
 	if b := rec.Body.String(); !strings.Contains(b, `href="/settings/backups/`+name+`"`) || !strings.Contains(b, "cp .app/backup/"+name+" app.db") ||
-		!strings.Contains(b, "از قبل وجود دارد") {
+		!strings.Contains(b, "وضعیت همین لحظه") {
 		t.Fatalf("backup not listed with restore command:\n%s", b)
 	}
 	rec = e.get("/settings/backups/" + name)
