@@ -118,12 +118,18 @@ func fakeAgy(sc string, args []string) int {
 		return 1
 	case "linger", "linger_setsid": // valid result, then a helper keeps stdout open after exit 0
 		fmt.Fprintln(out, success(`"response":"done","structured_output":{"lesson_markdown":"# x"}`))
-		if err := holdStdout(sc == "linger_setsid"); err != nil {
+		if err := holdStdout(sc == "linger_setsid", false); err != nil {
+			fmt.Fprintln(errw, err)
+			return 4
+		}
+	case "linger_stderr": // T13.7: a response-only result (no R8-1 fallback), then a helper keeps stderr open after exit 0
+		fmt.Fprintln(out, success(`"response":"{\"lesson_markdown\":\"# x\"}"`))
+		if err := holdStdout(false, true); err != nil {
 			fmt.Fprintln(errw, err)
 			return 4
 		}
 	case "slow_setsid": // no result; an escaped helper holds stdout while the leader hangs
-		if err := holdStdout(true); err != nil {
+		if err := holdStdout(true, false); err != nil {
 			fmt.Fprintln(errw, err)
 			return 4
 		}
@@ -144,15 +150,18 @@ func fakeAgy(sc string, args []string) int {
 	return 0
 }
 
-// holdStdout starts a helper that inherits stdout and outlives the fake CLI;
+// holdStdout starts a helper that inherits stdout (or stderr) and outlives the fake CLI;
 // with escape it also leaves the process group (setsid).
-func holdStdout(escape bool) error {
+func holdStdout(escape, stderr bool) error {
 	argv := []string{"sleep", "30"}
 	if escape {
 		argv = append([]string{"setsid"}, argv...)
 	}
 	helper := exec.Command(argv[0], argv[1:]...)
 	helper.Stdout = os.Stdout
+	if stderr {
+		helper.Stdout, helper.Stderr = nil, os.Stderr
+	}
 	return helper.Start()
 }
 
@@ -287,6 +296,7 @@ func TestRunLingeringStdoutHolder(t *testing.T) {
 		{"linger_setsid", 20 * time.Second},
 		{"linger", 0},
 		{"linger_setsid", 0},
+		{"linger_stderr", 20 * time.Second},
 	} {
 		a, req := newRun(t, tc.sc, nil)
 		req.Timeout = tc.timeout

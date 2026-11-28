@@ -41,3 +41,19 @@ func TestWatchCancelIsNotStall(t *testing.T) {
 		t.Fatalf("want ErrCanceled, got %v", err)
 	}
 }
+
+// T13.7: a stall that fires just as Run returns a result must not replace it.
+func TestWatchLateStallKeepsResult(t *testing.T) {
+	resp, err := ai.Watch(context.Background(), lateOK{}, ai.Request{StallTimeout: 20 * time.Millisecond}, nil)
+	if err != nil || resp == nil {
+		t.Fatalf("want the result, got %v", err)
+	}
+}
+
+// lateOK ignores ctx, outlives the stall timeout, then succeeds.
+type lateOK struct{ ai.Adapter }
+
+func (lateOK) Run(context.Context, ai.Request, chan<- ai.Event) (*ai.Response, error) {
+	time.Sleep(100 * time.Millisecond)
+	return &ai.Response{}, nil
+}

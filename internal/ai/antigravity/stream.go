@@ -80,6 +80,13 @@ var DefaultPatterns = []Pattern{
 	{"/login", ai.ErrAuthRequired},
 	{"invalid api key", ai.ErrAuthRequired},
 	{"unauthorized", ai.ErrAuthRequired},
+	// Anthropic API error types and claude/codex plan messages (T13.7); no bare 429/401, they match too much.
+	{"authentication_error", ai.ErrAuthRequired},
+	{"token has expired", ai.ErrAuthRequired},
+	{"rate_limit_error", ai.ErrRateLimited},
+	{"overloaded_error", ai.ErrRateLimited},
+	{"hit your limit", ai.ErrRateLimited},
+	{"limit reached", ai.ErrRateLimited},
 }
 
 func classify(patterns []Pattern, text string) error {

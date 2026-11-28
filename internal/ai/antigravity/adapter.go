@@ -238,6 +238,9 @@ func (a *Adapter) Run(ctx context.Context, req ai.Request, events chan<- ai.Even
 		res, rawRes, tooLong = readStream(runCtx, stdout, events, log, dec)
 	}()
 	waitErr := cmd.Wait()
+	if errors.Is(waitErr, exec.ErrWaitDelay) {
+		waitErr = nil // the leader exited 0; only a helper still held stderr open
+	}
 	group.Close() // kills helpers left in the group, so the reader normally sees EOF at once
 	select {
 	case <-read:

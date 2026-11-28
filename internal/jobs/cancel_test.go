@@ -312,3 +312,46 @@ func TestCancelScheduledRetry(t *testing.T) {
 		t.Errorf("want the new job to run, got %d AI runs", len(a.Calls()))
 	}
 }
+
+// T13.7: an automatic retry waiting for its delay does not block a tool switch; a due or running job does.
+func TestWithIdleIgnoresWaitingRetry(t *testing.T) {
+	r, db := newRunner(t)
+	if _, err := db.Writer().Exec(`INSERT INTO jobs (kind, scope_key, status, not_before) VALUES ('lesson', 'topic:1', 'queued', '2999-01-01T00:00:00.000Z')`); err != nil {
+		t.Fatal(err)
+	}
+	ran := false
+	if err := r.WithIdle(context.Background(), func() error { ran = true; return nil }); err != nil || !ran {
+		t.Fatalf("waiting retry blocked the switch: ran=%v err=%v", ran, err)
+	}
+	enqueue(t, r, "topic:2")
+	if err := r.WithIdle(context.Background(), func() error { return nil }); !errors.Is(err, domain.ErrScopeBusy) {
+		t.Fatalf("a due queued job must block: %v", err)
+	}
+}
+
+// T13.7: a failed journal replay still queues the retry of the job it marked interrupted.
+func TestRecoverReplayFailureKeepsAutoRetry(t *testing.T) {
+	r, db, _ := autoRunner(t, time.Hour)
+	res, err := db.Writer().Exec(`INSERT INTO jobs (kind, scope_key, status, started_at) VALUES ('lesson', 'topic:1', 'running', '2026-01-01T00:00:00.000Z')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	crashed, _ := res.LastInsertId()
+	fail := true
+	r.SetReplayFault(func() error {
+		if fail {
+			fail = false
+			return errors.New("replay fault")
+		}
+		return nil
+	})
+	if _, err := r.Recover(context.Background()); err == nil {
+		t.Fatal("want the replay error")
+	}
+	if _, err := r.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, attempt, _ := retryOf(t, db, crashed); attempt != 1 {
+		t.Fatalf("retry attempt %d", attempt)
+	}
+}

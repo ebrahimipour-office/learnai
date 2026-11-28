@@ -36,7 +36,7 @@ func Watch(ctx context.Context, a Adapter, req Request, events chan<- Event) (*R
 	resp, err := a.Run(ctx, req, in)
 	close(in) // adapters never send after Run returns
 	<-done
-	if errors.Is(context.Cause(ctx), ErrStalled) {
+	if err != nil && errors.Is(context.Cause(ctx), ErrStalled) { // a result that made it back wins over a late stall
 		return resp, fmt.Errorf("%w: no event for %s", ErrStalled, req.StallTimeout)
 	}
 	return resp, err

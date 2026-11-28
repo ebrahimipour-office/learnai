@@ -91,6 +91,7 @@ type Runner struct {
 	finals  map[int64]Info // results whose final DB write failed (CR-38); overlaid by Get/Latest
 
 	finalWriteFault func() error // test hook: a non-nil error fails one final-write attempt
+	replayFault     func() error // test hook: a non-nil error fails Recover's journal replay
 
 	Poll      time.Duration // dispatcher fallback tick (TDD §6.5: 2s)
 	Heartbeat time.Duration // heartbeat_at update interval (TDD §6.5: 5s)
@@ -112,6 +113,7 @@ func New(db *store.DB, maxConcurrent int) *Runner {
 		db: db, max: max(maxConcurrent, 1), handlers: map[domain.JobKind]Handler{}, wake: make(chan struct{}, 1),
 		running: map[int64]context.CancelFunc{}, finals: map[int64]Info{},
 		finalWriteFault: func() error { return nil },
+		replayFault:     func() error { return nil },
 		Poll:            2 * time.Second, Heartbeat: 5 * time.Second,
 	}
 }
@@ -169,15 +171,18 @@ func (r *Runner) autoRetry(ctx context.Context, id int64, code string) {
 	}
 }
 
-// WithIdle runs fn only if there are no queued or running jobs, serialised against Enqueue (CR-42).
-// If any job is currently queued or running, it returns domain.ErrScopeBusy without calling fn.
+// WithIdle runs fn only if there are no running or due queued jobs, serialised against Enqueue (CR-42).
+// An automatic retry still waiting for its not_before does not count (T13.7): switching the tool is
+// exactly what a rate-limited user needs, and the retry then runs on the new tool.
+// Otherwise it returns domain.ErrScopeBusy without calling fn.
 func (r *Runner) WithIdle(ctx context.Context, fn func() error) error {
 	r.enqueueMu.Lock()
 	defer r.enqueueMu.Unlock()
 
 	var busy int
 	err := r.db.Writer().QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running')`).Scan(&busy)
+		`SELECT COUNT(*) FROM jobs WHERE status = 'running'
+			OR (status = 'queued' AND (not_before IS NULL OR not_before <= `+nowSQL+`))`).Scan(&busy)
 	if err != nil {
 		return err
 	}
@@ -289,15 +294,19 @@ func (r *Runner) Recover(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 	n := int64(len(ids))
+	var rerr error
 	if r.Files != nil {
-		if err := r.replayJournals(ctx); err != nil {
-			return n, err
+		if rerr = r.replayFault(); rerr == nil {
+			rerr = r.replayJournals(ctx)
 		}
 	}
-	for _, id := range ids { // after the journals, so a retry never runs on a half-replayed commit
+	// Queued even when the replay failed (T13.7): these rows are no longer 'running', so the next Recover
+	// would never see them. Run dispatches nothing until Recover succeeds, so a retry still never runs
+	// on a half-replayed commit.
+	for _, id := range ids {
 		r.autoRetry(ctx, id, "interrupted")
 	}
-	return n, nil
+	return n, rerr
 }
 
 // Run recovers interrupted jobs (retrying until that works), then dispatches queued jobs in FIFO order until ctx is done.

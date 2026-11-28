@@ -43,6 +43,30 @@ func TestClaudeDecoder(t *testing.T) {
 	if res.Status == "SUCCESS" || !errors.Is(classify(DefaultPatterns, res.Error), ai.ErrAuthRequired) {
 		t.Fatalf("auth error: %+v", res)
 	}
+
+	res, _ = decode(t, &claudeDecoder{}, `{"type":"result","subtype":"success","is_error":true,"result":"API Error: 429 {\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\"}}"}`)
+	if res.Status == "SUCCESS" || !errors.Is(classify(DefaultPatterns, res.Error), ai.ErrRateLimited) {
+		t.Fatalf("rate limit error: %+v", res)
+	}
+}
+
+func TestClassify(t *testing.T) {
+	for _, c := range []struct {
+		text string
+		want error
+	}{
+		{"API Error: 429 rate_limit_error: Number of requests exceeded", ai.ErrRateLimited},
+		{"API Error: 529 overloaded_error", ai.ErrRateLimited},
+		{"Claude AI usage limit reached|1764000000", ai.ErrRateLimited},
+		{"You've hit your limit · resets 5pm", ai.ErrRateLimited},
+		{"API Error: 401 authentication_error: invalid x-api-key", ai.ErrAuthRequired},
+		{"OAuth token has expired. Please obtain a new token", ai.ErrAuthRequired},
+		{"panic: runtime error", ai.ErrToolFailed},
+	} {
+		if err := classify(DefaultPatterns, c.text); !errors.Is(err, c.want) {
+			t.Errorf("%q: got %v, want %v", c.text, err, c.want)
+		}
+	}
 }
 
 func TestCodexDecoder(t *testing.T) {
