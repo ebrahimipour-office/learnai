@@ -27,7 +27,7 @@
           "type": { "enum": ["coding", "conceptual", "code_analysis", "problem_solving"] },
           "difficulty": { "enum": ["easy", "medium", "hard"] },
           "weight": { "type": "number", "exclusiveMinimum": 0 },
-          "statement_markdown": { "type": "string", "minLength": 1 },
+          "statement_markdown": { "type": "string", "minLength": 1, "maxLength": 20000 },
           "answer": {
             "type": "object",
             "additionalProperties": false,

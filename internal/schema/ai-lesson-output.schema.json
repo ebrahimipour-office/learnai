@@ -9,26 +9,28 @@
     "lesson_markdown": { "type": "string", "minLength": 10 },
     "keywords": {
       "type": "array",
+      "maxItems": 50,
       "items": {
         "type": "object",
         "additionalProperties": false,
         "required": ["term"],
         "properties": {
-          "term": { "type": "string" },
-          "gloss": { "type": "string" }
+          "term": { "type": "string", "maxLength": 120 },
+          "gloss": { "type": "string", "maxLength": 500 }
         }
       }
     },
     "suggestions": {
       "type": "array",
+      "maxItems": 20,
       "items": {
         "type": "object",
         "additionalProperties": false,
         "required": ["kind", "title", "reason"],
         "properties": {
           "kind": { "enum": ["prerequisite", "supplementary"] },
-          "title": { "type": "string" },
-          "reason": { "type": "string" }
+          "title": { "type": "string", "maxLength": 200 },
+          "reason": { "type": "string", "maxLength": 600 }
         }
       }
     }

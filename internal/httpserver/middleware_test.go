@@ -70,6 +70,11 @@ func TestSecurityMiddleware(t *testing.T) {
 		if rec.Header().Get("X-CSRF-Stale") != "1" {
 			t.Error("CSRF 403 must carry X-CSRF-Stale so app.js can reload (CR-20)")
 		}
+		// T13.8(c): a plain form gets a Persian page with a way back, not a bare «Forbidden».
+		if !strings.Contains(rec.Body.String(), "نشست منقضی شده") || !strings.Contains(rec.Body.String(), `href="/topics"`) ||
+			!strings.HasPrefix(rec.Header().Get("Content-Type"), "text/html") {
+			t.Errorf("stale CSRF page: %q %q", rec.Header().Get("Content-Type"), rec.Body.String())
+		}
 	})
 
 	t.Run("Rejects POST with invalid Origin", func(t *testing.T) {

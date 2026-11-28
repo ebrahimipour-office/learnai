@@ -253,7 +253,7 @@ func (a *app) askQuestion(w http.ResponseWriter, r *http.Request) {
 	}
 	q, err := qa.CheckQuestion(r.FormValue("question"))
 	if err != nil {
-		a.respond(w, r, http.StatusBadRequest, id, nil, "پرسش باید بین ۱ تا "+faDigits.Replace(fmt.Sprint(qa.MaxQuestion))+" نویسه باشد.")
+		a.respond(w, r, http.StatusUnprocessableEntity, id, nil, "پرسش باید بین ۱ تا "+faDigits.Replace(fmt.Sprint(qa.MaxQuestion))+" نویسه باشد.")
 		return
 	}
 	if len(p.Lessons) == 0 {
@@ -306,11 +306,12 @@ func (a *app) gradeCard(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if knew != "0" && knew != "1" {
+	box, boxErr := strconv.Atoi(r.FormValue("box"))
+	if (knew != "0" && knew != "1") || boxErr != nil {
 		http.Error(w, "پاسخ نامعتبر است", http.StatusBadRequest)
 		return
 	}
-	err = a.topics.GradeCard(r.Context(), id, card, knew == "1", time.Now())
+	err = a.topics.GradeCard(r.Context(), id, card, box, knew == "1", time.Now())
 	if errors.Is(err, domain.ErrNotFound) {
 		http.NotFound(w, r)
 		return

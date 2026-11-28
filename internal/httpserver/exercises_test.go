@@ -254,8 +254,8 @@ func TestEvaluateEnqueue(t *testing.T) {
 	if rec := e.post("/topics/1/jobs/evaluate", url.Values{"mode": {"partial"}}, true); rec.Code != http.StatusUnprocessableEntity {
 		t.Errorf("bad mode: want 422, got %d", rec.Code)
 	}
-	if rec := e.post("/topics/1/jobs/evaluate", url.Values{"only": {"q99"}}, true); rec.Code != http.StatusBadRequest {
-		t.Errorf("unknown only id: want 400, got %d", rec.Code)
+	if rec := e.post("/topics/1/jobs/evaluate", url.Values{"only": {"q99"}}, true); rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("unknown only id: want 422, got %d", rec.Code)
 	}
 	if rec := e.post("/topics/1/jobs/evaluate", url.Values{"only": {""}}, true); rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "انتخاب نشده") {
 		t.Errorf("nothing chosen: want 422, got %d", rec.Code)

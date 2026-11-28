@@ -75,8 +75,9 @@ func (s *Service) Deck(ctx context.Context, topicID int64, now time.Time) (*Deck
 }
 
 // GradeCard moves a due-or-not card of the topic's current lesson to its next Leitner box.
-// A card of another topic or an older lesson version is domain.ErrNotFound.
-func (s *Service) GradeCard(ctx context.Context, topicID, cardID int64, knew bool, now time.Time) error {
+// A card of another topic or an older lesson version is domain.ErrNotFound. seenBox is the box the
+// page showed: a card no longer in it was already graded (a double-click), so this grade is a no-op.
+func (s *Service) GradeCard(ctx context.Context, topicID, cardID int64, seenBox int, knew bool, now time.Time) error {
 	return s.db.WithTx(ctx, func(tx *sql.Tx) error {
 		var box int
 		err := tx.QueryRowContext(ctx, `SELECT f.box FROM flashcards f JOIN lesson_versions lv ON lv.id = f.lesson_version_id AND lv.is_current = 1
@@ -86,6 +87,9 @@ func (s *Service) GradeCard(ctx context.Context, topicID, cardID int64, knew boo
 		}
 		if err != nil {
 			return err
+		}
+		if box != seenBox {
+			return nil
 		}
 		box, wait := NextBox(box, knew)
 		_, err = tx.ExecContext(ctx, `UPDATE flashcards SET box = ?, due_at = ? WHERE id = ?`, box, now.Add(wait).UTC().Format(dbTime), cardID)

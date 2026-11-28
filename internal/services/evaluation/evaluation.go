@@ -182,7 +182,8 @@ func (s *Service) run(ctx context.Context, j jobs.Job, p Params) error {
 	var fp bytes.Buffer
 	fp.WriteString(s.Adapter.Name() + "\x00") // CR-31: another tool's staged results are never reused
 	fp.WriteString(ai.ModelFor(s.Adapter, s.Model) + "\x00")
-	for _, b := range [][]byte{sh.in.Skill, sh.in.Agents, sh.in.Profile, sh.exercisesMD, rubricB, sh.source} {
+	fp.WriteString(s.Language + "\x00") // T13.8: a language or schema change re-evaluates
+	for _, b := range [][]byte{sh.in.Skill, sh.in.Agents, sh.in.Profile, sh.in.Schema, sh.exercisesMD, rubricB, sh.source} {
 		fp.WriteString(fsx.HashBytes(b) + "\x00")
 	}
 	for _, pk := range sel.Send {

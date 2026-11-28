@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -156,7 +157,14 @@ func (sm *SecurityManager) SecurityMiddleware(next http.Handler) http.Handler {
 
 			if !sm.validateCSRF(submittedToken) {
 				w.Header().Set("X-CSRF-Stale", "1") // app.js reloads to pick up the new token (CR-20)
-				http.Error(w, "Forbidden: Invalid or missing CSRF token", http.StatusForbidden)
+				if r.Header.Get("HX-Request") != "" {
+					http.Error(w, "Forbidden: Invalid or missing CSRF token", http.StatusForbidden)
+					return
+				}
+				// A plain form posted from a page loaded before a restart: explain instead of a bare «Forbidden» (T13.8).
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				w.WriteHeader(http.StatusForbidden)
+				io.WriteString(w, csrfStalePage)
 				return
 			}
 		}
@@ -164,6 +172,9 @@ func (sm *SecurityManager) SecurityMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
+const csrfStalePage = `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><title>نشست منقضی شده</title></head>
+<body><p>نشست منقضی شده است؛ صفحه را تازه کنید و دوباره بفرستید.</p><p><a href="/topics">بازگشت به موضوع‌ها</a></p></body></html>`
 
 func (sm *SecurityManager) validateCSRF(token string) bool {
 	if token == "" {

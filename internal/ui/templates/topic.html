@@ -86,6 +86,7 @@
         <div class="md" dir="auto">{{.Back}}</div>
         <form method="post" action="/topics/{{$.Panel.ID}}/cards/{{.ID}}" class="grade">
           <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+          <input type="hidden" name="box" value="{{.Box}}">
           <button type="submit" name="knew" value="1">بلد بودم</button>
           <button type="submit" name="knew" value="0">بلد نبودم</button>
         </form>

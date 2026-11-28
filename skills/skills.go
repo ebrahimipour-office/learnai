@@ -3,6 +3,7 @@
 package skills
 
 import (
+	"bytes"
 	"embed"
 	"errors"
 	"io/fs"
@@ -91,7 +92,7 @@ func Upgrade(root *fsx.Root, name string) error {
 		if err != nil {
 			return err
 		}
-		if err := root.WriteNew(path.Join(".agent", name, "SKILL."+u.Installed+".bak.md"), cur, 0o644); err != nil {
+		if err := backup(root, name, u.Installed, cur); err != nil {
 			return err
 		}
 		emb, err := FS.ReadFile(name + "/SKILL.md")
@@ -101,6 +102,25 @@ func Upgrade(root *fsx.Root, name string) error {
 		return root.WriteAtomic(SkillRel(name), emb, 0o644)
 	}
 	return ErrNotOutdated
+}
+
+// backup writes cur to SKILL.<ver>.bak.md, or SKILL.<ver>.<n>.bak.md with the first free n; an existing
+// backup with the same bytes is enough (T13.8).
+func backup(root *fsx.Root, name, ver string, cur []byte) error {
+	for n := 1; ; n++ {
+		suffix := ver
+		if n > 1 {
+			suffix = ver + "." + strconv.Itoa(n)
+		}
+		rel := path.Join(".agent", name, "SKILL."+suffix+".bak.md")
+		err := root.WriteNew(rel, cur, 0o644)
+		if !errors.Is(err, fsx.ErrFileExists) {
+			return err
+		}
+		if old, rerr := root.ReadFile(rel); rerr == nil && bytes.Equal(old, cur) {
+			return nil
+		}
+	}
 }
 
 // ErrNotOutdated means Upgrade found no newer embedded version of that skill.

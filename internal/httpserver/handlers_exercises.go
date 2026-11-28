@@ -361,7 +361,7 @@ func (a *app) evaluate(w http.ResponseWriter, r *http.Request) {
 		sel, err = topics.SelectForEvaluation(a.root, list, mode, only, a.settings.MaxAnswerBytes)
 	}
 	if errors.Is(err, domain.ErrInvalidInput) {
-		a.respond(w, r, http.StatusBadRequest, id, nil, "تمرین انتخاب‌شده در مجموعه جاری نیست.")
+		a.respond(w, r, http.StatusUnprocessableEntity, id, nil, "تمرین انتخاب‌شده در مجموعه جاری نیست.")
 		return
 	}
 	if errors.Is(err, domain.ErrNothingToEvaluate) {

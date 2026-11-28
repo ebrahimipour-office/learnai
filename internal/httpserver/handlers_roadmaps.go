@@ -426,7 +426,7 @@ func (a *app) confirmDraft(w http.ResponseWriter, r *http.Request) {
 	for _, v := range r.Form["link"] {
 		newKey, oldKey, ok := strings.Cut(v, "=")
 		if _, dup := links[newKey]; !ok || newKey == "" || oldKey == "" || dup {
-			a.renderDraft(w, r, http.StatusBadRequest, d, "پیوند موضوع نامعتبر است.")
+			a.renderDraft(w, r, http.StatusUnprocessableEntity, d, "پیوند موضوع نامعتبر است.")
 			return
 		}
 		links[newKey] = oldKey
@@ -434,7 +434,7 @@ func (a *app) confirmDraft(w http.ResponseWriter, r *http.Request) {
 	_, _, err = a.drafts.ConfirmLinked(r.Context(), d.ID, links)
 	switch {
 	case errors.Is(err, roadmaps.ErrBadLink):
-		a.renderDraft(w, r, http.StatusBadRequest, d, "پیوند موضوع نامعتبر است؛ هر موضوع جدید فقط به یک موضوع ناپدیدشده پیوند می‌خورد.")
+		a.renderDraft(w, r, http.StatusUnprocessableEntity, d, "پیوند موضوع نامعتبر است؛ هر موضوع جدید فقط به یک موضوع ناپدیدشده پیوند می‌خورد.")
 	case errors.Is(err, roadmaps.ErrNothingSelected):
 		a.renderDraft(w, r, http.StatusUnprocessableEntity, d, "هیچ موضوعی انتخاب نشده است.")
 	case errors.Is(err, roadmaps.ErrTooManyTopics):

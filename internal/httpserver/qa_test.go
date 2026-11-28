@@ -44,8 +44,9 @@ func TestLessonQuestion(t *testing.T) {
 	}
 
 	for name, q := range map[string]string{"empty": "  \n ", "too long": strings.Repeat("س", 2001)} {
-		if c := ask(q); c != http.StatusBadRequest {
-			t.Errorf("%s question: want 400, got %d", name, c)
+		// T13.8(b): 422 so htmx swaps the Persian message in instead of a generic «کد 400».
+		if rec := e.post("/topics/1/jobs/qa", url.Values{"question": {q}}, true); rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "پرسش باید بین") {
+			t.Errorf("%s question: want 422 with the message, got %d", name, rec.Code)
 		}
 	}
 	if c := ask("x"); c != http.StatusAccepted {

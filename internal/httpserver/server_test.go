@@ -570,8 +570,8 @@ func TestReimportLinkFlow(t *testing.T) {
 	link := html.UnescapeString(m[1])
 	newKey, _, _ := strings.Cut(link, "=")
 	for _, bad := range []string{newKey + "=nope", "garbage"} {
-		if rec := e.confirm(draftURL, url.Values{"csrf_token": {csrf}, "confirm": {"1"}, "link": {bad}}); rec.Code != http.StatusBadRequest {
-			t.Errorf("link %q: want 400, got %d", bad, rec.Code)
+		if rec := e.confirm(draftURL, url.Values{"csrf_token": {csrf}, "confirm": {"1"}, "link": {bad}}); rec.Code != http.StatusUnprocessableEntity {
+			t.Errorf("link %q: want 422, got %d", bad, rec.Code)
 		}
 	}
 	if rec := e.confirm(draftURL, url.Values{"csrf_token": {csrf}, "confirm": {"1"}, "link": {link}}); rec.Code != http.StatusSeeOther {

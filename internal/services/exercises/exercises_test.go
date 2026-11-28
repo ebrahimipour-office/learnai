@@ -261,6 +261,17 @@ func TestNeedsLesson(t *testing.T) {
 	}
 }
 
+// T13.8(f): lesson.md is capped by max_source_bytes like qa/flashcards.
+func TestLessonOverCapFails(t *testing.T) {
+	e := setup(t)
+	if err := e.root.WriteAtomic("topics/02-http/lesson/lesson.md", []byte(strings.Repeat("a", 65)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if st, code := e.run(2, good(), `{}`); st != "failed" || code != "source_too_large" || len(e.ad.Calls()) != 0 {
+		t.Errorf("status %s code %s calls %d, want failed source_too_large and no AI call", st, code, len(e.ad.Calls()))
+	}
+}
+
 func TestNewVersionKeepsOld(t *testing.T) {
 	e := setup(t)
 	if st, code := e.run(2, good(), `{}`); st != "succeeded" {

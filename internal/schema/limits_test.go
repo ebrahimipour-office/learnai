@@ -69,3 +69,44 @@ func TestAIExercisesLimitsMatchDownstream(t *testing.T) {
 		}
 	}
 }
+
+// T13.8(g): AI output that lands in immutable reports (WriteNew) and FTS has a size cap.
+func TestAIOutputCaps(t *testing.T) {
+	const ev, le = "ai-evaluation-output.schema.json", "ai-lesson-output.schema.json"
+	for _, c := range []struct {
+		file, path, key string
+		want            float64
+	}{
+		{ev, "criteria_scores", "maxItems", 30},
+		{ev, "criteria_scores.[].comment", "maxLength", 2000},
+		{ev, "errors", "maxItems", 50},
+		{ev, "errors.[].description", "maxLength", 2000},
+		{ev, "errors.[].location", "maxLength", 2000},
+		{ev, "strengths", "maxItems", 50},
+		{ev, "strengths.[]", "maxLength", 2000},
+		{ev, "corrected_answer.content", "maxLength", 20000},
+		{ev, "teaching_notes_markdown", "maxLength", 20000},
+		{le, "keywords", "maxItems", 50},
+		{le, "keywords.[].term", "maxLength", 120},
+		{le, "keywords.[].gloss", "maxLength", 500},
+		{le, "suggestions", "maxItems", 20},
+		{le, "suggestions.[].title", "maxLength", 200},
+		{le, "suggestions.[].reason", "maxLength", 600},
+		{"ai-exercises-output.schema.json", "exercises.[].statement_markdown", "maxLength", 20000},
+	} {
+		if got := node(t, c.file, c.path)[c.key]; got != c.want {
+			t.Errorf("%s %s.%s = %v, want %v", c.file, c.path, c.key, got, c.want)
+		}
+	}
+
+	out := func(notes string) []byte {
+		return []byte(`{"exercise_id":"q01","criteria_scores":[],"score":0,"errors":[],"strengths":[],
+			"corrected_answer":{"format":"text","content":"x"},"teaching_notes_markdown":"` + notes + `"}`)
+	}
+	if err := schema.ValidateAIEvaluationOutput(out(strings.Repeat("a", 20000))); err != nil {
+		t.Errorf("notes at the cap: %v", err)
+	}
+	if err := schema.ValidateAIEvaluationOutput(out(strings.Repeat("a", 20001))); err == nil {
+		t.Error("notes over the cap must be rejected")
+	}
+}

@@ -76,6 +76,23 @@ func TestOutdatedAndUpgrade(t *testing.T) {
 	if ups, _ := Outdated(root); len(ups) != 0 {
 		t.Errorf("still outdated: %+v", ups)
 	}
+
+	// T13.8(d): an existing .bak of the same version no longer blocks the upgrade.
+	for i, edits := range []string{"my edits\n", "other edits\n"} {
+		again := []byte("---\nname: chapter-detector\nversion: 1.0.0\n---\n" + edits)
+		if err := root.WriteAtomic(SkillRel("chapter-detector"), again, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := Upgrade(root, "chapter-detector"); err != nil {
+			t.Fatalf("upgrade %d with an existing backup: %v", i, err)
+		}
+	}
+	if b, _ := root.ReadFile(".agent/chapter-detector/SKILL.1.0.0.2.bak.md"); !strings.HasSuffix(string(b), "other edits\n") {
+		t.Errorf("second backup = %q", b)
+	}
+	if _, err := root.ReadFile(".agent/chapter-detector/SKILL.1.0.0.3.bak.md"); err == nil {
+		t.Error("identical bytes must reuse the existing backup")
+	}
 }
 
 func TestOlder(t *testing.T) {

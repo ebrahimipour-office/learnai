@@ -387,6 +387,30 @@ func TestEvaluateRetryDiscardsCheckpointsWhenAdapterChanges(t *testing.T) {
 	}
 }
 
+// T13.8(e): a language change is part of the fingerprint, so a retry re-runs every step.
+func TestEvaluateRetryDiscardsCheckpointsWhenLanguageChanges(t *testing.T) {
+	var svc *evaluation.Service
+	e := setup(t, 1, func(s *evaluation.Service) { svc = s })
+	e.ad.fail["q02"] = true
+	id := e.enqueue("full")
+	if st, _ := e.wait(id); st != "failed" {
+		t.Fatalf("status %s", st)
+	}
+	e.ad.mu.Lock()
+	e.ad.fail["q02"], svc.Language = false, "en"
+	e.ad.mu.Unlock()
+	retry, err := e.runner.Retry(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := e.wait(retry); st != "succeeded" {
+		t.Fatalf("retry status %s", st)
+	}
+	if c := e.calls(); c["q01"] != 2 {
+		t.Errorf("calls = %v, want q01 re-evaluated in the new language", c)
+	}
+}
+
 func TestCheck(t *testing.T) {
 	rub := schema.RubricExercise{ID: "q01", Criteria: []schema.Criterion{{ID: "c1", MaxPoints: 10}, {ID: "c2", MaxPoints: 5}}}
 	out := func(id, scores string) json.RawMessage {

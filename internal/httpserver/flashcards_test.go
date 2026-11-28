@@ -99,8 +99,12 @@ func TestFlashcards(t *testing.T) {
 	if err := e.db.Writer().QueryRow(`SELECT id FROM flashcards ORDER BY id LIMIT 1`).Scan(&card); err != nil {
 		t.Fatal(err)
 	}
-	grade := func(id int64, knew string) int {
-		return e.post("/topics/1/cards/"+itoa(id), url.Values{"knew": {knew}}, false).Code
+	grade := func(id int64, knew string, box ...string) int {
+		b := "1"
+		if len(box) > 0 {
+			b = box[0]
+		}
+		return e.post("/topics/1/cards/"+itoa(id), url.Values{"knew": {knew}, "box": {b}}, false).Code
 	}
 	if c := grade(card, "x"); c != http.StatusBadRequest {
 		t.Errorf("bad grade: want 400, got %d", c)
@@ -114,10 +118,16 @@ func TestFlashcards(t *testing.T) {
 	if n := e.count(`SELECT box FROM flashcards WHERE id = ` + itoa(card)); n != 2 {
 		t.Errorf("known card: box %d, want 2", n)
 	}
+	if c := grade(card, "1"); c != http.StatusSeeOther { // T13.8(a): a double-click's second submit, still box=1
+		t.Fatalf("double grade: want 303, got %d", c)
+	}
+	if n := e.count(`SELECT box FROM flashcards WHERE id = ` + itoa(card)); n != 2 {
+		t.Errorf("double-click: box %d, want 2", n)
+	}
 	if !strings.Contains(e.get("/topics/1").Body.String(), "۱ کارت از ۲") {
 		t.Error("a graded card is no longer due")
 	}
-	grade(card, "0")
+	grade(card, "0", "2")
 	if n := e.count(`SELECT box FROM flashcards WHERE id = ` + itoa(card)); n != 1 {
 		t.Errorf("unknown answer: box %d, want 1", n)
 	}

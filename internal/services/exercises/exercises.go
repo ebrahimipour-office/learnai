@@ -163,11 +163,7 @@ func (s *Service) currentLesson(ctx context.Context, t topic) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	b, err := s.Root.ReadFile(rel)
-	if err != nil {
-		return nil, fmt.Errorf("reading lesson %s: %w", rel, err)
-	}
-	return b, nil
+	return prompt.ReadSource(s.Root, rel, s.MaxSource) // capped like qa/flashcards (T13.8)
 }
 
 func (s *Service) input(jobID int64, t topic, lessonMD []byte, count int) (prompt.Input, error) {
