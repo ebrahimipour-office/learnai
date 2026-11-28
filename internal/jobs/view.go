@@ -75,7 +75,8 @@ const (
 
 func (r *Runner) scanInfo(ctx context.Context, where string, args ...any) (*Info, error) {
 	var i Info
-	err := r.db.Writer().QueryRowContext(ctx, infoCols+where, args...).Scan(&i.ID, &i.TopicID, &i.Kind, &i.Status,
+	// T13.10: the read pool, so job card polls never queue behind the writer.
+	err := r.db.Reader().QueryRowContext(ctx, infoCols+where, args...).Scan(&i.ID, &i.TopicID, &i.Kind, &i.Status,
 		&i.Phase, &i.Done, &i.Total, &i.ErrorCode, &i.ErrorMessage, &i.CancelRequested, &i.EnqueuedAt, &i.StartedAt, &i.FinishedAt,
 		&i.AutoAttempt, &i.NotBefore, &i.InputTokens, &i.OutputTokens)
 	i.AutoMax = r.AutoRetry

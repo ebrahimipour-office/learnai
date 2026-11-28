@@ -94,22 +94,41 @@ func (s *Service) Panel(ctx context.Context, id int64) (*Panel, error) {
 		ORDER BY ord LIMIT 1`, roadmapID, ord); err != nil {
 		return nil, err
 	}
+	return p, s.lessons(ctx, p)
+}
+
+// JobPanel is the part of Panel the polled job card shows (ID, Title, Busy, Lessons), in two queries (T13.10).
+func (s *Service) JobPanel(ctx context.Context, id int64) (*Panel, error) {
+	p := &Panel{ID: id}
+	err := s.db.Reader().QueryRowContext(ctx, `
+		SELECT t.title, EXISTS (SELECT 1 FROM jobs j WHERE j.topic_id = t.id AND j.status IN ('queued','running'))
+		FROM topics t WHERE t.id = ?`, id).Scan(&p.Title, &p.Busy)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return p, s.lessons(ctx, p)
+}
+
+func (s *Service) lessons(ctx context.Context, p *Panel) error {
 	rows, err := s.db.Reader().QueryContext(ctx, `
 		SELECT v.version, f.rel_path, v.is_current, COALESCE(v.model, ''), v.created_at
 		FROM lesson_versions v JOIN files f ON f.id = v.file_id
-		WHERE v.topic_id = ? ORDER BY v.version DESC`, id)
+		WHERE v.topic_id = ? ORDER BY v.version DESC`, p.ID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var v LessonVersion
 		if err := rows.Scan(&v.Version, &v.RelPath, &v.Current, &v.Model, &v.CreatedAt); err != nil {
-			return nil, err
+			return err
 		}
 		p.Lessons = append(p.Lessons, v)
 	}
-	return p, rows.Err()
+	return rows.Err()
 }
 
 func (s *Service) refs(ctx context.Context, dst *[]Ref, query string, id int64) error {

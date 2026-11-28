@@ -3,6 +3,7 @@ package httpserver
 import (
 	"bytes"
 	"cmp"
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -282,7 +283,11 @@ func (a *app) autoDetect(r *http.Request, id string) {
 
 // loadDraft writes the error response itself and returns nil when the draft is unavailable.
 func (a *app) loadDraft(w http.ResponseWriter, r *http.Request) *roadmaps.Draft {
-	d, err := a.drafts.Draft(r.Context(), r.PathValue("id"))
+	return a.loadDraftWith(w, r, a.drafts.Draft)
+}
+
+func (a *app) loadDraftWith(w http.ResponseWriter, r *http.Request, load func(context.Context, string) (*roadmaps.Draft, error)) *roadmaps.Draft {
+	d, err := load(r.Context(), r.PathValue("id"))
 	if errors.Is(err, roadmaps.ErrDraftNotFound) {
 		a.renderNew(w, r, http.StatusNotFound, "پیش‌نویس پیدا نشد یا منقضی شده است؛ فایل را دوباره بارگذاری کنید.")
 		return nil
@@ -535,16 +540,20 @@ func (a *app) draftAI(r *http.Request, d *roadmaps.Draft, data *pageData) error 
 			data.AILabel = faDigits.Replace(fmt.Sprintf("%d فصل", len(d.AI.Rule.Chapters)))
 		}
 	}
-	data.HasH2 = hasLevel(roadmap.Parse(d.Content), 2)
 	ack, err := a.privacyAck(r.Context())
 	if err != nil {
 		return err
 	}
 	data.PrivacyAck = ack
 	// Both draft jobs share the scope, so the latest of either kind is the one to show.
-	j, err := a.runner.Latest(r.Context(), roadmaps.DraftScope(d.ID), "")
-	data.Job = j
-	return err
+	if data.Job, err = a.runner.Latest(r.Context(), roadmaps.DraftScope(d.ID), ""); err != nil {
+		return err
+	}
+	// The hint shows only without an active job; skipping the parse keeps the 2s poll cheap (T13.10).
+	if data.Job == nil || !data.Job.Active() {
+		data.HasH2 = hasLevel(roadmap.Parse(d.Content), 2)
+	}
+	return nil
 }
 
 // renderDraftAI serves only the AI-suggestion section (htmx swap and polling).
@@ -560,16 +569,25 @@ func (a *app) renderDraftAI(w http.ResponseWriter, r *http.Request, status int, 
 
 // draftAIStatus is polled every 2s while the analysis runs; once it ends the page reloads to show the result.
 func (a *app) draftAIStatus(w http.ResponseWriter, r *http.Request) {
-	d := a.loadDraft(w, r)
+	poll := r.URL.Query().Get("poll") == "1"
+	load := a.drafts.Draft
+	if poll { // a finished job reloads the page, so the content-only H2 hint is never seen here (T13.10)
+		load = a.drafts.DraftMeta
+	}
+	d := a.loadDraftWith(w, r, load)
 	if d == nil {
 		return
 	}
-	if r.URL.Query().Get("poll") == "1" {
-		if j, err := a.runner.Latest(r.Context(), roadmaps.DraftScope(d.ID), ""); err == nil && (j == nil || !j.Active()) {
-			w.Header().Set("HX-Refresh", "true")
-		}
+	data := &pageData{}
+	if err := a.draftAI(r, d, data); err != nil {
+		slog.Error("loading draft analysis", "error", err)
+		http.Error(w, "خطای داخلی", http.StatusInternalServerError)
+		return
 	}
-	a.renderDraftAI(w, r, http.StatusOK, d, "")
+	if poll && (data.Job == nil || !data.Job.Active()) {
+		w.Header().Set("HX-Refresh", "true")
+	}
+	a.render(w, http.StatusOK, "draft", "draft-ai", data)
 }
 
 // draftJob queues a roadmap_analyze (T6.2) or chapter_detect (T7.4) job. Its result is only a

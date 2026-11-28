@@ -48,7 +48,11 @@ var lessonTabKinds = map[string][]domain.JobKind{"": {domain.JobKindQA, domain.J
 
 // panelData loads the topic and its tab's latest job; job overrides the latest one when non-nil.
 func (a *app) panelData(r *http.Request, id int64, tab string, job *jobs.Info) (*pageData, error) {
-	p, err := a.topics.Panel(r.Context(), id)
+	load := a.topics.Panel
+	if job != nil && r.URL.Query().Get("poll") == "1" && r.Header.Get("HX-Request") == "true" {
+		load = a.topics.JobPanel // the 2s job card poll renders only job-response (T13.10)
+	}
+	p, err := load(r.Context(), id)
 	if err != nil {
 		return nil, err
 	}

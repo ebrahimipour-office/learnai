@@ -111,7 +111,7 @@ func (s *Service) clean(ctx context.Context, dir, cutoff string, res *Result) er
 			continue
 		}
 		var status, finished string
-		err = s.DB.Writer().QueryRowContext(ctx, `SELECT status, COALESCE(finished_at, '') FROM jobs WHERE id = ?`, id).Scan(&status, &finished)
+		err = s.DB.Reader().QueryRowContext(ctx, `SELECT status, COALESCE(finished_at, '') FROM jobs WHERE id = ?`, id).Scan(&status, &finished)
 		switch {
 		case errors.Is(err, sql.ErrNoRows): // orphan
 		case err != nil:
@@ -144,7 +144,8 @@ func (s *Service) backup(ctx context.Context, now time.Time, force bool, res *Re
 			return err
 		}
 		abs := filepath.Join(s.Root.BaseDir(), filepath.FromSlash(tmp))
-		if _, err := s.DB.Writer().ExecContext(ctx, `VACUUM INTO ?`, abs); err != nil {
+		// T13.10: VACUUM INTO only reads the source, so the read pool runs it without blocking writes.
+		if _, err := s.DB.Reader().ExecContext(ctx, `VACUUM INTO ?`, abs); err != nil {
 			_ = s.Root.Remove(tmp)
 			return fmt.Errorf("backing up database: %w", err)
 		}

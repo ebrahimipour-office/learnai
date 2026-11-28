@@ -169,13 +169,23 @@ func (s *Service) createDraft(ctx context.Context, roadmapID int64, name string,
 
 // Draft loads a draft that has not expired.
 func (s *Service) Draft(ctx context.Context, id string) (*Draft, error) {
+	return s.draft(ctx, id, true)
+}
+
+// DraftMeta is Draft without Content (up to 1MB), for the 2s analysis poll (T13.10).
+func (s *Service) DraftMeta(ctx context.Context, id string) (*Draft, error) {
+	return s.draft(ctx, id, false)
+}
+
+func (s *Service) draft(ctx context.Context, id string, withContent bool) (*Draft, error) {
 	var content, choice, expires string
 	var roadmapID sql.NullInt64
 	var suggestion, title sql.NullString
 	d := &Draft{ID: id}
-	err := s.db.Writer().QueryRowContext(ctx,
-		`SELECT roadmap_id, source_name, content, selection, expires_at, ai_suggestion, title FROM import_drafts WHERE id = ? AND expires_at > ?`,
-		id, s.ts(s.Now())).Scan(&roadmapID, &d.SourceName, &content, &choice, &expires, &suggestion, &title)
+	err := s.db.Reader().QueryRowContext(ctx,
+		`SELECT roadmap_id, source_name, CASE WHEN ? THEN content ELSE '' END, selection, expires_at, ai_suggestion, title
+		 FROM import_drafts WHERE id = ? AND expires_at > ?`,
+		withContent, id, s.ts(s.Now())).Scan(&roadmapID, &d.SourceName, &content, &choice, &expires, &suggestion, &title)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrDraftNotFound
 	}
