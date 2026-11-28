@@ -87,6 +87,7 @@ type pageData struct {
 	Job       *jobs.Info            // latest job of the topic; nil = none
 	Notice    string                // job action feedback inside the job area
 	Questions []qaRow               // T10.21: answered questions under the lesson, newest first
+	QAMore    bool                  // T13.12: older questions were left out; ?qa=all shows them
 	Deck      *topics.Deck          // T11.3: cards of the current lesson; nil = not loaded
 	Cards     []cardRow             // T11.3: due cards, rendered
 

@@ -9,10 +9,10 @@ type Question struct {
 	CreatedAt          string
 }
 
-// Questions lists the topic's answered questions, newest first.
-func (s *Service) Questions(ctx context.Context, topicID int64) ([]Question, error) {
+// Questions lists the topic's newest limit answered questions, newest first; limit < 0 = all.
+func (s *Service) Questions(ctx context.Context, topicID int64, limit int) ([]Question, error) {
 	rows, err := s.db.Reader().QueryContext(ctx, `SELECT q.question, q.answer_md, v.version, q.created_at
-		FROM lesson_qa q JOIN lesson_versions v ON v.id = q.lesson_version_id WHERE q.topic_id = ? ORDER BY q.id DESC`, topicID)
+		FROM lesson_qa q JOIN lesson_versions v ON v.id = q.lesson_version_id WHERE q.topic_id = ? ORDER BY q.id DESC LIMIT ?`, topicID, limit)
 	if err != nil {
 		return nil, err
 	}

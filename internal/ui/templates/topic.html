@@ -69,6 +69,7 @@
       <summary><bdi>{{.Question}}</bdi> <span class="note">· نسخه {{fa .Version}} · <bdi>{{localTime .CreatedAt}}</bdi></span></summary>
       <div class="md" dir="auto">{{.Answer}}</div>
     </details>{{end}}
+    {{if .QAMore}}<p><a href="/topics/{{.Panel.ID}}/lesson?v={{.Viewing.Version}}&amp;qa=all#qa">نمایش همه پرسش‌ها</a></p>{{end}}
   </section>
   {{with .Deck}}<section id="cards" class="qa" aria-labelledby="cards-title">
     <h2 id="cards-title">کارت‌های مرور</h2>

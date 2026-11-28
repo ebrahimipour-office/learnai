@@ -1,10 +1,13 @@
 package httpserver
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"io/fs"
 	"mime"
 	"net/http"
+	"strings"
 	"time"
 
 	"learninghub/internal/domain"
@@ -32,7 +35,7 @@ func NewServer(addr string, sm *SecurityManager, drafts *roadmaps.Service, topic
 	mux.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(static)))
+	mux.Handle("GET /static/", http.StripPrefix("/static/", staticHandler(static)))
 	mux.Handle("GET /{$}", http.RedirectHandler("/topics", http.StatusSeeOther))
 	mux.HandleFunc("GET /topics", a.requireAck(a.listTopics))
 	mux.HandleFunc("GET /topics/{id}", a.showTopic)
@@ -88,4 +91,36 @@ func NewServer(addr string, sm *SecurityManager, drafts *roadmaps.Service, topic
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
+}
+
+// staticHandler serves the embedded assets with a content-hash ETag (embed.FS has no ModTime, so
+// without it every navigation re-downloads them; ServeContent answers If-None-Match with 304).
+// Fonts never change in place, so they are cached for a year (T13.12).
+func staticHandler(static fs.FS) http.Handler {
+	etags := map[string]string{}
+	err := fs.WalkDir(static, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, err := fs.ReadFile(static, p)
+		if err != nil {
+			return err
+		}
+		sum := sha256.Sum256(b)
+		etags[p] = `"` + hex.EncodeToString(sum[:8]) + `"`
+		return nil
+	})
+	if err != nil {
+		panic(err) // embedded at build time; cannot fail at runtime
+	}
+	files := http.FileServerFS(static)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if tag, ok := etags[r.URL.Path]; ok {
+			w.Header().Set("ETag", tag)
+			if strings.HasPrefix(r.URL.Path, "fonts/") {
+				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+			}
+		}
+		files.ServeHTTP(w, r)
+	})
 }

@@ -25,6 +25,8 @@ import (
 const (
 	backupDir          = ".app/backup"
 	defaultKeepBackups = 7
+	keepSyncRuns       = 20                   // only the latest run is read; a few more for an apply in flight
+	auditRetention     = 365 * 24 * time.Hour // nothing reads audit_log yet; a year is plenty
 )
 
 type Service struct {
@@ -57,8 +59,22 @@ func (s *Service) Run(ctx context.Context, now time.Time, force bool) (*Result, 
 	for _, dir := range []string{".app/work", ".app/staging", ".app/logs/jobs"} {
 		errs = append(errs, s.clean(ctx, dir, cutoff, res))
 	}
-	errs = append(errs, s.sweepTmp(now, res), s.backup(ctx, now, force, res))
+	errs = append(errs, s.sweepTmp(now, res), s.prune(ctx, now), s.backup(ctx, now, force, res))
 	return res, errors.Join(errs...)
+}
+
+// prune bounds the rows that grow with every scan or action, so backups stop repeating them (T13.12).
+// jobs stays: lessons, sets and reports reference it.
+func (s *Service) prune(ctx context.Context, now time.Time) error {
+	_, err := s.DB.Writer().ExecContext(ctx, `DELETE FROM sync_runs WHERE id NOT IN (SELECT id FROM sync_runs ORDER BY id DESC LIMIT ?)`, keepSyncRuns)
+	if err != nil {
+		return fmt.Errorf("pruning sync_runs: %w", err)
+	}
+	cutoff := now.Add(-auditRetention).UTC().Format("2006-01-02T15:04:05.000Z")
+	if _, err := s.DB.Writer().ExecContext(ctx, `DELETE FROM audit_log WHERE ts < ?`, cutoff); err != nil {
+		return fmt.Errorf("pruning audit_log: %w", err)
+	}
+	return nil
 }
 
 // sweepTmp removes temp files a crash left behind; an hour is far longer than any write takes (CR-34).

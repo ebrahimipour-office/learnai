@@ -110,3 +110,33 @@ func TestLessonQuestion(t *testing.T) {
 		t.Error("finished qa card: want a link to the answer")
 	}
 }
+
+// T13.12(b): a lesson page renders only the newest 30 questions; ?qa=all shows the rest.
+func TestLessonQuestionsCapped(t *testing.T) {
+	e := newEnv(t)
+	e.seedTopics()
+	e.ad.Output = lessonOutput("درس")
+	e.post("/topics/1/jobs/lesson", nil, true)
+	id, _ := e.lastJob()
+	e.pollUntilDone(id)
+	_, err := e.db.Writer().Exec(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i < 100)
+		INSERT INTO jobs(id, kind, scope_key, topic_id, status) SELECT 1000+i, 'qa', 'topic:1', 1, 'succeeded' FROM n`)
+	if err == nil {
+		_, err = e.db.Writer().Exec(`INSERT INTO lesson_qa(topic_id, lesson_version_id, question, answer_md, job_id)
+			SELECT 1, (SELECT id FROM lesson_versions WHERE topic_id = 1), 'پرسش-' || (id-1000) || '؟', 'پاسخ', id FROM jobs WHERE kind = 'qa'`)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := e.get("/topics/1").Body.String()
+	if n := strings.Count(page, `class="qa-item"`); n != 30 {
+		t.Errorf("want 30 questions, got %d", n)
+	}
+	if !strings.Contains(page, "پرسش-100؟") || strings.Contains(page, "پرسش-70؟") || !strings.Contains(page, "qa=all#qa") {
+		t.Error("want the newest 30 and a «نمایش همه» link")
+	}
+	all := e.get("/topics/1/lesson?v=1&qa=all").Body.String()
+	if n := strings.Count(all, `class="qa-item"`); n != 100 || strings.Contains(all, "qa=all#qa") {
+		t.Errorf("?qa=all: want 100 questions and no link, got %d", n)
+	}
+}

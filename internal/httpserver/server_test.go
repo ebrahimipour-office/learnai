@@ -207,6 +207,20 @@ func TestSecurityMiddlewareIsWired(t *testing.T) {
 		if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "font/woff2" || !strings.HasPrefix(rec.Body.String(), "wOF2") {
 			t.Errorf("font %s: got %d %q", f, rec.Code, rec.Header().Get("Content-Type"))
 		}
+		if cc := rec.Header().Get("Cache-Control"); !strings.Contains(cc, "immutable") {
+			t.Errorf("font %s: want immutable cache, got %q", f, cc)
+		}
+	}
+	// T13.12: content-hash ETag, revalidation answers 304 with no body.
+	rec = e.do(httptest.NewRequest(http.MethodGet, "/static/app.css", nil))
+	tag := rec.Header().Get("ETag")
+	if tag == "" || rec.Header().Get("Cache-Control") != "no-cache" {
+		t.Fatalf("app.css: want ETag + no-cache, got %q %q", tag, rec.Header().Get("Cache-Control"))
+	}
+	req = httptest.NewRequest(http.MethodGet, "/static/app.css", nil)
+	req.Header.Set("If-None-Match", tag)
+	if rec = e.do(req); rec.Code != http.StatusNotModified || rec.Body.Len() != 0 {
+		t.Errorf("If-None-Match: want 304 empty, got %d (%d bytes)", rec.Code, rec.Body.Len())
 	}
 }
 

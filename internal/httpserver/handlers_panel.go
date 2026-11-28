@@ -135,6 +135,9 @@ func (a *app) showSource(w http.ResponseWriter, r *http.Request) {
 	a.render(w, http.StatusOK, "topic", "layout", d)
 }
 
+// qaShown caps the questions rendered (goldmark+bluemonday each) on a lesson page view (T13.12).
+const qaShown = 30
+
 // fillLesson renders the version in ?v= (default: current). The file is the user's, so it may be gone or edited.
 func (a *app) fillLesson(r *http.Request, d *pageData) {
 	want, _ := strconv.ParseInt(r.URL.Query().Get("v"), 10, 64)
@@ -148,9 +151,16 @@ func (a *app) fillLesson(r *http.Request, d *pageData) {
 	if d.Viewing == nil {
 		return
 	}
-	qs, err := a.topics.Questions(r.Context(), d.Panel.ID)
+	limit := qaShown + 1 // one extra tells whether «نمایش همه» is needed
+	if r.URL.Query().Get("qa") == "all" {
+		limit = -1
+	}
+	qs, err := a.topics.Questions(r.Context(), d.Panel.ID, limit)
 	if err != nil {
 		slog.Error("loading lesson questions", "topic", d.Panel.ID, "error", err) // the lesson still shows
+	}
+	if limit > 0 && len(qs) > qaShown {
+		qs, d.QAMore = qs[:qaShown], true
 	}
 	for _, q := range qs {
 		d.Questions = append(d.Questions, qaRow{q.Question, q.CreatedAt, q.Version, render.Markdown([]byte(q.AnswerMD))})

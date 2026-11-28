@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -586,5 +588,67 @@ func TestBatchShimRefused(t *testing.T) {
 				t.Fatalf("Run: want ErrBatchShimUnsupported, got %v", err)
 			}
 		})
+	}
+}
+
+// T13.12(d): 120MB of stdout leaves events.ndjson under its cap with each line cut to 64KB,
+// while the decoder still gets the full (long) result line.
+func TestEventsLogCapped(t *testing.T) {
+	root, err := fsx.OpenRoot(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	f, err := root.OpenFile("events.ndjson", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	noise := strings.NewReader(`{"event":"step_update","pad":"` + strings.Repeat("a", 200<<10) + `"}` + "\n")
+	parts := []io.Reader{}
+	for range 600 { // 120MB
+		r := *noise
+		parts = append(parts, &r)
+	}
+	big := strings.Repeat("b", 200<<10)
+	parts = append(parts, strings.NewReader(success(`"response":"done","structured_output":{"lesson_markdown":"`+big+`"}`)+"\n"))
+	dec := &agyDecoder{}
+	res, _, tooLong := readStream(context.Background(), io.MultiReader(parts...), nil, &jobLog{events: f}, dec)
+	if tooLong || res == nil || !strings.Contains(string(res.StructuredOutput), big) {
+		t.Fatalf("result not decoded in full (tooLong %v)", tooLong)
+	}
+	info, _ := f.Stat()
+	if info.Size() > maxEventsLog {
+		t.Errorf("events.ndjson = %d bytes, cap %d", info.Size(), maxEventsLog)
+	}
+	b, _ := fs.ReadFile(root.FS(), "events.ndjson")
+	lines := strings.Split(strings.TrimSuffix(string(b), "\n"), "\n")
+	for _, l := range lines {
+		if len(l) > maxEventLine {
+			t.Fatalf("logged line of %d bytes", len(l))
+		}
+	}
+	if !strings.Contains(lines[len(lines)-1], "cap reached") {
+		t.Error("want a cap marker as the last logged line")
+	}
+}
+
+// T13.12(d): a secret straddling the 64KB cut is still masked.
+func TestEventLineCutKeepsMasking(t *testing.T) {
+	root, err := fsx.OpenRoot(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	f, err := root.OpenFile("e", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	key := "sk-" + strings.Repeat("Z", 40)
+	(&jobLog{events: f}).event([]byte(strings.Repeat("a", maxEventLine-10) + key))
+	b, _ := fs.ReadFile(root.FS(), "e")
+	if strings.Contains(string(b), "ZZZ") {
+		t.Errorf("secret fragment logged: %q", b[len(b)-20:])
 	}
 }

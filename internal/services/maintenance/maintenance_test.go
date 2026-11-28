@@ -422,3 +422,34 @@ func TestBadBackupKeepsOldOnesAndStaleTmpRemoved(t *testing.T) {
 		t.Fatalf("earlier day's temp file kept: %v", err)
 	}
 }
+
+// T13.12(c): Run keeps the newest 20 sync_runs and drops audit_log rows older than a year.
+func TestRunPrunesSyncRunsAndAudit(t *testing.T) {
+	_, db, svc := newBackupEnv(t)
+	now := time.Date(2026, 11, 28, 12, 0, 0, 0, time.UTC)
+	for i := range 50 {
+		if _, err := db.Writer().Exec(`INSERT INTO sync_runs(started_at, report) VALUES ('x', ?)`, strconv.Itoa(i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, ts := range []string{"2025-01-01T00:00:00.000Z", "2026-11-01T00:00:00.000Z"} {
+		if _, err := db.Writer().Exec(`INSERT INTO audit_log(ts, action) VALUES (?, 'a')`, ts); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := svc.Run(context.Background(), now, false); err != nil {
+		t.Fatal(err)
+	}
+	var runs, oldest, audits int
+	if err := db.Writer().QueryRow(`SELECT COUNT(*), MIN(CAST(report AS INTEGER)) FROM sync_runs`).Scan(&runs, &oldest); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Writer().QueryRow(`SELECT COUNT(*) FROM audit_log WHERE ts LIKE '2026-%'`).Scan(&audits); err != nil {
+		t.Fatal(err)
+	}
+	var total int
+	_ = db.Writer().QueryRow(`SELECT COUNT(*) FROM audit_log`).Scan(&total)
+	if runs != 20 || oldest != 30 || audits != 1 || total != 1 {
+		t.Errorf("sync_runs %d (oldest %d), audit_log %d/%d; want 20 (30), 1/1", runs, oldest, audits, total)
+	}
+}

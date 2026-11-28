@@ -457,7 +457,16 @@ type jobLog struct {
 	ver    string
 	adName string
 	events *os.File
+	logged int64 // bytes written to events.ndjson
 }
+
+// Per-run bounds on events.ndjson (T13.12); the decoder still gets every full line.
+const (
+	maxEventsLog  = 32 << 20
+	maxEventLine  = 64 << 10
+	maskOverlap   = 256 // a secret straddling the cut is masked whole before the final cut
+	eventsLogFull = `{"log":"events.ndjson cap reached; later events not logged"}` + "\n"
+)
 
 func (a *Adapter) openLog(req ai.Request) (*jobLog, error) {
 	if a.cfg.Logs == nil {
@@ -503,7 +512,19 @@ func (l *jobLog) event(line []byte) {
 	if l == nil {
 		return
 	}
-	_, _ = l.events.WriteString(mask(string(line)) + "\n")
+	if l.logged >= maxEventsLog {
+		return
+	}
+	s := string(line[:min(len(line), maxEventLine+maskOverlap)])
+	s = mask(s)
+	s = s[:min(len(s), maxEventLine)] + "\n"
+	if l.logged+int64(len(s)) > maxEventsLog {
+		s = eventsLogFull
+		l.logged = maxEventsLog
+	} else {
+		l.logged += int64(len(s))
+	}
+	_, _ = l.events.WriteString(s)
 }
 
 // finish is best-effort: a log write failure must not hide the run's real outcome.
