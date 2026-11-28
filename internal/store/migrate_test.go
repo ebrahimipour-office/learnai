@@ -256,3 +256,31 @@ func TestOpenBacksUpBeforeMigrate(t *testing.T) {
 		t.Fatalf("fresh database got a backup dir: %v", err)
 	}
 }
+
+// T13.9: the per-exercise "latest evaluated answer" subquery and the rubric lookup use indexes, not scans.
+func TestMigrate0013IndexesUsed(t *testing.T) {
+	d := openAt(t, 13)
+	for q, want := range map[string]string{
+		`SELECT 1 FROM attempt_items i WHERE i.exercise_id = 1 AND i.status = 'evaluated'`: "idx_attempt_items_exercise",
+		`SELECT 1 FROM exercise_sets x WHERE x.rubric_file = 1`:                            "idx_exercise_sets_rubric",
+		`SELECT kind, COUNT(*) FROM jobs WHERE finished_at >= '2026' GROUP BY kind`:        "idx_jobs_finished",
+	} {
+		rows, err := d.writer.Query("EXPLAIN QUERY PLAN " + q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var plan strings.Builder
+		for rows.Next() {
+			var id, parent, notused int
+			var detail string
+			if err := rows.Scan(&id, &parent, &notused, &detail); err != nil {
+				t.Fatal(err)
+			}
+			plan.WriteString(detail + "\n")
+		}
+		rows.Close()
+		if !strings.Contains(plan.String(), want) {
+			t.Errorf("%s\nplan:\n%s\nwant %s", q, plan.String(), want)
+		}
+	}
+}
