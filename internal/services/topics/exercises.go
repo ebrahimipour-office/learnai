@@ -33,10 +33,11 @@ type Exercise struct {
 
 // Answer statuses of the answers tab (R3.3).
 const (
-	AnswerMissing = "missing"
-	AnswerEmpty   = "unanswered"
-	AnswerDone    = "answered"
-	AnswerChanged = "changed"
+	AnswerMissing  = "missing"
+	AnswerEmpty    = "unanswered"
+	AnswerDone     = "answered"
+	AnswerChanged  = "changed"
+	AnswerTooLarge = "too_large" // over limits.max_answer_bytes; not hashed on page views
 )
 
 // AnswerStatus derives the status from the hash on disk now; diskSHA "" means the file is gone.

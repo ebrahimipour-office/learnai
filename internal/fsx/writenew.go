@@ -30,6 +30,31 @@ func SetWriteSyncHookForTest(hook func(f *os.File, data []byte) error) (cleanup 
 // If the target file already exists, it returns ErrFileExists and guarantees the existing file
 // remains untouched. If the platform refuses hard links, it falls back to direct O_EXCL write.
 func (r *Root) WriteNew(relPath string, data []byte, perm os.FileMode) error {
+	return r.writeNew(relPath, data, perm, nil)
+}
+
+// DirSyncs collects the directory fsyncs WriteNewDeferred put off.
+type DirSyncs map[string]bool
+
+// WriteNewDeferred is WriteNew that adds its directory fsyncs to pending instead of running them, so
+// many files in shared folders fsync each folder once. Call SyncDirs before relying on the new names.
+func (r *Root) WriteNewDeferred(relPath string, data []byte, perm os.FileMode, pending DirSyncs) error {
+	return r.writeNew(relPath, data, perm, pending)
+}
+
+// SyncDirs fsyncs each directory in pending once.
+func (r *Root) SyncDirs(pending DirSyncs) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.closed {
+		return
+	}
+	for d := range pending {
+		syncDir(r.rawRoot, d)
+	}
+}
+
+func (r *Root) writeNew(relPath string, data []byte, perm os.FileMode, pending DirSyncs) error {
 	if err := ValidateRelPath(relPath); err != nil {
 		return err
 	}
@@ -62,7 +87,7 @@ func (r *Root) WriteNew(relPath string, data []byte, perm os.FileMode) error {
 	_ = r.rawRoot.Remove(tmpName) // temp is no longer needed whether link succeeds or fails
 
 	if err == nil {
-		r.syncNew(dir, top)
+		r.syncNew(dir, top, pending)
 		return nil
 	}
 
@@ -72,7 +97,7 @@ func (r *Root) WriteNew(relPath string, data []byte, perm os.FileMode) error {
 
 	// shortcut: platform or filesystem refuses hard links; fall back to direct O_EXCL write (CR-07)
 	if isLinkUnsupported(err) {
-		return r.writeNewDirect(cleanRel, top, data, perm)
+		return r.writeNewDirect(cleanRel, top, data, perm, pending)
 	}
 
 	return fmt.Errorf("linking %s to %s: %w", tmpName, cleanRel, err)
@@ -80,7 +105,7 @@ func (r *Root) WriteNew(relPath string, data []byte, perm os.FileMode) error {
 
 // writeNewDirect is the no-hard-link fallback: temp file, then rename, so a crash never leaves a
 // partial file under the final name (T13.4).
-func (r *Root) writeNewDirect(cleanRel, top string, data []byte, perm os.FileMode) error {
+func (r *Root) writeNewDirect(cleanRel, top string, data []byte, perm os.FileMode, pending DirSyncs) error {
 	dir := path.Dir(cleanRel)
 	tmpName, f, err := r.createTemp(dir, ".%s.tmp-%s", path.Base(cleanRel), perm)
 	if err != nil {
@@ -102,7 +127,7 @@ func (r *Root) writeNewDirect(cleanRel, top string, data []byte, perm os.FileMod
 		_ = r.rawRoot.Remove(tmpName)
 		return fmt.Errorf("renaming %s to %s: %w", tmpName, cleanRel, err)
 	}
-	r.syncNew(dir, top)
+	r.syncNew(dir, top, pending)
 	return nil
 }
 
@@ -145,13 +170,21 @@ func (r *Root) mkdirParents(dir string) (string, error) {
 }
 
 // syncNew fsyncs dir (the new entry in it) and, for each directory created up to top, its parent.
-func (r *Root) syncNew(dir, top string) {
-	syncDir(r.rawRoot, dir)
+// With pending non-nil the directories are only recorded there.
+func (r *Root) syncNew(dir, top string, pending DirSyncs) {
+	sync := func(d string) {
+		if pending != nil {
+			pending[d] = true
+		} else {
+			syncDir(r.rawRoot, d)
+		}
+	}
+	sync(dir)
 	if top == "" {
 		return
 	}
 	for d := dir; ; d = path.Dir(d) {
-		syncDir(r.rawRoot, path.Dir(d))
+		sync(path.Dir(d))
 		if d == top || d == "." {
 			return
 		}
@@ -245,6 +278,6 @@ func (r *Root) WriteAtomic(relPath string, data []byte, perm os.FileMode) error 
 		return fmt.Errorf("renaming %s to %s: %w", tmpName, cleanRel, err)
 	}
 
-	r.syncNew(dir, top)
+	r.syncNew(dir, top, nil)
 	return nil
 }

@@ -226,3 +226,33 @@ func TestReimportLinksRename(t *testing.T) {
 		t.Errorf("audit rows: %d", n)
 	}
 }
+
+// T13.11: a second Diff of an unchanged draft comes from import_drafts.diff; a new selection
+// or a changed recorded topic computes it again.
+func TestDiffIsCached(t *testing.T) {
+	s, db, _ := newServiceIn(t, t.TempDir())
+	ctx := context.Background()
+	id, _ := s.CreateDraft(ctx, "go.md", []byte(sample))
+	rid, _, err := s.Confirm(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, first := reimport(t, s, rid, sampleV2)
+	runs := roadmaps.DiffRuns()
+	again, err := s.Diff(ctx, d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if roadmaps.DiffRuns() != runs || !reflect.DeepEqual(first, again) {
+		t.Fatalf("second Diff: runs %d→%d, %+v vs %+v; want the cached diff", runs, roadmaps.DiffRuns(), again, first)
+	}
+	if _, err := db.Writer().Exec(`UPDATE topics SET title = 'Renamed' WHERE roadmap_id = ? AND title = 'Types'`, rid); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Diff(ctx, d); err != nil {
+		t.Fatal(err)
+	}
+	if roadmaps.DiffRuns() != runs+1 {
+		t.Fatal("a changed recorded topic must recompute the diff")
+	}
+}

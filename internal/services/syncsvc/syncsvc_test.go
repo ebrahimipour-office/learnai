@@ -3,6 +3,7 @@ package syncsvc_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -622,5 +623,42 @@ func TestRegisteredUnreadableNotFatal(t *testing.T) {
 	}
 	if e.presence(1) != "present" || e.presence(3) != "missing" {
 		t.Errorf("presence lesson=%s ans1=%s", e.presence(1), e.presence(3))
+	}
+}
+
+// T13.11: with a file missing, only unregistered files of a missing file's size are hashed, and a
+// scan with nothing changed writes no files row.
+func TestScanHashesOnlySameSizeCandidates(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	if _, err := e.svc.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 50 {
+		e.write(fmt.Sprintf("topics/01-http/notes/n%02d.bin", i), strings.Repeat("x", 100+i))
+	}
+	e.move(rubricRel, "topics/01-http/rubric-moved.json")
+	n := syncsvc.CountHashes(t)
+	run, err := e.svc.Scan(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *n != 1 {
+		t.Fatalf("hashed %d files; want only the same-size candidate", *n)
+	}
+	if len(run.Report.Moved) != 1 || run.Report.Moved[0].FileID != 2 || len(run.Report.New) != 50 {
+		t.Fatalf("moved %v, %d new; want the rubric moved and 50 new", run.Report.Moved, len(run.Report.New))
+	}
+
+	e.exec(`UPDATE files SET observed_at = 'sentinel'`)
+	if _, err := e.svc.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var touched int
+	if err := e.db.Writer().QueryRow(`SELECT COUNT(*) FROM files WHERE observed_at IS NOT 'sentinel'`).Scan(&touched); err != nil {
+		t.Fatal(err)
+	}
+	if touched != 0 {
+		t.Fatalf("unchanged scan updated %d files rows; want 0", touched)
 	}
 }

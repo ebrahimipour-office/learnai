@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -548,6 +549,31 @@ func TestWriteNewSyncsEveryNewDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	if want := "a/b/c a/b a . x/y x x"; strings.Join(got, " ") != want {
+		t.Fatalf("synced dirs = %v, want %s", got, want)
+	}
+}
+
+// T13.11: deferred writes fsync each shared folder once, only when SyncDirs runs.
+func TestWriteNewDeferredSyncsEachDirOnce(t *testing.T) {
+	root, err := fsx.OpenRoot(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	var got []string
+	defer fsx.SetSyncDirSpyForTest(func(dir string) { got = append(got, dir) })()
+	pending := fsx.DirSyncs{}
+	for _, rel := range []string{"t/a/f.md", "t/b/f.md", "t/b/g.md"} {
+		if err := root.WriteNewDeferred(rel, []byte("x"), 0o644, pending); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(got) != 0 {
+		t.Fatalf("synced before SyncDirs: %v", got)
+	}
+	root.SyncDirs(pending)
+	slices.Sort(got)
+	if want := ". t t/a t/b"; strings.Join(got, " ") != want {
 		t.Fatalf("synced dirs = %v, want %s", got, want)
 	}
 }

@@ -3,7 +3,11 @@ package roadmaps
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"log/slog"
+	"sync/atomic"
 
+	"learninghub/internal/fsx"
 	"learninghub/internal/roadmap"
 )
 
@@ -60,19 +64,51 @@ func (s *Service) Diff(ctx context.Context, d *Draft) (*Diff, error) {
 	if d.RoadmapID == 0 {
 		return nil, nil
 	}
+	old, err := recordedTopics(ctx, s.db.Reader(), d.RoadmapID)
+	if err != nil {
+		return nil, err
+	}
+	// The diff only changes with the content, the selection or the recorded topics: cache it in
+	// import_drafts.diff so a checkbox toggle re-renders without Parse + Levenshtein (T13.11).
+	choice, err := json.Marshal(d.Choice)
+	if err != nil {
+		return nil, err
+	}
+	oldJSON, err := json.Marshal(old)
+	if err != nil {
+		return nil, err
+	}
+	key := fsx.HashBytes([]byte(fsx.HashBytes(d.Content) + fsx.HashBytes(choice) + fsx.HashBytes(oldJSON)))
+	var raw sql.NullString
+	if err := s.db.Reader().QueryRowContext(ctx, `SELECT diff FROM import_drafts WHERE id = ?`, d.ID).Scan(&raw); err != nil && err != sql.ErrNoRows {
+		return nil, err
+	}
+	var c cachedDiff
+	if raw.Valid && json.Unmarshal([]byte(raw.String), &c) == nil && c.Key == key && c.Diff != nil {
+		return c.Diff, nil
+	}
 	sel, err := d.Preview(d.Choice)
 	if err != nil {
 		return nil, err
 	}
-	old, err := recordedTopics(ctx, s.db.Writer(), d.RoadmapID)
-	if err != nil {
-		return nil, err
+	diff := diffTopics(KeptTopics(sel, d.Choice.Excluded), old)
+	if b, err := json.Marshal(cachedDiff{Key: key, Diff: diff}); err == nil {
+		if _, err := s.db.Writer().ExecContext(ctx, `UPDATE import_drafts SET diff = ? WHERE id = ?`, string(b), d.ID); err != nil {
+			slog.Warn("caching draft diff", "draft", d.ID, "error", err) // only a cache: the preview still works
+		}
 	}
-	return diffTopics(KeptTopics(sel, d.Choice.Excluded), old), nil
+	return diff, nil
+}
+
+// cachedDiff is import_drafts.diff: the diff and the hash of everything it was computed from.
+type cachedDiff struct {
+	Key  string
+	Diff *Diff
 }
 
 // diffTopics matches by stable key. Already-archived topics that stay absent are not reported.
 func diffTopics(kept []roadmap.Topic, old []oldTopic) *Diff {
+	diffRuns.Add(1)
 	d := &Diff{}
 	byKey := make(map[string]oldTopic, len(old))
 	for _, o := range old {
@@ -123,12 +159,15 @@ func diffTopics(kept []roadmap.Topic, old []oldTopic) *Diff {
 	return d
 }
 
+// diffRuns counts diffTopics calls, for the cache test.
+var diffRuns atomic.Int64
+
 // guessMin is the similarity a disappeared title needs to be offered as "probably the same topic".
 const guessMin = 0.6
 
 // Guess bounds (CR-17): beyond guessMaxPairs the preview shows a note instead of guesses.
 const (
-	guessMaxPairs = 250_000
+	guessMaxPairs = 40_000
 	guessMaxRunes = 200
 )
 

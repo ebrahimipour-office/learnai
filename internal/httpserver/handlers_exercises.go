@@ -25,6 +25,7 @@ import (
 var answerStatusLabels = map[string]string{
 	topics.AnswerMissing: "گم‌شده", topics.AnswerEmpty: "بدون پاسخ",
 	topics.AnswerDone: "پاسخ‌داده‌شده", topics.AnswerChanged: "تغییرکرده پس از ارزیابی",
+	topics.AnswerTooLarge: "بزرگ‌تر از سقف",
 }
 
 var exerciseTypeLabels = map[string]string{
@@ -114,12 +115,7 @@ func (a *app) fillSet(r *http.Request, d *pageData) error {
 	for _, x := range list {
 		row := exerciseRow{Exercise: x, FullPath: filepath.Join(a.root.BaseDir(), filepath.FromSlash(x.AnswerRel))}
 		if d.Tab == "answers" {
-			sha, _, err := a.root.HashFile(x.AnswerRel)
-			if err != nil {
-				slog.Warn("hashing answer file", "path", x.AnswerRel, "error", err)
-				sha = ""
-			}
-			row.Status = x.AnswerStatus(sha)
+			row.Status = a.answerStatus(&x)
 			if row.Status == topics.AnswerDone || row.Status == topics.AnswerChanged {
 				d.Answered++
 			}
@@ -136,6 +132,20 @@ func (a *app) fillSet(r *http.Request, d *pageData) error {
 		d.ExercisesMD = m.HTML
 	}
 	return nil
+}
+
+// answerStatus hashes the answer file only when it is within the evaluation size cap,
+// so a huge file never costs a full read on each page view.
+func (a *app) answerStatus(x *topics.Exercise) string {
+	if fi, err := a.root.Stat(x.AnswerRel); err == nil && a.settings.MaxAnswerBytes > 0 && fi.Size() > a.settings.MaxAnswerBytes {
+		return topics.AnswerTooLarge
+	}
+	sha, _, err := a.root.HashFile(x.AnswerRel)
+	if err != nil {
+		slog.Warn("hashing answer file", "path", x.AnswerRel, "error", err)
+		sha = ""
+	}
+	return x.AnswerStatus(sha)
 }
 
 // fillReports loads the attempts of the set, the one in ?attempt= (default: latest) and,

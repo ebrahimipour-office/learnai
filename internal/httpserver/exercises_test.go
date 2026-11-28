@@ -189,6 +189,24 @@ func TestAnswersTabStatuses(t *testing.T) {
 	}
 }
 
+// T13.11: an answer file over limits.max_answer_bytes is not hashed on a page view.
+func TestAnswersTabTooLargeNotHashed(t *testing.T) {
+	e := newEnv(t)
+	e.exerciseSet()
+	_, abs := e.answerID("q01")
+	if err := os.Truncate(abs, 3<<30); err != nil { // sparse: no disk used, but hashing it would read 3GB
+		t.Fatal(err)
+	}
+	start := time.Now()
+	rec := e.get("/topics/1/answers")
+	if rec.Code != 200 || time.Since(start) > 2*time.Second {
+		t.Fatalf("status %d after %v; want a fast 200", rec.Code, time.Since(start))
+	}
+	if page := rec.Body.String(); !strings.Contains(page, "status-too_large") || !strings.Contains(page, "بزرگ‌تر از سقف") {
+		t.Fatal("answers tab must mark the oversized file")
+	}
+}
+
 func TestServeFile(t *testing.T) {
 	e := newEnv(t)
 	e.exerciseSet()

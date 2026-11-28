@@ -80,6 +80,7 @@ type row struct {
 	Item
 	SHA, Observed string
 	Present       bool
+	Size          int64 // size_bytes when the app wrote it
 	ObsSize       int64 // -1 = unknown
 	ObsMtime      int64
 }
@@ -121,7 +122,9 @@ func (s *Service) Scan(ctx context.Context) (*Run, error) {
 			rep.Skipped = append(rep.Skipped, r.RelPath)
 			continue
 		}
-		seen = append(seen, observed{r: r, obs: obs{sha, size, mtime}})
+		if !r.Present || sha != r.Observed || size != r.ObsSize || mtime != r.ObsMtime {
+			seen = append(seen, observed{r: r, obs: obs{sha, size, mtime}}) // unchanged rows cost no write (T13.11)
+		}
 		// T9.15: a current lesson edited by hand since the last look gets its search text refreshed.
 		if r.Kind == "lesson" && strings.HasSuffix(r.RelPath, "/lesson/lesson.md") && sha != r.Observed {
 			if md, err := s.Root.ReadFile(r.RelPath); err == nil {
@@ -170,6 +173,9 @@ func (s *Service) Scan(ctx context.Context) (*Run, error) {
 			}
 		}
 		for _, r := range missing {
+			if !r.Present {
+				continue // already recorded as missing
+			}
 			if _, err := tx.ExecContext(ctx, `UPDATE files SET presence = 'missing', observed_at = `+nowSQL+` WHERE id = ? AND rel_path = ? AND sha256 = ?`, r.FileID, r.RelPath, r.SHA); err != nil {
 				return err
 			}
@@ -196,7 +202,7 @@ func (s *Service) Scan(ctx context.Context) (*Run, error) {
 }
 
 func (s *Service) rows(ctx context.Context) ([]row, error) {
-	q, err := s.DB.Writer().QueryContext(ctx, `SELECT id, topic_id, kind, rel_path, sha256, COALESCE(observed_sha256, ''), presence = 'present',
+	q, err := s.DB.Writer().QueryContext(ctx, `SELECT id, topic_id, kind, rel_path, sha256, COALESCE(observed_sha256, ''), presence = 'present', size_bytes,
 		COALESCE(observed_size, -1), COALESCE(observed_mtime, 0) FROM files ORDER BY id`)
 	if err != nil {
 		return nil, err
@@ -205,7 +211,7 @@ func (s *Service) rows(ctx context.Context) ([]row, error) {
 	var out []row
 	for q.Next() {
 		var r row
-		if err := q.Scan(&r.FileID, &r.TopicID, &r.Kind, &r.RelPath, &r.SHA, &r.Observed, &r.Present, &r.ObsSize, &r.ObsMtime); err != nil {
+		if err := q.Scan(&r.FileID, &r.TopicID, &r.Kind, &r.RelPath, &r.SHA, &r.Observed, &r.Present, &r.Size, &r.ObsSize, &r.ObsMtime); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -234,9 +240,15 @@ func (s *Service) observe(r row) (sha string, size, mtime int64, err error) {
 	return sha, size, mtime, err
 }
 
+// candidate is an unregistered file under topics/.
+type candidate struct {
+	path string
+	size int64
+}
+
 // unregistered lists regular files under topics/ that no files row points at, in path order.
 // A path fsx would refuse to open (CR-04) goes to skipped instead of failing the scan.
-func (s *Service) unregistered(registered map[string]bool) (out, skipped []string, err error) {
+func (s *Service) unregistered(registered map[string]bool) (out []candidate, skipped []string, err error) {
 	err = fs.WalkDir(s.Root.FS(), topicsDir, func(p string, d fs.DirEntry, err error) error {
 		if errors.Is(err, fs.ErrNotExist) && p == topicsDir {
 			return fs.SkipAll // no topic folder yet
@@ -254,10 +266,11 @@ func (s *Service) unregistered(registered map[string]bool) (out, skipped []strin
 		if !d.Type().IsRegular() || registered[p] || fsx.IsTempName(d.Name()) {
 			return nil // temp files are in-flight writes or crash leftovers, not the learner's (T13.4)
 		}
-		if fsx.ValidateRelPath(p) != nil || !s.readable(p) {
+		fi, ierr := d.Info()
+		if ierr != nil || fsx.ValidateRelPath(p) != nil || !s.readable(p) {
 			skipped = append(skipped, p)
 		} else {
-			out = append(out, p)
+			out = append(out, candidate{p, fi.Size()})
 		}
 		return nil
 	})
@@ -278,18 +291,25 @@ func (s *Service) readable(rel string) bool {
 // observed one), then answer files by their @hub header, which survives editing. A pairing must be
 // unambiguous on both sides; anything else stays missing or new.
 // A candidate that cannot be hashed is returned in skipped (T13.5).
-func (s *Service) match(ctx context.Context, missing []row, candidates []string) (moves []Move, newFiles, skipped []string, err error) {
+func (s *Service) match(ctx context.Context, missing []row, candidates []candidate) (moves []Move, newFiles, skipped []string, err error) {
 	moves = []Move{}
 	if len(missing) == 0 {
-		return moves, append([]string{}, candidates...), nil, nil
+		newFiles = []string{}
+		for _, c := range candidates {
+			newFiles = append(newFiles, c.path)
+		}
+		return moves, newFiles, nil, nil
 	}
 	byHash := map[string][]int{} // sha → indexes into missing
+	sizes := map[int64]bool{}    // only a candidate of one of these sizes can match by hash (T13.11)
 	for i, r := range missing {
 		if r.SHA != "" && r.SHA != emptySHA {
 			byHash[r.SHA] = append(byHash[r.SHA], i)
+			sizes[r.Size] = true
 		}
 		if r.Observed != "" && r.Observed != r.SHA && r.Observed != emptySHA {
 			byHash[r.Observed] = append(byHash[r.Observed], i)
+			sizes[r.ObsSize] = true
 		}
 	}
 	type cand struct {
@@ -298,11 +318,13 @@ func (s *Service) match(ctx context.Context, missing []row, candidates []string)
 	}
 	var cands []cand
 	hashHits := map[int][]int{} // missing index → candidate indexes
-	for _, p := range candidates {
-		sha, _, err := s.Root.HashFile(p)
-		if err != nil {
-			skipped = append(skipped, p)
-			continue
+	for _, c := range candidates {
+		p, sha := c.path, ""
+		if sizes[c.size] {
+			if sha, _, err = hashFile(s.Root, p); err != nil {
+				skipped = append(skipped, p)
+				continue
+			}
 		}
 		ci := len(cands)
 		cands = append(cands, cand{p, sha})

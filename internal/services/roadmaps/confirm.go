@@ -86,7 +86,8 @@ func (s *Service) ConfirmLinked(ctx context.Context, id string, links map[string
 		return 0, 0, err
 	}
 	keysJSON := func(keys []string) string { b, _ := json.Marshal(append([]string{}, keys...)); return string(b) }
-	var undo []func() // reverts each file write done so far, so a failed commit leaves the disk as it was
+	var undo []func()      // reverts each file write done so far, so a failed commit leaves the disk as it was
+	dirs := fsx.DirSyncs{} // folder fsyncs run once each before commit, not per file (T13.11)
 
 	// Pre-slice and hash every chapter source before taking the database write lock (CR-16).
 	lines := roadmap.NewLines(d.Content)
@@ -303,19 +304,20 @@ func (s *Service) ConfirmLinked(ctx context.Context, id string, links map[string
 		}
 
 		// Files go last: any earlier failure leaves nothing on disk. Files created with O_EXCL are ours to remove.
-		if _, err := s.writeOrAdopt(rel, d.Content, &undo); err != nil {
+		if _, err := s.writeOrAdopt(rel, d.Content, &undo, dirs); err != nil {
 			return err
 		}
 		// The choice beside the revision lets hub rebuild re-select the same topics (CR-19).
 		choiceRel := ChoiceRel(rel)
-		if _, err := s.writeOrAdopt(choiceRel, choice, &undo); err != nil {
+		if _, err := s.writeOrAdopt(choiceRel, choice, &undo, dirs); err != nil {
 			return err
 		}
 		for _, w := range writes {
-			if err := s.writeSource(w, &undo); err != nil {
+			if err := s.writeSource(w, &undo, dirs); err != nil {
 				return err
 			}
 		}
+		s.root.SyncDirs(dirs)
 		return nil
 	})
 	if err != nil {
@@ -423,14 +425,14 @@ func (s *Service) recordSource(ctx context.Context, tx *sql.Tx, o oldTopic, t ro
 
 // writeSource puts w on disk and pushes its revert onto undo. A replaced source.md is restored before
 // its history copy is removed, so the old text is never lost.
-func (s *Service) writeSource(w sourceWrite, undo *[]func()) error {
+func (s *Service) writeSource(w sourceWrite, undo *[]func(), dirs fsx.DirSyncs) error {
 	if w.hist == "" {
-		if _, err := s.writeOrAdopt(w.rel, w.data, undo); err != nil {
+		if _, err := s.writeOrAdopt(w.rel, w.data, undo, dirs); err != nil {
 			return err
 		}
 		return nil
 	}
-	histAdopted, err := s.writeOrAdopt(w.hist, w.prev, undo)
+	histAdopted, err := s.writeOrAdopt(w.hist, w.prev, undo, dirs)
 	if err != nil {
 		return err
 	}
@@ -456,7 +458,7 @@ func (s *Service) writeSource(w sourceWrite, undo *[]func()) error {
 
 // writeOrAdopt writes data to rel using WriteNew, unless rel already exists with identical
 // SHA256 bytes, in which case it adopts the existing file without writing or adding an undo.
-func (s *Service) writeOrAdopt(rel string, data []byte, undo *[]func()) (adopted bool, err error) {
+func (s *Service) writeOrAdopt(rel string, data []byte, undo *[]func(), dirs fsx.DirSyncs) (adopted bool, err error) {
 	b, err := s.root.ReadFile(rel)
 	if err == nil {
 		if fsx.HashBytes(b) == fsx.HashBytes(data) {
@@ -467,7 +469,7 @@ func (s *Service) writeOrAdopt(rel string, data []byte, undo *[]func()) (adopted
 	if !errors.Is(err, fs.ErrNotExist) {
 		return false, fmt.Errorf("checking %s: %w", rel, err)
 	}
-	if err := s.root.WriteNew(rel, data, 0o644); err != nil {
+	if err := s.root.WriteNewDeferred(rel, data, 0o644, dirs); err != nil {
 		return false, fmt.Errorf("writing %s: %w", rel, err)
 	}
 	*undo = append(*undo, func() {

@@ -116,7 +116,7 @@ form.inline, #job-area form, .ai-suggestion form { display: inline-block; margin
 /* status words: plain coloured text with a square bullet, like a note in the margin */
 .badge { display: inline-block; font-size: .82em; font-weight: 600; line-height: 1.6; vertical-align: middle; color: var(--muted); white-space: nowrap; text-decoration: none; }
 .badge::before { content: ""; display: inline-block; width: .5em; height: .5em; margin-inline-end: .35em; background: currentColor; vertical-align: .08em; }
-.badge.warn, .badge.status-missing { color: var(--danger); }
+.badge.warn, .badge.status-missing, .badge.status-too_large { color: var(--danger); }
 .badge.suggested::before { background: none; border: 1.5px solid currentColor; }
 .badge.busy, .badge.status-content_ready, .badge.status-exercises_ready { color: var(--accent); }
 .badge.status-answered, .badge.status-changed { color: var(--warn); }

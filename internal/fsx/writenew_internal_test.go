@@ -22,7 +22,7 @@ func TestWriteNewDirectCrashLeavesNoFinalFile(t *testing.T) {
 		f.Close()
 		return errors.New("simulated crash")
 	})()
-	if err := r.writeNewDirect("d/f.md", "", []byte("full"), 0o644); err == nil {
+	if err := r.writeNewDirect("d/f.md", "", []byte("full"), 0o644, nil); err == nil {
 		t.Fatal("expected error")
 	}
 	if entries, _ := os.ReadDir(dir + "/d"); len(entries) != 0 {
@@ -36,10 +36,10 @@ func TestWriteNewDirectNeverOverwrites(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer r.Close()
-	if err := r.writeNewDirect("f.md", "", []byte("one"), 0o644); err != nil {
+	if err := r.writeNewDirect("f.md", "", []byte("one"), 0o644, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.writeNewDirect("f.md", "", []byte("two"), 0o644); !errors.Is(err, ErrFileExists) {
+	if err := r.writeNewDirect("f.md", "", []byte("two"), 0o644, nil); !errors.Is(err, ErrFileExists) {
 		t.Fatalf("err = %v, want ErrFileExists", err)
 	}
 	if b, _ := r.ReadFile("f.md"); string(b) != "one" {
