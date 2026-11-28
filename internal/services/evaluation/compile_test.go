@@ -83,8 +83,20 @@ func TestTestCheck(t *testing.T) {
 		{"test does not parse", add, "package x\nfunc {", "skipped", "does not parse"},
 		{"answer imports os/exec", hdr + "package main\n\nimport \"os/exec\"\n\nvar _ = exec.Command\n\nfunc Add(a, b int) int { return a + b }\n", test, "skipped", `"os/exec"`},
 		{"answer imports net/http", hdr + "package main\n\nimport _ \"net/http\"\n\nfunc Add(a, b int) int { return a + b }\n", test, "skipped", `"net/http"`},
-		// The user's variables (an API key, say) never reach the code that runs.
-		{"closed env", hdr + "package main\n\nimport \"os\"\n\nfunc Add(a, b int) int { return a + b + len(os.Getenv(\"LH_SECRET\")) }\n", test, "ok", ""},
+		// T13.6: the answer may only import computational std packages; anything else is never run.
+		{"answer imports os", hdr + "package main\n\nimport \"os\"\n\nfunc Add(a, b int) int { return a + b + len(os.Getenv(\"LH_SECRET\")) }\n", test, "skipped", `"os"`},
+		{"answer imports crypto/tls", hdr + "package main\n\nimport _ \"crypto/tls\"\n\nfunc Add(a, b int) int { return a + b }\n", test, "skipped", `"crypto/tls"`},
+		{"answer imports log/syslog", hdr + "package main\n\nimport _ \"log/syslog\"\n\nfunc Add(a, b int) int { return a + b }\n", test, "skipped", `"log/syslog"`},
+		{"answer imports go/build", hdr + "package main\n\nimport _ \"go/build\"\n\nfunc Add(a, b int) int { return a + b }\n", test, "skipped", `"go/build"`},
+		{"answer imports do not parse", hdr + "package main\n\nimport (\"fmt\"\n\nfunc Add(a, b int) int { return a + b }\n", test, "skipped", "do not parse"},
+		{"answer strings fmt", hdr + "package main\n\nimport (\n\t\"fmt\"\n\t\"strings\"\n)\n\nfunc Add(a, b int) int { return len(strings.TrimSpace(fmt.Sprint(\" \", a+b))) + a + b - 1 }\n", test, "ok", ""},
+		{"answer build ignore", "//go:build ignore\n\n" + add, test, "skipped", "build constraint"},
+		{"test without Test", add, "package x\n\nimport \"testing\"\n\nfunc helper(t *testing.T) {}\n", "skipped", "TestXxx"},
+		{"test +build", add, "// +build ignore\n\n" + test, "skipped", "directive"},
+		// The clause is parsed: a "package x" line inside a block comment is not the package.
+		{"package in block comment", "/*\npackage solution\n*/\n" + add, test, "ok", ""},
+		// An answer printing forever is capped in memory and in the report.
+		{"endless print", hdr + "package main\n\nimport \"fmt\"\n\nfunc Add(a, b int) int {\n\tfor {\n\t\tfmt.Println(\"spam spam spam spam spam spam spam spam\")\n\t}\n}\n", test, "failed", "spam"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -94,6 +106,9 @@ func TestTestCheck(t *testing.T) {
 			}
 			if strings.Contains(got.Output, root.BaseDir()) {
 				t.Errorf("output leaks the temp dir: %q", got.Output)
+			}
+			if len(got.Output) > 4<<10+8 {
+				t.Errorf("output not capped: %d bytes", len(got.Output))
 			}
 		})
 	}

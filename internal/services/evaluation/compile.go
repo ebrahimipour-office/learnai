@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
@@ -30,7 +31,6 @@ const (
 )
 
 var (
-	packageRe = regexp.MustCompile(`(?m)^package\s+(\w+)`)
 	// Imports outside the standard library cannot resolve with GOPROXY=off: the environment, not the answer.
 	externalRe = regexp.MustCompile(`GOPROXY=off|no required module provides package|cannot find module providing package`)
 )
@@ -76,11 +76,12 @@ func runGo(ctx context.Context, root *fsx.Root, name string, files map[string][]
 			env = append(env, k+"="+v)
 		}
 	}
-	var out bytes.Buffer
+	var out capWriter
 	run := func(args ...string) error {
 		out.Reset()
 		c := exec.CommandContext(ctx, goBin, args...)
 		c.Dir, c.Env, c.Stdout, c.Stderr = dir, env, &out, &out
+		c.WaitDelay = 5 * time.Second
 		g, err := procgroup.Start(c)
 		if err != nil {
 			return err
@@ -99,6 +100,27 @@ func runGo(ctx context.Context, root *fsx.Root, name string, files map[string][]
 		text = text[:maxVetOutput] + "\n…"
 	}
 	return goResult{text: strings.TrimSpace(text), err: err, timedOut: ctx.Err() != nil}
+}
+
+// capWriter keeps the first 2*maxVetOutput bytes and drops the rest, so an answer that prints
+// forever cannot fill memory before the deadline (only the start is ever shown).
+type capWriter struct{ bytes.Buffer }
+
+func (w *capWriter) Write(p []byte) (int, error) {
+	if room := 2*maxVetOutput - w.Len(); room > 0 {
+		w.Buffer.Write(p[:min(len(p), room)])
+	}
+	return len(p), nil
+}
+
+// packageName is the answer's package clause, parsed (a "package x" inside a comment does not count);
+// "" for a snippet without one.
+func packageName(answer []byte) string {
+	f, err := parser.ParseFile(token.NewFileSet(), "answer.go", answer, parser.PackageClauseOnly)
+	if err != nil {
+		return ""
+	}
+	return f.Name.Name
 }
 
 // judge maps a run to ok / failed / skipped: anything that is the environment's fault (no go, a
@@ -123,7 +145,7 @@ func (r goResult) judge(what string, timeout time.Duration) schema.Compile {
 // CompileCheck type-checks a Go answer with `go vet` in a throwaway module under .app/work/compile
 // (T11.4, A13). The code is never run: no go test, no go run.
 func CompileCheck(ctx context.Context, root *fsx.Root, name string, answer []byte, timeout time.Duration) schema.Compile {
-	if !packageRe.Match(answer) {
+	if packageName(answer) == "" {
 		return schema.Compile{Status: compileSkipped, Output: "no package clause (snippet)"}
 	}
 	return runGo(ctx, root, name, map[string][]byte{"answer.go": answer}, timeout, "vet", "./...").judge("go vet", timeout)
@@ -135,21 +157,60 @@ var testImports = []string{"testing", "fmt", "strings", "strconv", "bytes", "err
 	"math", "math/bits", "math/rand", "math/rand/v2", "reflect", "unicode", "unicode/utf8", "time", "context", "sync", "sync/atomic",
 	"container/heap", "container/list", "container/ring", "encoding/json", "regexp", "bufio", "io"}
 
-// deniedAnswerImport reports an import the answer may not use when it is run: the user wrote the answer,
-// but its starter came from the AI, and these reach outside the sandbox (processes, network, raw syscalls).
-func deniedAnswerImport(p string) bool {
-	return slices.Contains([]string{"os/exec", "syscall", "unsafe", "plugin", "C", "runtime/cgo"}, p) ||
-		p == "net" || strings.HasPrefix(p, "net/") || strings.HasPrefix(p, "golang.org/x/sys")
+// allowedAnswerImport reports an import the answer may use when it is run: the user wrote the answer,
+// but its starter came from the AI, so only computational std packages are allowed — no os, file system,
+// network, process, syscall or unsafe access, and nothing outside the standard library.
+func allowedAnswerImport(p string) bool {
+	for _, fam := range []string{"math/", "unicode/", "encoding/", "sync/", "container/", "hash/", "text/"} {
+		if strings.HasPrefix(p, fam) {
+			return true
+		}
+	}
+	return slices.Contains(testImports, p) ||
+		slices.Contains([]string{"path", "log", "html", "crypto/sha256", "crypto/sha1", "crypto/sha512", "crypto/md5"}, p)
+}
+
+// buildConstraint reports a //go:build or // +build line, which could exclude a file from the build.
+func buildConstraint(f *ast.File) bool {
+	for _, g := range f.Comments {
+		for _, c := range g.List {
+			if strings.HasPrefix(c.Text, "//go:build") || strings.HasPrefix(c.Text, "// +build") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// hasTest reports a func TestXxx(t *testing.T) in the test file: without one go test passes vacuously.
+func hasTest(f *ast.File) bool {
+	for _, d := range f.Decls {
+		fn, ok := d.(*ast.FuncDecl)
+		if !ok || fn.Recv != nil || !strings.HasPrefix(fn.Name.Name, "Test") || len(fn.Type.Params.List) != 1 {
+			continue
+		}
+		star, ok := fn.Type.Params.List[0].Type.(*ast.StarExpr)
+		if !ok {
+			continue
+		}
+		if sel, ok := star.X.(*ast.SelectorExpr); ok && sel.Sel.Name == "T" {
+			if id, ok := sel.X.(*ast.Ident); ok && id.Name == "testing" && len(fn.Type.Params.List[0].Names) <= 1 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // TestCheck runs the rubric's hidden Go test against the answer with `go test` (T12.4). This is the
 // one place the app runs code, only when evaluation.run_tests is on: the generated test is limited to
-// testImports and may carry no //go: directive, the answer may not import deniedAnswerImport, and the
+// testImports, must hold a TestXxx and may carry no //go: or +build line, the answer may only import
+// allowedAnswerImport and carry no build constraint, and the
 // run has a closed environment (runGo), a deadline and a killed process tree. Anything refused is skipped.
 func TestCheck(ctx context.Context, root *fsx.Root, name string, answer, goTest []byte, timeout time.Duration) schema.Compile {
 	skip := func(why string) schema.Compile { return schema.Compile{Status: compileSkipped, Output: why} }
-	pkg := packageRe.FindSubmatch(answer)
-	if pkg == nil {
+	pkg := packageName(answer)
+	if pkg == "" {
 		return skip("no package clause (snippet)")
 	}
 	fset := token.NewFileSet()
@@ -164,24 +225,36 @@ func TestCheck(ctx context.Context, root *fsx.Root, name string, answer, goTest 
 	}
 	for _, g := range test.Comments {
 		for _, c := range g.List {
-			if strings.HasPrefix(c.Text, "//go:") || strings.HasPrefix(c.Text, "//line ") {
+			if strings.HasPrefix(c.Text, "//go:") || strings.HasPrefix(c.Text, "//line ") || strings.HasPrefix(c.Text, "// +build") {
 				return skip("the generated test carries a compiler directive")
 			}
 		}
 	}
-	// An answer that does not parse is left to go test, which reports the syntax error as a failure.
-	if f, err := parser.ParseFile(fset, "answer.go", answer, parser.ImportsOnly); err == nil {
-		for _, im := range f.Imports {
-			if p, _ := strconv.Unquote(im.Path.Value); deniedAnswerImport(p) {
-				return skip(fmt.Sprintf("the answer imports %q; it is not run with that import", p))
-			}
+	if !hasTest(test) {
+		return skip("the generated test has no func TestXxx(t *testing.T)")
+	}
+	// Only the header is parsed: a syntax error in a body is left to go test, which reports it as a failure.
+	f, err := parser.ParseFile(fset, "answer.go", answer, parser.ImportsOnly|parser.ParseComments)
+	if err != nil {
+		return skip("the answer's imports do not parse; it is not run")
+	}
+	if buildConstraint(f) {
+		return skip("the answer carries a build constraint; it is not run")
+	}
+	for _, im := range f.Imports {
+		if p, _ := strconv.Unquote(im.Path.Value); !allowedAnswerImport(p) {
+			return skip(fmt.Sprintf("the answer imports %q; it is not run with that import", p))
 		}
 	}
 	// The test is written for the answer's package, whatever the AI called it.
 	from, to := fset.Position(test.Package).Offset, fset.Position(test.Name.End()).Offset
-	goTest = slices.Concat(goTest[:from], []byte("package "+string(pkg[1])), goTest[to:])
+	goTest = slices.Concat(goTest[:from], []byte("package "+pkg), goTest[to:])
 	// The tool gets extra time to build; the test binary itself stops at -timeout (an endless loop is the answer's fault).
 	files := map[string][]byte{"answer.go": answer, "answer_test.go": goTest}
-	return runGo(ctx, root, name, files, timeout+time.Minute, "test", "-count=1", "-vet=off", "-timeout="+timeout.String(), "./...").
-		judge("go test", timeout+time.Minute)
+	r := runGo(ctx, root, name, files, timeout+time.Minute, "test", "-count=1", "-vet=off", "-timeout="+timeout.String(), "./...")
+	// In package-list mode a passing package prints only its ok line, so the answer cannot forge this marker.
+	if r.err == nil && r.skip == "" && !r.timedOut && strings.Contains(r.text, "[no tests to run]") {
+		return skip("go test ran no tests")
+	}
+	return r.judge("go test", timeout+time.Minute)
 }
